@@ -252,10 +252,10 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   {
     id: 'drive-freeway',
     title: 'Freeway drive',
-    how: 'One eyes-free Drive session of 15 minutes with answers flowing (no break over 3 minutes).',
+    how: 'One eyes-free Drive session of 15 minutes (no break over 3 minutes) with at least 10 active minutes in it.',
     tier: 'silver',
     group: 'Drive',
-    measure: (c) => m(Math.floor(c.progress.drive.bestRunMs / 60_000), FREEWAY_MS / 60_000),
+    measure: (c) => m(Math.floor((c.progress.drive.bestFreewayMs ?? 0) / 60_000), FREEWAY_MS / 60_000),
   },
   ...tiered({ group: 'Play' }, 'shoes', [
     ['bronze', 1, 'First shoe', `Play a shoe at the table (a session of ${SHOE_MIN_ROUNDS}+ rounds).`],

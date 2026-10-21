@@ -156,6 +156,51 @@ describe('active time', () => {
     expect(p.drive.bestRunMs).toBeGreaterThanOrEqual(15 * 60_000);
   });
 
+  describe('Wave O: the freeway drive needs 15 wall minutes AND 10 active ones', () => {
+    const FW = 15 * 60_000;
+    // Answers `steps` ms apart after one at t0, all Drive.
+    const drive = (steps: number[]): ProgressState => {
+      let t = local(10, 8, 7);
+      let p = recordActivity(emptyProgress(), t, { answers: 1, drive: true }, goal).state;
+      for (const s of steps) {
+        t += s;
+        p = recordActivity(p, t, { answers: 1, drive: true }, goal).state;
+      }
+      return p;
+    };
+    const thirty = (n: number) => Array(n).fill(30_000);
+    it('7 answers over 17 minutes with no active minutes do not earn it', () => {
+      const p = drive(Array(6).fill(170_000));
+      expect(p.drive.bestRunMs).toBe(17 * 60_000);
+      expect(p.drive.runActiveMs).toBe(0);
+      expect(p.drive.bestFreewayMs ?? 0).toBeLessThan(FW);
+    });
+    it('exactly 15 wall and 10 active minutes earn it', () => {
+      const p = drive([...thirty(20), 150_000, 150_000]);
+      expect(p.drive.runMs).toBe(FW);
+      expect(p.drive.runActiveMs).toBe(10 * 60_000);
+      expect(p.drive.bestFreewayMs).toBe(FW);
+    });
+    it('one second short of 10 active minutes does not', () => {
+      const p = drive([29_000, ...thirty(19), 150_000, 151_000]);
+      expect(p.drive.runMs).toBe(FW);
+      expect(p.drive.runActiveMs).toBe(10 * 60_000 - 1000);
+      expect(p.drive.bestFreewayMs).toBeLessThan(FW);
+    });
+    it('one second short of 15 wall minutes does not', () => {
+      const p = drive([...thirty(20), 150_000, 149_000]);
+      expect(p.drive.runMs).toBe(FW - 1000);
+      expect(p.drive.bestFreewayMs).toBeLessThan(FW);
+    });
+    it('the best survives a non-Drive answer and a new session', () => {
+      let p = drive([...thirty(20), 150_000, 150_000]);
+      p = recordActivity(p, local(10, 8, 9), { answers: 1, drive: false }, goal).state;
+      p = recordActivity(p, local(10, 8, 10), { answers: 1, drive: true }, goal).state;
+      expect(p.drive.bestFreewayMs).toBe(FW);
+      expect(normalizeProgress(JSON.parse(JSON.stringify(p))).drive.bestFreewayMs).toBe(FW);
+    });
+  });
+
   it('a pause over the idle cap keeps the session; one over the session gap ends it', () => {
     let p = burst(emptyProgress(), local(10, 6, 7), 5, 30_000, true); // 2 min
     p = recordActivity(p, local(10, 6, 7) + 120_000 + DRIVE_SESSION_GAP_MS, { answers: 1, drive: true }, goal).state;

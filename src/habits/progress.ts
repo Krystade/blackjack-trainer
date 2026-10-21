@@ -44,6 +44,20 @@ export const IDLE_CAP_MS = 60_000;
  */
 export const DRIVE_SESSION_GAP_MS = 3 * 60_000;
 
+/** Wave O: the freeway drive needs this much wall time in one session... */
+export const FREEWAY_WALL_MS = 15 * 60_000;
+/** ...and this many active (idle-capped) minutes inside it. */
+export const FREEWAY_ACTIVE_MS = 10 * 60_000;
+
+/**
+ * One number for "how far to a freeway drive": reaches FREEWAY_WALL_MS exactly
+ * when the session has both the wall time and the active minutes. The active
+ * time is scaled to the wall target so either shortfall holds it back.
+ */
+export function freewayScoreMs(runMs: number, runActiveMs: number): number {
+  return Math.min(runMs, Math.floor((runActiveMs * FREEWAY_WALL_MS) / FREEWAY_ACTIVE_MS));
+}
+
 /** Freezes: one earned per 7 met days of streak, at most two held. */
 export const FREEZE_EVERY = 7;
 export const FREEZE_MAX = 2;
@@ -78,7 +92,17 @@ export interface ProgressState {
    * time (see recordActivity). `runStartAt` / `lastAt` are epoch ms of the
    * session's start and of its last answer; absent when no session is open.
    */
-  drive: { totalMs: number; runMs: number; bestRunMs: number; runStartAt?: number; lastAt?: number };
+  drive: {
+    totalMs: number;
+    runMs: number;
+    bestRunMs: number;
+    runStartAt?: number;
+    lastAt?: number;
+    /** Wave O: active (idle-capped) ms credited inside the current session. */
+    runActiveMs?: number;
+    /** Wave O: best freeway score over sessions, see freewayScoreMs. */
+    bestFreewayMs?: number;
+  };
   /** Achievement id -> ISO date earned, or '' when earned from history undated. */
   earned: Record<string, string>;
   /** First-run backfill from history has been done. */
@@ -116,6 +140,8 @@ export function normalizeProgress(raw: unknown): ProgressState {
       bestRunMs: num(p.drive?.bestRunMs),
       ...(num(p.drive?.runStartAt) > 0 ? { runStartAt: num(p.drive?.runStartAt) } : {}),
       ...(num(p.drive?.lastAt) > 0 ? { lastAt: num(p.drive?.lastAt) } : {}),
+      ...(num(p.drive?.runActiveMs) > 0 ? { runActiveMs: num(p.drive?.runActiveMs) } : {}),
+      ...(num(p.drive?.bestFreewayMs) > 0 ? { bestFreewayMs: num(p.drive?.bestFreewayMs) } : {}),
     },
     earned: {},
   };
@@ -294,14 +320,25 @@ export function recordActivity(prev: ProgressState, nowMs: number, act: Activity
     const idle = prev.drive.lastAt === undefined ? Infinity : startedAt - prev.drive.lastAt;
     if (prev.drive.runStartAt !== undefined && idle <= DRIVE_SESSION_GAP_MS) {
       state.drive.runMs = nowMs - prev.drive.runStartAt;
+      state.drive.runActiveMs = (prev.drive.runActiveMs ?? 0) + credit;
     } else {
       state.drive.runStartAt = startedAt;
       state.drive.runMs = hint;
+      state.drive.runActiveMs = credit;
     }
     state.drive.lastAt = nowMs;
     state.drive.bestRunMs = Math.max(state.drive.bestRunMs, state.drive.runMs);
+    state.drive.bestFreewayMs = Math.max(
+      state.drive.bestFreewayMs ?? 0,
+      freewayScoreMs(state.drive.runMs, state.drive.runActiveMs),
+    );
   } else {
-    state.drive = { totalMs: state.drive.totalMs, runMs: 0, bestRunMs: state.drive.bestRunMs };
+    state.drive = {
+      totalMs: state.drive.totalMs,
+      runMs: 0,
+      bestRunMs: state.drive.bestRunMs,
+      ...(state.drive.bestFreewayMs ? { bestFreewayMs: state.drive.bestFreewayMs } : {}),
+    };
   }
 
   let goalMet = false;

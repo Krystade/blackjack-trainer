@@ -94,7 +94,7 @@ const CASES: Record<string, [AchievementContext, AchievementContext]> = {
   ],
   'drive-min-30': [ctx({ progress: { drive: { totalMs: 29 * 60_000 + 59_999, runMs: 0, bestRunMs: 0 } } }), ctx({ progress: { drive: { totalMs: 30 * 60_000, runMs: 0, bestRunMs: 0 } } })],
   'drive-min-300': [ctx({ progress: { drive: { totalMs: 299 * 60_000, runMs: 0, bestRunMs: 0 } } }), ctx({ progress: { drive: { totalMs: 300 * 60_000, runMs: 0, bestRunMs: 0 } } })],
-  'drive-freeway': [ctx({ progress: { drive: { totalMs: 0, runMs: 0, bestRunMs: 15 * 60_000 - 1 } } }), ctx({ progress: { drive: { totalMs: 0, runMs: 0, bestRunMs: 15 * 60_000 } } })],
+  'drive-freeway': [ctx({ progress: { drive: { totalMs: 0, runMs: 0, bestRunMs: 17 * 60_000, bestFreewayMs: 15 * 60_000 - 1 } } }), ctx({ progress: { drive: { totalMs: 0, runMs: 0, bestRunMs: 0, bestFreewayMs: 15 * 60_000 } } })],
   // A shoe is a session of SHOE_MIN_ROUNDS (20) rounds: 19 is not one.
   'shoes-1': [ctx({ stats: { sessions: sessions(3, { rounds: 19 }) } }), ctx({ stats: { sessions: sessions(1, { rounds: 20 }) } })],
   'shoes-10': [ctx({ stats: { sessions: [...sessions(9), ...sessions(5, { rounds: 19 })] } }), ctx({ stats: { sessions: sessions(10, { rounds: 20 }) } })],
