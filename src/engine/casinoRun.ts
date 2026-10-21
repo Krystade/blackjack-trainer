@@ -1,4 +1,4 @@
-import { CasinoSim, type Accum, type SimSpec } from './casinoSim';
+import { CasinoSim, mergeAccum, type Accum, type SimSpec } from './casinoSim';
 import { bestIndex, edgePrecise, evPrecise } from './casinoStats';
 import type { BetMethod } from './betMethods';
 
@@ -12,12 +12,29 @@ import type { BetMethod } from './betMethods';
  *
  * A generator, so the worker can post progress between chunks and a test can
  * drive it synchronously with a fake clock.
+ *
+ * Wave Q: a run can CONTINUE an earlier one (`prior`). It deals its own rounds
+ * from its own seed and reports the two runs' sums added together
+ * (mergeAccum); every target, cap and budget is judged on that total, and the
+ * clock counts the earlier run's time too. So a game's figures can be worked
+ * out in pieces -- a quick first estimate, then more whenever the phone is
+ * free -- and land exactly where one run of the same total would.
  */
+
+/** What an earlier run left: its sums, its rounds and its time (all cumulative). */
+export interface RunPrior {
+  basic: Accum;
+  methods: { method: BetMethod; acc: Accum }[] | null;
+  basicRounds: number;
+  countRounds: number;
+  ms: number;
+}
 
 export type RunStatus = 'running' | 'done' | 'time' | 'budget';
 
 export interface RunProgress {
   status: RunStatus;
+  /** With a `prior`, every figure here is the total of both runs. */
   basic: Accum;
   /** Null for a continuous shuffler: there is nothing to count. */
   methods: { method: BetMethod; acc: Accum }[] | null;
@@ -30,10 +47,12 @@ export interface RunProgress {
 
 export interface RunOptions {
   seed: number;
-  /** The phone-scale time cap. */
+  /** The phone-scale time cap, on the total time (the prior run's included). */
   timeCapMs: number;
-  /** A round budget per simulation (tests, and the e2e hook); absent = none. */
+  /** A round budget per simulation, on the total rounds (tests, the e2e hook, the quick first pass); absent = none. */
   maxRounds?: number;
+  /** Wave Q: an earlier run of the same spec to continue (see the header). */
+  prior?: RunPrior;
   now: () => number;
   /**
    * Rounds of table time one exit costs (rounds/hour x minutes per exit / 60),
@@ -64,6 +83,7 @@ export function* runGame(spec: SimSpec, opts: RunOptions): Generator<RunProgress
   const start = opts.now();
   const basic = new CasinoSim(spec, 'basic', opts.seed >>> 0);
   const count = spec.csm ? null : new CasinoSim(spec, 'count', (opts.seed ^ SALT_COUNT) >>> 0);
+  const prior = priorFor(spec, opts.prior);
   const budget = opts.maxRounds;
   const minRounds = budget !== undefined ? Math.min(MIN_ROUNDS, budget) : MIN_ROUNDS;
   const basicCap = Math.min(budget ?? Infinity, MAX_BASIC_ROUNDS);
@@ -72,28 +92,42 @@ export function* runGame(spec: SimSpec, opts: RunOptions): Generator<RunProgress
   const countChunk = opts.countChunk ?? 25_000;
   const exitRounds = opts.exitRounds ?? 0;
 
-  const basicDone = () => basic.rounds >= basicCap || (basic.rounds >= minRounds && edgePrecise(basic.basicAccum(), spec.unit));
+  // The totals: this run's rounds and sums plus the prior run's.
+  const basicRounds = () => basic.rounds + (prior?.basicRounds ?? 0);
+  const countRounds = () => (count ? count.rounds + (prior?.countRounds ?? 0) : 0);
+  const basicAcc = () => (prior ? mergeAccum(prior.basic, basic.basicAccum()) : basic.basicAccum());
+  const methodAccs = (): { method: BetMethod; acc: Accum }[] | null => {
+    if (!count) return null;
+    const own = count.methodAccums();
+    const before = prior?.methods;
+    return before ? own.map((m, i) => ({ method: m.method, acc: mergeAccum(before[i]!.acc, m.acc) })) : own;
+  };
+  const elapsed = () => opts.now() - start + (prior?.ms ?? 0);
+
+  const basicDone = () => basicRounds() >= basicCap || (basicRounds() >= minRounds && edgePrecise(basicAcc(), spec.unit));
   const countDone = () => {
     if (!count) return true;
-    if (count.rounds >= countCap) return true;
-    if (count.rounds < minRounds) return false;
-    const accs = count.methodAccums().map((m) => m.acc);
+    if (countRounds() >= countCap) return true;
+    if (countRounds() < minRounds) return false;
+    const accs = methodAccs()!.map((m) => m.acc);
     const best = bestIndex(accs, exitRounds);
     return best >= 0 && evPrecise(accs[best]!, exitRounds);
   };
 
   const snapshot = (status: RunStatus): RunProgress => {
-    const ms = opts.now() - start;
+    const ms = elapsed();
+    const b = basicAcc();
+    const methods = methodAccs();
     // Progress toward the round counts the targets need, never past 99% while running.
-    const bFrac = basicDone() ? 1 : Math.min(0.99, basic.rounds / Math.max(minRounds, roundsForEdge(basic, spec.unit)));
-    const cFrac = countDone() ? 1 : Math.min(0.99, count ? count.rounds / Math.max(minRounds, roundsForEv(count, exitRounds)) : 1);
+    const bFrac = basicDone() ? 1 : Math.min(0.99, basicRounds() / Math.max(minRounds, roundsForEdge(b, spec.unit)));
+    const cFrac = countDone() ? 1 : Math.min(0.99, methods ? countRounds() / Math.max(minRounds, roundsForEv(methods, countRounds(), exitRounds)) : 1);
     const clock = ms / opts.timeCapMs;
     return {
       status,
-      basic: basic.basicAccum(),
-      methods: count ? count.methodAccums() : null,
-      basicRounds: basic.rounds,
-      countRounds: count?.rounds ?? 0,
+      basic: b,
+      methods,
+      basicRounds: basicRounds(),
+      countRounds: countRounds(),
       ms,
       fraction: status === 'running' ? Math.min(0.99, Math.max(Math.min(bFrac, cFrac), clock)) : 1,
     };
@@ -103,20 +137,32 @@ export function* runGame(spec: SimSpec, opts: RunOptions): Generator<RunProgress
     const bd = basicDone();
     const cd = countDone();
     if (bd && cd) {
-      const hitBudget = (budget !== undefined && basic.rounds >= budget) || (count !== null && budget !== undefined && count.rounds >= budget);
+      const hitBudget = (budget !== undefined && basicRounds() >= budget) || (count !== null && budget !== undefined && countRounds() >= budget);
       return snapshot(hitBudget ? 'budget' : 'done');
     }
-    const floorMet = basic.rounds >= minRounds && (!count || count.rounds >= minRounds);
-    if (floorMet && opts.now() - start >= opts.timeCapMs) return snapshot('time');
-    if (!bd) basic.run(Math.min(basicChunk, basicCap - basic.rounds));
-    if (!cd && count) count.run(Math.min(countChunk, countCap - count.rounds));
+    const floorMet = basicRounds() >= minRounds && (!count || countRounds() >= minRounds);
+    if (floorMet && elapsed() >= opts.timeCapMs) return snapshot('time');
+    if (!bd) basic.run(Math.min(basicChunk, basicCap - basicRounds()));
+    if (!cd && count) count.run(Math.min(countChunk, countCap - countRounds()));
     yield snapshot('running');
   }
 }
 
+/**
+ * The prior run, if it is one of this spec: the same methods in the same
+ * order (the cache key guarantees it; this is the belt to that brace), and
+ * methods exactly when the game is countable. Anything else is not continued.
+ */
+function priorFor(spec: SimSpec, prior: RunPrior | undefined): RunPrior | null {
+  if (!prior) return null;
+  if (spec.csm) return prior.methods === null ? prior : null;
+  const m = prior.methods;
+  if (!m || m.length !== spec.methods.length || m.some((x, i) => x.method.id !== spec.methods[i]!.id)) return null;
+  return prior;
+}
+
 /** Rounds the house edge needs at its current spread, for the progress bar. */
-function roundsForEdge(sim: CasinoSim, unit: number): number {
-  const a = sim.basicAccum();
+function roundsForEdge(a: Accum, unit: number): number {
   if (a.played < 2) return MIN_ROUNDS;
   const mean = a.net / a.played;
   const sd = Math.sqrt(Math.max(0, a.net2 / a.played - mean * mean)) / unit;
@@ -124,8 +170,8 @@ function roundsForEdge(sim: CasinoSim, unit: number): number {
 }
 
 /** Rounds the best method's EV needs for +/-10%, for the progress bar. */
-function roundsForEv(sim: CasinoSim, exitRounds: number): number {
-  const accs = sim.methodAccums().map((m) => m.acc);
+function roundsForEv(methods: { acc: Accum }[], simRounds: number, exitRounds: number): number {
+  const accs = methods.map((m) => m.acc);
   const best = bestIndex(accs, exitRounds);
   const a = accs[best];
   if (!a || a.observed < 2 || a.net <= 0) return MAX_COUNT_ROUNDS;
@@ -133,5 +179,5 @@ function roundsForEv(sim: CasinoSim, exitRounds: number): number {
   const mean = a.net / time;
   const sd = Math.sqrt(Math.max(0, a.net2 / time - mean * mean));
   // Rounds of table time per simulated round, so the estimate is in simulated rounds.
-  return ((1.96 * sd) / (0.1 * mean)) ** 2 * (sim.rounds / time);
+  return ((1.96 * sd) / (0.1 * mean)) ** 2 * (simRounds / time);
 }

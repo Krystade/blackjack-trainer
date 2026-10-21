@@ -1,7 +1,7 @@
 import type { Casino, CasinoGame, CasinoLog, GeoPoint } from '../store/casinoLog';
 import { DEFAULT_EXIT_FIND_MINUTES, DEFAULT_EXIT_WAIT_MINUTES, DEFAULT_ROUNDS_PER_HOUR, DEFAULT_SESSION_HOURS } from '../store/casinoLog';
 import type { Profile } from '../store/types';
-import { resultState, simInputFor, type GameResult, type ResultState, type SimInput } from '../store/casinoGameStats';
+import { resultForKey, resultState, simInputFor, type GameResult, type ResultState, type SimInput } from '../store/casinoGameStats';
 import { EV_REL_TARGET, hourly, houseEdge, summarize, type HourlyStats, type RoundStats } from '../engine/casinoStats';
 import { describeMethod, type BetMethod } from '../engine/betMethods';
 import { evCiText, evHourText } from './casinoStatsText';
@@ -238,12 +238,6 @@ export function rankedEvHour(r: RankRow): number | null {
   return r.figures ? (r.withSide?.evHour ?? r.figures.evHour) : null;
 }
 
-/** A row with no result, a stale one, or a partial one: what "Compute all" runs. */
-export function needsCompute(r: RankRow): boolean {
-  if (r.notModelled) return false;
-  return r.state.kind !== 'current' || r.state.result.status !== 'done';
-}
-
 /**
  * The rows, sorted. Burned casinos are left out until their cool-off is over;
  * Avoid casinos stay in, greyed. Under the EV sorts, games whose run finished
@@ -259,6 +253,8 @@ export function buildRanking(
   now: number,
   here: GeoPoint | null,
   sort: RankSort,
+  /** Wave Q: results kept by key for inputs no game has now (casinoGameStats `loadGameArchive`). */
+  archive: Readonly<Record<string, GameResult>> = {},
 ): RankRow[] {
   const bankroll = log.settings.startingBankroll;
   const custom = log.settings.methods ?? [];
@@ -272,7 +268,8 @@ export function buildRanking(
       const input = simInputFor(game, profile, custom, casino.kind);
       // Wave L: a variant game is never simulated (it would be scored as standard blackjack).
       const notModelled = game.variant !== undefined;
-      const state: ResultState = notModelled ? { kind: 'none' } : resultState(results[game.id], input.key);
+      // Wave Q: a result for these inputs from anywhere in the cache (a twin game, the archive) counts as current.
+      const state: ResultState = notModelled ? { kind: 'none' } : resultState(results[game.id], input.key, resultForKey(results, archive, game.id, input.key));
       const figures = state.kind === 'none' ? null : gameFigures(state.result, roundsPerHourOf(game), bankroll, exitMinutesOf(log, game));
       // Wave L merge (review S7): a variant game's side bets are not modelled either, so they add nothing.
       const sideEvHour = notModelled ? 0 : bestSideEvHour(gameSideFigures(game, roundsPerHourOf(game))).evHour;

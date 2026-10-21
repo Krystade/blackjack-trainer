@@ -358,7 +358,8 @@ test.describe('the casino stats card', () => {
     await page.locator('.tab-bar').getByRole('button', { name: 'Casino', exact: true }).click();
     await page.getByTestId('games-ranked').getByTestId('rank-row').first().click();
     test.setTimeout(90_000);
-    await page.getByRole('button', { name: 'Compute', exact: true }).click();
+    // Wave Q: the open card's game is worked out on its own.
+    await expect(page.getByRole('button', { name: 'Compute', exact: true })).toHaveCount(0);
     const line = page.getByTestId('gs-side-combined');
     // The split cap and double-on are not logged: simulated at the best case (Wave P, SIM_VERSION 5).
     // The line shows the running figures too; wait for the run's end. 200,000 rounds (the time cap's floor):

@@ -6,30 +6,46 @@ import { describeMethod, methodBadge } from '../../../engine/betMethods';
 import { gameSummary, kindBadge, labelledSummary, money, shortDate, warnBadges } from '../../casinoFigures';
 import { buildRanking, evTargetMet, exitMinutesOf, gameFigures, roundsPerHourOf, type GameFigures, type RankRow } from '../../casinoRanking';
 import { ASSUMED_TEXT, assumedDirectionText, assumedLabel, assumedRules, ciText, edgeText, evHourText, isBestCase, n0Text, roundsText, rorText, sdHourText } from '../../casinoStatsText';
-import { enqueue, cancelAll } from './simRunner';
-import { useActiveProfile, useGameResults, useRunner } from './useGameStats';
+import { canRunLonger, runAnotherMinute } from './simRunner';
+import { capOf } from '../../casinoAutoSim';
+import { useActiveProfile, useGameCache, useRunner } from './useGameStats';
 import type { CasinoView } from './Casino';
 import type { RunProgress } from '../../../engine/casinoRun';
 import { SideBetsCard } from './SideBetsCard';
 
 /**
  * Wave K: ONE GAME'S STATS CARD. Every betting method side by side, the house
- * edge, what was assumed, the profile the numbers used, and the run's state:
- * not computed, running (with its live figures and a Cancel), stale (the game
- * or the profile changed since), or current.
+ * edge, what was assumed, the profile the numbers used, and the run's state.
+ *
+ * Wave Q: the card never asks for a run. Its game is worked out first while
+ * the card is open (simRunner.ts), live; the states are running, an estimate
+ * still firming up, updating (the game or the profile changed: the old
+ * figures shown, marked, until the new ones land), or finished. Only a run
+ * that stopped at its time cap offers "Run another minute".
  */
 
-const STATUS_NOTE: Record<GameResult['status'], string> = {
-  running: '',
-  done: 'Both targets met (house edge ±0.05%, best EV/hour ±10%).',
-  time: 'Stopped at the one-minute cap; the intervals say how close it got.',
-  budget: 'Stopped at the test round budget.',
-  cancelled: 'Stopped early (Cancel); the intervals say how close it got.',
-};
+/** "the one-minute cap", "the 3-minute cap". */
+function capText(ms: number): string {
+  const min = Math.round(ms / 60_000);
+  return min === 1 ? 'the one-minute cap' : `the ${min}-minute cap`;
+}
+
+function statusNote(r: GameResult): string {
+  switch (r.status) {
+    case 'done':
+      return 'Both targets met (house edge ±0.05%, best EV/hour ±10%).';
+    case 'time':
+      return `Stopped at ${capText(capOf(r))}; the intervals say how close it got.`;
+    case 'budget':
+      return 'Stopped at the test round budget.';
+    default:
+      return `An estimate from ${roundsText(r.basicRounds + r.countRounds)} rounds; it firms up on its own while Casino is open.`;
+  }
+}
 
 export function GameStats({ log, casinoId, gameId, go }: { log: CasinoLog; casinoId: string; gameId: string; go: (v: CasinoView) => void }) {
   const profile = useActiveProfile();
-  const results = useGameResults(log);
+  const { results, archive } = useGameCache(log);
   const runner = useRunner();
   const casino = casinoById(log, casinoId);
   const game = casino?.games.find((g) => g.id === gameId);
@@ -51,24 +67,25 @@ export function GameStats({ log, casinoId, gameId, go }: { log: CasinoLog; casin
     Date.now(),
     null,
     'ev',
+    archive,
   ).find((r) => r.game.id === gameId);
   if (!row) return null;
   if (game.variant) return <VariantGameStats casino={casino} game={game} />;
   const rph = roundsPerHourOf(game);
   const bankroll = log.settings.startingBankroll;
-  const running = runner.running?.gameId === gameId ? runner.running : null;
-  const queued = runner.queue.includes(gameId);
+  // The run for this game's inputs, whichever game of those inputs it was started for.
+  const running = runner.running?.key === row.input.key ? runner.running : null;
   const live: GameResult | null = running?.progress ? progressResult(running.progress, row.input.spec.unit) : null;
   const shown = live ?? (row.state.kind === 'none' ? null : row.state.result);
   const exitMinutes = exitMinutesOf(log, game);
   const exitWhat = game.midShoeEntry === 'no' ? 'waiting for a fresh shoe, as mid-shoe entry is barred here' : 'finding another table';
   const figures: GameFigures | null = shown ? gameFigures(shown, rph, bankroll, exitMinutes) : null;
   const staleShown = row.state.kind === 'stale' && !live;
-  const compute = () => enqueue([{ gameId, input: row.input, profileName: profile.name, exitRounds: row.exitRounds }]);
   const { rules } = simRules(game);
+  const current = row.state.kind === 'current' ? row.state.result : null;
 
   return (
-    <div className="cas-gs" data-testid="game-stats" data-state={running ? 'running' : queued ? 'queued' : row.state.kind}>
+    <div className="cas-gs" data-testid="game-stats" data-state={running ? 'running' : row.state.kind} data-status={current?.status}>
       <header className="cas-pad cas-gs-head">
         <p className="cas-gs-casino">
           {casino.name}
@@ -105,67 +122,59 @@ export function GameStats({ log, casinoId, gameId, go }: { log: CasinoLog; casin
         {running ? (
           <>
             <p className="cas-gs-state" data-testid="sim-running">
-              Simulating&hellip; {running.progress ? `${roundsText(running.progress.basicRounds + running.progress.countRounds)} rounds` : 'starting'}
+              {running.work === 'first' ? 'Estimating' : 'Firming up'}&hellip;{' '}
+              {running.progress ? `${roundsText(running.progress.basicRounds + running.progress.countRounds)} rounds` : 'starting'}
             </p>
             <div className="cas-gs-bar" role="progressbar" aria-label="Simulation progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round((running.progress?.fraction ?? 0) * 100)}>
               <span style={{ width: `${Math.round((running.progress?.fraction ?? 0) * 100)}%` }} />
             </div>
-            <button type="button" className="u-btn cas-wide" onClick={cancelAll}>
-              Cancel
-            </button>
-          </>
-        ) : queued ? (
-          <>
-            <p className="cas-gs-state">Queued behind {runner.running ? 'the game running now' : 'others'}.</p>
-            <button type="button" className="u-btn cas-wide" onClick={cancelAll}>
-              Cancel
-            </button>
+            <p className="cas-gs-auto-note">Worked out on this phone, on its own, while Casino is open; it picks up where it left off.</p>
           </>
         ) : row.state.kind === 'none' ? (
-          <>
-            <p className="cas-gs-state">Not computed yet. About a minute on a phone.</p>
-            <button type="button" className="u-btn u-btn-primary cas-wide" onClick={compute} data-testid="compute-game">
-              Compute
-            </button>
-          </>
+          <p className="cas-gs-state" data-testid="gs-waiting">
+            Not worked out yet: it starts on its own, one game at a time.
+          </p>
         ) : row.state.kind === 'stale' ? (
-          <>
-            <p className="cas-gs-state cas-gs-stale" data-testid="stale-note">
-              <span className="cas-badge" data-tone="warn">
-                Stale
-              </span>{' '}
-              The game or your Play profile changed since these were computed. Shown as they were.
-            </p>
-            <button type="button" className="u-btn u-btn-primary cas-wide" onClick={compute} data-testid="rerun-game">
-              Re-run
-            </button>
-          </>
+          <p className="cas-gs-state cas-gs-stale" data-testid="stale-note">
+            <span className="cas-badge" data-tone="warn">
+              Updating
+            </span>{' '}
+            The game or your Play profile changed since these were worked out. The new figures are on their way; these are shown as they were.
+          </p>
         ) : (
           <>
             <p className="cas-gs-state" data-testid="gs-status">
-              {row.state.result.status !== 'done' && (
+              {current!.status !== 'done' && (
                 <>
-                  <span className="cas-badge" data-tone="warn" data-testid="partial-badge">
-                    Partial
-                  </span>{' '}
+                  {current!.status === 'time' || current!.status === 'budget' ? (
+                    <span className="cas-badge" data-tone="warn" data-testid="partial-badge">
+                      Partial
+                    </span>
+                  ) : (
+                    <span className="cas-badge" data-tone="info" data-testid="estimate-badge">
+                      Estimate
+                    </span>
+                  )}{' '}
                 </>
               )}
-              Computed {shortDate(row.state.result.computedAt, Date.now())}.{' '}
-              {row.state.result.status === 'done' && figures && !evTargetMet(figures) ? (
+              Worked out {shortDate(current!.computedAt, Date.now())}.{' '}
+              {current!.status === 'done' && figures && !evTargetMet(figures) ? (
                 <span data-testid="ev-target-missed">
                   House edge target met; at {exitMinutes} min per exit the best EV/hour is {ciText(figures.best!.hours.evHourCi)}, wider than the
-                  ±10% target. Re-run to tighten it.
+                  ±10% target. Run another minute to tighten it.
                 </span>
               ) : (
-                STATUS_NOTE[row.state.result.status]
+                statusNote(current!)
               )}
             </p>
-            <button type="button" className="u-btn cas-wide" onClick={compute} data-testid="rerun-game">
-              Re-run
-            </button>
+            {canRunLonger(current!) && (current!.status === 'time' || (figures !== null && !evTargetMet(figures))) && (
+              <button type="button" className="u-btn cas-wide" onClick={() => runAnotherMinute(gameId, current!)} data-testid="refine-game">
+                Run another minute
+              </button>
+            )}
           </>
         )}
-        {runner.error && <p className="cas-field-error">{runner.error}</p>}
+        {runner.error && !running && <p className="cas-field-error">{runner.error}</p>}
       </section>
 
       {figures && shown && (
@@ -241,7 +250,7 @@ export function GameStats({ log, casinoId, gameId, go }: { log: CasinoLog; casin
       <section className="cas-section" aria-labelledby="gs-assume-title">
         <div className="cas-section-head">
           <h2 className="u-section-title" id="gs-assume-title">
-            {row.state.kind === 'stale' && !live ? 'What a re-run will use' : 'What these numbers used'}
+            {row.state.kind === 'stale' && !live ? 'What the new figures use' : 'What these numbers used'}
           </h2>
         </div>
         <div className="cas-pad-x cas-gs-notes">

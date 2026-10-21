@@ -159,6 +159,22 @@ export function emptyAccum(): Accum {
   return { observed: 0, played: 0, exits: 0, dealt: 0, twoHands: 0, net: 0, net2: 0, wagered: 0, sy2: 0, sxy: 0, sx2: 0, se2: 0, sey: 0, sxe: 0, shoes: 0 };
 }
 
+const ACCUM_FIELDS = Object.keys(emptyAccum()) as (keyof Accum)[];
+
+/**
+ * Wave Q: two runs' sums as one. Every field is a sum -- over rounds, or over
+ * shoes for the interval's cross sums -- so the sums of two independent runs
+ * (different seeds, each a whole number of shoes, its open shoe closed by
+ * `withOpenShoe`) are exactly the sums of the longer run made of both. That is
+ * what lets a game's figures firm up across several short runs instead of one
+ * long one. An absent field (a result stored before it existed) adds as 0.
+ */
+export function mergeAccum(a: Accum, b: Accum): Accum {
+  const out = emptyAccum();
+  for (const k of ACCUM_FIELDS) out[k] = (a[k] ?? 0) + (b[k] ?? 0);
+  return out;
+}
+
 interface MethodState {
   spread: SpreadRow[];
   method: BetMethod;

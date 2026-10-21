@@ -3,17 +3,24 @@ import type { CasinoLog } from '../../../store/casinoLog';
 import { methodBadge } from '../../../engine/betMethods';
 import { gameLogged, kindBadge, labelledSummary } from '../../casinoFigures';
 import { useSideRuns } from './sideRunner';
-import { buildRanking, needsCompute, rankedEvHour, type RankRow, type RankSort } from '../../casinoRanking';
+import { buildRanking, rankedEvHour, type RankRow, type RankSort } from '../../casinoRanking';
 import { assumedLabel, assumedRulesBadge, ciText, evHourText, materialAssumedRules, n0Text, pctText, roundsText } from '../../casinoStatsText';
 import { Choice } from './fields';
-import { cancelAll, enqueue } from './simRunner';
-import { useActiveProfile, useGameResults, useRunner, type useHere } from './useGameStats';
+import type { RunnerState } from './simRunner';
+import { useActiveProfile, useGameCache, useRunner, type useHere } from './useGameStats';
 import type { CasinoView } from './Casino';
+import './casinoAuto.css';
 
 /**
  * Wave K: "GAMES RANKED" -- every logged game across the casinos, by what it
  * returns an hour at its best betting method (or by distance, or by EV per
  * trip hour), each row opening its stats card.
+ *
+ * Wave Q: no Compute button. Every game's figures are worked out on their own
+ * (AutoSim.tsx, simRunner.ts): a row with none yet says "estimating...", an
+ * estimate is marked as one with its interval, and a row whose game or
+ * profile changed keeps its old figures marked "Updating" until the new ones
+ * land.
  */
 
 const SORT_KEY = 'bjtrainer.casinoRankSort.v1';
@@ -30,17 +37,14 @@ function readSort(): RankSort {
 /** `here` is the casino screen's one "Use my location" state, shared with the casino list. */
 export function GamesRanked({ log, go, here: where }: { log: CasinoLog; go: (v: CasinoView) => void; here: ReturnType<typeof useHere> }) {
   const profile = useActiveProfile();
-  const results = useGameResults(log);
+  const { results, archive } = useGameCache(log);
   const runner = useRunner();
   // Wave L: a side-bet run finishing can reorder the list.
   useSideRuns();
   const { state: here, toggle: toggleHere } = where;
   const [sort, setSort] = useState<RankSort>(readSort);
-  const rows = buildRanking(log, profile, results, Date.now(), here.here, sort);
+  const rows = buildRanking(log, profile, results, Date.now(), here.here, sort, archive);
   if (rows.length === 0) return null;
-  // Review S3: a partial run (cancelled, cut off by the time cap) is run again too.
-  const todo = rows.filter(needsCompute);
-  const busy = runner.running !== null;
   const changeSort = (v: RankSort) => {
     setSort(v);
     try {
@@ -49,7 +53,6 @@ export function GamesRanked({ log, go, here: where }: { log: CasinoLog; go: (v: 
       /* per-device convenience */
     }
   };
-  const computeAll = () => enqueue(todo.map((r) => ({ gameId: r.game.id, input: r.input, profileName: profile.name, exitRounds: r.exitRounds })));
 
   return (
     <section className="cas-section cas-rank" aria-labelledby="cas-rank-title" data-testid="games-ranked">
@@ -88,38 +91,77 @@ export function GamesRanked({ log, go, here: where }: { log: CasinoLog; go: (v: 
           With {profile.name}&rsquo;s counting setup, 1 unit = each game&rsquo;s min bet.
           {sort === 'trip' ? ' EV per trip hour counts the drive both ways.' : ''}
         </p>
-        {busy ? (
-          <div className="cas-rank-busy" data-testid="rank-busy">
-            <span>
-              Computing {runner.queue.length > 0 ? `(${runner.queue.length} more queued)` : ''}
-              {runner.running?.progress ? ` · ${roundsText(runner.running.progress.basicRounds + runner.running.progress.countRounds)} rounds` : ''}
-            </span>
-            <button type="button" className="u-btn" onClick={cancelAll}>
-              Cancel
-            </button>
-          </div>
-        ) : (
-          todo.length > 0 && (
-            <button type="button" className="u-btn cas-wide" onClick={computeAll} data-testid="compute-all">
-              <span className="cas-rank-compute-part">
-                {todo.every((r) => r.state.kind === 'none') && todo.length === rows.length ? 'Compute all' : `Compute ${todo.length} not done`} &middot;
-              </span>{' '}
-              <span className="cas-rank-compute-part">about {todo.length} min</span>
-            </button>
-          )
-        )}
+        <AutoStatus runner={runner} rows={rows} />
       </div>
       <ol className="cas-list cas-rank-list">
         {rows.map((r, i) => (
-          <RankItem key={r.game.id} row={r} place={i + 1} sort={sort} running={runner.running?.gameId === r.game.id} onOpen={() => go({ kind: 'game', casinoId: r.casino.id, gameId: r.game.id })} />
+          <RankItem
+            key={r.game.id}
+            row={r}
+            place={i + 1}
+            sort={sort}
+            running={runner.running !== null && runner.running.key === r.input.key}
+            failed={runner.failed.includes(r.input.key)}
+            onOpen={() => go({ kind: 'game', casinoId: r.casino.id, gameId: r.game.id })}
+          />
         ))}
       </ol>
     </section>
   );
 }
 
-function RankItem({ row, place, sort, running, onOpen }: { row: RankRow; place: number; sort: RankSort; running: boolean; onOpen: () => void }) {
+/**
+ * Wave Q: what the automatic runs are doing, in one line under the controls:
+ * how many games still lack a first estimate, then how many are being firmed
+ * up, then only the standing note once every figure is as good as it gets on
+ * its own.
+ */
+function AutoStatus({ runner, rows }: { runner: RunnerState; rows: readonly RankRow[] }) {
+  const { first, refine } = runner.todo;
+  const r = runner.running;
+  const name = r ? rows.find((x) => x.input.key === r.key)?.casino.name : undefined;
+  // The round count never wraps apart (at 320 it would leave "rounds" alone on a line).
+  const rounds = r?.progress ? (
+    <>
+      {' · '}
+      <span className="cas-auto-rounds">{roundsText(r.progress.basicRounds + r.progress.countRounds)} rounds</span>
+    </>
+  ) : null;
+  const phase = first > 0 ? 'estimating' : refine > 0 ? 'refining' : runner.error ? 'error' : 'idle';
+  return (
+    <div className="cas-auto" data-testid="rank-auto" data-phase={phase}>
+      {phase === 'estimating' && (
+        <p className="cas-auto-line" role="status">
+          <span className="cas-auto-dot" aria-hidden="true" />
+          <span>
+            Estimating {first} game{first === 1 ? '' : 's'}
+            {rounds}
+          </span>
+        </p>
+      )}
+      {phase === 'refining' && (
+        <p className="cas-auto-line" role="status">
+          <span className="cas-auto-dot" aria-hidden="true" />
+          <span>
+            Firming up {refine} estimate{refine === 1 ? '' : 's'}
+            {name ? ` · ${name}` : ''}
+            {rounds}
+          </span>
+        </p>
+      )}
+      {phase === 'error' && (
+        <p className="cas-field-error" role="alert">
+          The simulator stopped: {runner.error}
+        </p>
+      )}
+      <p className="cas-note">Figures follow each game&rsquo;s rules and your profile: worked out on this phone, on their own, while Casino is open.</p>
+    </div>
+  );
+}
+
+function RankItem({ row, place, sort, running, failed, onOpen }: { row: RankRow; place: number; sort: RankSort; running: boolean; failed: boolean; onOpen: () => void }) {
   const f = row.figures;
+  const status = row.state.kind === 'none' ? null : row.state.result.status;
   const value = !f ? null : sort === 'trip' && row.tripEv !== null ? row.tripEv : rankedEvHour(row);
   // Review S4: the figure rests on guesses for these rules (conservative, or
   // the best case for the split cap and double-on, Wave P); only the ones
@@ -138,6 +180,8 @@ function RankItem({ row, place, sort, running, onOpen }: { row: RankRow; place: 
         data-game={row.game.id}
         data-greyed={row.greyed ? 'true' : undefined}
         data-state={row.state.kind}
+        data-status={status ?? undefined}
+        data-running={running ? 'true' : undefined}
       >
         <span className="cas-row-top">
           <span className="cas-rank-name">
@@ -145,7 +189,13 @@ function RankItem({ row, place, sort, running, onOpen }: { row: RankRow; place: 
             <span className="cas-row-name">{row.casino.name}</span>
           </span>
           <span className="cas-row-net" data-sign={value === null ? 0 : Math.sign(Math.round(value))} data-testid="rank-ev">
-            {running ? 'running…' : row.notModelled ? 'not modelled' : value === null ? 'not computed' : `${evHourText(value)}${sort === 'trip' && row.tripEv !== null ? ' trip' : ''}`}
+            {row.notModelled
+              ? 'not modelled'
+              : value === null
+                ? failed
+                  ? 'not computed'
+                  : 'estimating…'
+                : `${evHourText(value)}${sort === 'trip' && row.tripEv !== null ? ' trip' : ''}`}
           </span>
         </span>
         <span className="cas-row-game">{labelledSummary(row.game)}</span>
@@ -173,14 +223,26 @@ function RankItem({ row, place, sort, running, onOpen }: { row: RankRow; place: 
               Mid-shoe ?
             </span>
           )}
+          {/* Wave Q: the game or profile changed; its new figures are on the way. */}
           {row.state.kind === 'stale' && (
             <span className="cas-badge" data-tone="warn" data-testid="stale-badge">
-              Stale
+              Updating
             </span>
           )}
-          {f?.partial && (
+          {/* Wave Q: a first estimate, or one paused part way: more to come, on its own. */}
+          {f && row.state.kind === 'current' && (status === 'partial' || status === 'cancelled') && (
+            <span className="cas-badge" data-tone="info" data-testid="estimate-badge">
+              Estimate {ciText(f.evHourCi)}/h
+            </span>
+          )}
+          {f && row.state.kind === 'current' && (status === 'time' || status === 'budget') && (
             <span className="cas-badge" data-tone="warn" data-testid="partial-badge">
               Partial {ciText(f.evHourCi)}/h
+            </span>
+          )}
+          {running && f && row.state.kind === 'current' && (
+            <span className="cas-badge" data-tone="info" data-testid="working-badge">
+              working…
             </span>
           )}
           {row.greyed && <span className="cas-badge">Avoid</span>}
