@@ -9,6 +9,7 @@ import { EndSession } from './EndSession';
 import { SessionForm } from './SessionForm';
 import { GameStats } from './GameStats';
 import { CasinoSettings } from './CasinoSettings';
+import { AutoSim } from './AutoSim';
 import './casino.css';
 import './casinoGames.css';
 import './casinoKinds.css';
@@ -124,6 +125,8 @@ export function Casino() {
           Not saved: this phone&rsquo;s storage is full. Export the log now so nothing is lost.
         </p>
       )}
+      {/* Wave Q: every game's figures worked out on their own while Casino is open. */}
+      <AutoSim log={log} openGame={view.kind === 'game' ? view.gameId : null} />
       {body}
     </div>
   );

@@ -1,0 +1,53 @@
+/* Wave Q: the ranking's line for the figures worked out on their own, and the
+   marks on a row that is an estimate or is being worked on. Theme tokens
+   only, so light and dark follow the rest of the tab. */
+
+.cas-auto {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.cas-auto-line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 32px;
+  margin: 0;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A steady dot, pulsing only where motion is welcome. */
+.cas-auto-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .cas-auto-dot {
+    animation: cas-auto-pulse 1.4s ease-in-out infinite;
+  }
+}
+
+@keyframes cas-auto-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.cas-gs-auto-note {
+  margin: 0;
+  font-size: var(--fs-xs);
+  line-height: 1.45;
+  color: var(--ink-dim);
+}

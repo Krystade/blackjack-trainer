@@ -48,7 +48,7 @@ import { moneyText } from './casinoInputs';
 import { LiveCard } from './LiveCard';
 import { GamesRanked } from './GamesRanked';
 import { buildRanking, bestGameOf } from '../../casinoRanking';
-import { useActiveProfile, useGameResults, useHere } from './useGameStats';
+import { useActiveProfile, useGameCache, useHere } from './useGameStats';
 import type { CasinoView } from './Casino';
 
 interface Props {
@@ -176,9 +176,9 @@ function CasinoList({ log, go, now, here }: { log: CasinoLog; go: Props['go']; n
   // Each row's game line is the casino's best game by EV per hour, burned
   // casinos included (the ranking itself leaves them out).
   const profile = useActiveProfile();
-  const results = useGameResults(log);
+  const { results, archive } = useGameCache(log);
   const unburned = { ...log, casinos: log.casinos.map((c) => ({ ...c, status: 'ok' as const })) };
-  const ranked = buildRanking(unburned, profile, results, now, null, 'ev');
+  const ranked = buildRanking(unburned, profile, results, now, null, 'ev', archive);
   const groups: Standing[] = ['playable', 'avoid', 'burned'];
   return (
     <section className="cas-section" aria-labelledby="cas-casinos-title">

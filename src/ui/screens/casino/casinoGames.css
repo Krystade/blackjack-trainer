@@ -21,16 +21,6 @@
   min-height: 44px;
 }
 
-.cas-rank-busy {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  min-height: 48px;
-  font-size: var(--fs-sm);
-  color: var(--ink-dim);
-}
-
 .cas-rank-list {
   counter-reset: none;
 }
@@ -379,7 +369,3 @@
   align-self: end;
 }
 
-/* "Compute 3 not done · about 3 min" breaks only before the estimate. */
-.cas-rank-compute-part {
-  white-space: nowrap;
-}
