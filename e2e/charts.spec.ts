@@ -202,7 +202,9 @@ test.describe('at 375x812', () => {
     // Every column is on screen at once: the ace cell of a mid-grid row is in
     // the viewport without any horizontal scrolling.
     const ace = page.locator('[data-section="HARD"] [data-row="HARD:16"] [data-up="A"]');
-    await ace.scrollIntoViewIfNeeded();
+    // Centred, not "if needed": scrolled to the very edge, a row's sub-pixel
+    // offset left it 99% in view, which is about layout above it, not width.
+    await ace.evaluate((el) => el.scrollIntoView({ block: 'center' }));
     await expect(ace).toBeInViewport({ ratio: 1 });
   });
 

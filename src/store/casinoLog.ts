@@ -1,5 +1,7 @@
 import { reportStorageFailure, shrinkDiagnostics } from './storageHealth';
 import { subscribeToExternalWrites } from './crossTab';
+import { isPresetId } from '../engine/variants/rules';
+import type { PresetId } from '../engine/variants/rules';
 import { normMethod, type BetMethod } from '../engine/betMethods';
 
 /**
@@ -103,6 +105,12 @@ export interface CasinoGame {
   /** Rounds dealt per hour at this game; absent = DEFAULT_ROUNDS_PER_HOUR. */
   roundsPerHour?: number | null;
   notes?: string;
+  /**
+   * Wave L: a blackjack variant (Free Bet, Spanish 21, Switch). Absent =
+   * standard blackjack. The simulator models standard blackjack only, so a
+   * variant game gets its flat house edge from the variant charts instead.
+   */
+  variant?: PresetId;
 }
 
 /** Rounds an hour when a game does not say: a typical shoe game with a few players. */
@@ -316,6 +324,7 @@ export function normGame(x: unknown, fallbackId: string, legacy?: Record<string,
   if (typeof g.label === 'string' && g.label.trim() !== '') game.label = g.label.trim().slice(0, 60);
   const notes = notesOf(g.notes);
   if (notes !== '') game.notes = notes;
+  if (isPresetId(g.variant)) game.variant = g.variant;
   return game;
 }
 

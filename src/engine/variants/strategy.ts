@@ -18,7 +18,7 @@ import type { PresetId } from './rules';
 import { PRESETS } from './rules';
 import { fallbackOf, parseCode, playFor } from './cellCode';
 import type { SuitState, VAct } from './ev';
-import generated from './generated.json';
+import generated from './generated.json' with { type: 'json' };
 
 export interface VariantData {
   note: string;

@@ -96,6 +96,9 @@ const ALIASES: Record<string, VoiceAction> = {
   double: 'double', dubble: 'double', doubles: 'double', 'double down': 'double',
   split: 'split', splits: 'split', spit: 'split', 'split them': 'split',
   surrender: 'surrender', surrenders: 'surrender', 'surrender this': 'surrender',
+  // Wave L: Spanish 21 calls surrendering a doubled hand a rescue. Two words
+  // only: bare "rescue" is ordinary English (variantVoice.test.ts).
+  'rescue this': 'surrender',
   yes: 'yes', yeah: 'yes', yep: 'yes', yup: 'yes', 'yes please': 'yes',
   no: 'no', nope: 'no', nah: 'no', 'no thanks': 'no',
   repeat: 'repeat', again: 'repeat', 'say again': 'repeat',

@@ -135,7 +135,7 @@ function RankItem({ row, place, sort, running, onOpen }: { row: RankRow; place: 
             <span className="cas-row-name">{row.casino.name}</span>
           </span>
           <span className="cas-row-net" data-sign={value === null ? 0 : Math.sign(Math.round(value))} data-testid="rank-ev">
-            {running ? 'running…' : value === null ? 'not computed' : `${evHourText(value)}${sort === 'trip' && row.tripEv !== null ? ' trip' : ''}`}
+            {running ? 'running…' : row.notModelled ? 'not modelled' : value === null ? 'not computed' : `${evHourText(value)}${sort === 'trip' && row.tripEv !== null ? ' trip' : ''}`}
           </span>
         </span>
         <span className="cas-row-game">{labelledSummary(row.game)}</span>

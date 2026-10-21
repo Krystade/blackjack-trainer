@@ -375,6 +375,9 @@ const NOT_BACKED_UP: Record<string, string> = {
     'wave K ranking cache: simulation sums derived from the casino log and the profile, recomputable at any time, and it belongs with the casino data, not the training backup',
   'bjtrainer.casinoUseLocation.v1': 'a per-device yes/no for "Use my location" in the casino ranking',
   'bjtrainer.casinoRankSort.v1': 'which order the casino ranking was last sorted in, on this device',
+  'bjtrainer.variant.v1': 'wave L: which variant chart was last picked, on this device -- a bare id, one tap to choose again',
+  'bjtrainer.variantTally.v1':
+    'wave L: the right/wrong count of the Variant hands drill, a scoreboard rather than graded history (nothing in Stats or Review reads it)',
   'bjtrainer.stats.v1.corrupt':
     'written by the reader, not the app, and already carried verbatim by exportAll when present',
 };

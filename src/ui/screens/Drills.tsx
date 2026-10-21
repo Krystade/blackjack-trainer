@@ -41,6 +41,7 @@ import { chartIntroDue, loadChartIntroSeen, saveChartIntroSeen } from '../../dri
 import { FlashcardsView } from './drills/FlashcardsView';
 import { DeviationQuizView } from './drills/DeviationQuizView';
 import { MixedSessionView } from './drills/MixedSessionView';
+import { VariantDrillView } from './drills/VariantDrillView';
 
 interface DrillsProps {
   settings: Settings;
@@ -66,7 +67,8 @@ type DrillMode =
   | 'producetc'
   | 'mastery'
   | 'custom'
-  | 'speed';
+  | 'speed'
+  | 'variant';
 
 export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }: DrillsProps) {
   // #28: Home's Next step can hand over the drill to open.
@@ -295,6 +297,9 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
         onBack={() => setMode('picker')}
       />
     );
+  if (mode === 'variant') {
+    return <VariantDrillView settings={settings} onSettingsChange={onSettingsChange} onBack={() => setMode('picker')} />;
+  }
   if (mode === 'rulesdiff') return <RulesDiffView settings={settings} activeProfile={activeProfile} onBack={() => setMode('picker')} />;
 
   // V3-4: SOFT competence gating — advanced pressure modes still work, but show
@@ -360,6 +365,7 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
         {entry('custom', 'Custom', 'Paint the chart cells you want, then drill just those in Flashcards, Mastery or Mixed.')}
         {entry('speed', 'Speed', 'Yes or no, against the clock: Surrender? Deviation here? Double? Split?')}
         {entry('rulesdiff', 'Rules differences', 'Only the plays that change between H17 and S17, 6 and 8 decks, or another game.')}
+        {entry('variant', 'Variant hands', 'Free Bet, Spanish 21 and Blackjack Switch hands, graded on their own charts.')}
 
         <h2 className="drills-group-title">Under pressure</h2>
         {entry('betsizing', BET_SIZING_DRILL, BET_SIZING_PICKER, true)}

@@ -1,3 +1,4 @@
+import { PRESET_LABEL } from '../engine/variants/rules';
 import { MINUS } from '../drills/signed';
 import type { Casino, CasinoGame, CasinoLog, CasinoSession, GameRules, GeoPoint, HeatLevel } from '../store/casinoLog';
 import { HEAT_LEVELS } from '../store/casinoLog';
@@ -264,7 +265,8 @@ export function casinoWarnBadges(c: Pick<Casino, 'games'>): string[] {
 
 /** "DD pit 3: 2D H17 · cut 0.75", or the summary alone without a label. */
 export function labelledSummary(g: CasinoGame): string {
-  return g.label ? `${g.label}: ${gameSummary(g)}` : gameSummary(g);
+  const summary = g.variant ? `${PRESET_LABEL[g.variant]} · ${gameSummary(g)}` : gameSummary(g);
+  return g.label ? `${g.label}: ${summary}` : summary;
 }
 
 /** The first line of a casino's notes, for its row; null when there are none. */
