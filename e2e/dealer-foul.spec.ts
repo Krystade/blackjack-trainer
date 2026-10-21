@@ -21,6 +21,9 @@ const NOTCH = ':root { --safe-top: 47px; --safe-bottom: 34px; }';
 async function openPlay(page: Page, seed: number): Promise<void> {
   await page.goto(`/?seed=${seed}&e2e=1`);
   await page.getByRole('button', { name: 'Play', exact: true }).click();
+  // The table is a lazy chunk: wait for it, so an absence asserted next is
+  // about the table and not about a Home screen that has not been replaced.
+  await expect(page.getByRole('button', { name: 'Deal', exact: true })).toBeVisible();
 }
 
 async function dealAndPlay(page: Page): Promise<void> {

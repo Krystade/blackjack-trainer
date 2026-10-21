@@ -25,6 +25,9 @@ const secs = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
 async function openPlay(page: Page, seed = 4): Promise<void> {
   await page.goto(`/?seed=${seed}&e2e=1`);
   await page.getByRole('button', { name: 'Play', exact: true }).click();
+  // The table is a lazy chunk: wait for it, so an absence asserted next is
+  // about the table and not about a Home screen that has not been replaced.
+  await expect(page.getByRole('button', { name: 'Deal', exact: true })).toBeVisible();
 }
 
 /** Plays the dealt round by the advice; `holdFirstMs` waits before the first decision. */

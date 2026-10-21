@@ -38,12 +38,14 @@ test('B8: without Hot shoe nothing is labelled and the bankroll carries over', a
   await withProfile(page);
   await page.goto('/?seed=2&e2e=1');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
+  // Table is lazy: wait for it, or the badge is absent from Home, not the table.
+  await expect(page.getByRole('button', { name: 'Deal', exact: true })).toBeVisible();
   await expect(page.getByTestId('hot-shoe-badge')).toHaveCount(0);
   await playUntilBankrollMoves(page);
   expect(typeof (await storedProfile(page)).bankrollNow).toBe('number');
   await endIt(page);
-  await expect(page.locator('.report-hot-shoe')).toHaveCount(0);
   await expect(page.locator('.report-summary')).toContainText('bankroll');
+  await expect(page.locator('.report-hot-shoe')).toHaveCount(0);
   const stats = (await readStats(page)) as { sessions: { hotShoe?: boolean }[] };
   expect('hotShoe' in stats.sessions.at(-1)!).toBe(false);
 });

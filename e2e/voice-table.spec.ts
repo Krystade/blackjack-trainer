@@ -73,9 +73,10 @@ test('the microphone is off until it is asked for, and shows when it is on', asy
   await page.goto('/?seed=102&e2e=1');
   await page.getByRole('button', { name: 'Play a shoe', exact: true }).click();
 
-  // Nothing may open the microphone except the operator.
-  await expect(page.locator('.voice-status')).toHaveCount(0);
+  // Nothing may open the microphone except the operator. The mic button is
+  // the table's own proof it mounted (Play is lazy); then the absence.
   await expect(page.locator('.voice-btn')).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('.voice-status')).toHaveCount(0);
 
   await page.locator('.voice-btn').click();
   await expect(page.locator('.voice-btn')).toHaveAttribute('aria-pressed', 'true');

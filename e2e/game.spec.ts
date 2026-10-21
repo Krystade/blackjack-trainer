@@ -614,6 +614,9 @@ test('the shuffle message appears on the round after the cut card is reached', a
   await page.getByRole('button', { name: 'Play', exact: true }).click();
 
   const shuffle = page.locator('.message-shuffle');
+  // The table is a lazy chunk: until it mounts, the strip is absent from a
+  // screen that is still Home. The Deal button proves the table is up.
+  await expect(page.getByRole('button', { name: 'Deal', exact: true })).toBeVisible();
   await expect(shuffle).toHaveCount(0);
 
   // Play rounds until one announces the shuffle. Each deal that follows a
@@ -644,6 +647,7 @@ test('the cut card is announced before the bet that the shuffle will grade', asy
   await page.getByRole('button', { name: 'Play', exact: true }).click();
 
   const cue = page.getByTestId('cut-card-cue');
+  await expect(page.getByRole('button', { name: 'Deal', exact: true })).toBeVisible();
   await expect(cue).toHaveCount(0);
   let warned = false;
   for (let round = 0; round < 6 && !warned; round += 1) {
@@ -928,9 +932,10 @@ test('s06: with cover bets off the ramp ratio is stated, not warned about', asyn
   }
   await page.locator('.end-btn').click();
   await page.locator('.end-btn').click();
-  await expect(page.locator('.report-tell')).toHaveCount(0);
+  // The report must be up before its missing tell means anything.
   await expect(page.locator('.report-cover')).toContainText('8 of 8 rounds bet the ramp exactly');
   await expect(page.locator('.report-cover')).toContainText('Turn on Cover bets');
+  await expect(page.locator('.report-tell')).toHaveCount(0);
 });
 
 test('s06: a doubled hand shows the bet riding on it', async ({ page }) => {

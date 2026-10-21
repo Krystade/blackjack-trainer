@@ -208,11 +208,12 @@ test('solo parity: bots:0/playerHands:1 renders no bot rows and no per-hand labe
   await page.getByRole('button', { name: 'Deal', exact: true }).click();
   await resolveInsurance(page, false);
 
+  // The dealt hand first: with no seats there is nothing else to wait on.
+  await expect(page.locator('.player-hand')).toHaveCount(1);
   await expect(page.locator('.bot-seat')).toHaveCount(0);
   await expect(page.locator('.bot-seats-row')).toHaveCount(0);
   await expect(page.locator('.hand-label')).toHaveCount(0);
   await expect(page.locator('.fast-forward-btn')).toHaveCount(0);
-  await expect(page.locator('.player-hand')).toHaveCount(1);
   await shot(page, '54-table-solo-parity-dealt');
 });
 
