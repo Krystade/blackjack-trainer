@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { cancelSpeech, muteSpeech, speak } from './speech';
+import { cancelSpeech, muteSpeech, repeatLast, speak, _resetLastSpokenForTest } from './speech';
 
 /**
  * C-R5: one line at a time. A non-interrupting speak() issued while an
@@ -114,6 +114,27 @@ describe('a protected line (C-R3: Drive speaks from the tap)', () => {
     speak('Nine.', { interrupt: true });
     await flush();
     expect(started.map((u) => u.text).slice(-1)).toEqual(['Nine.']);
+  });
+});
+
+describe('Wave O: a Repeat of a protected line is not protected', () => {
+  it('an interrupt cuts the repeat instead of waiting behind it', async () => {
+    _resetLastSpokenForTest();
+    const started = install();
+    let cancels = 0;
+    (globalThis as any).window.speechSynthesis.cancel = () => { cancels += 1; }; // eslint-disable-line @typescript-eslint/no-explicit-any
+    speak('Flashcards.', { protect: true, interrupt: true });
+    started[0]!.onend?.();
+    await flush();
+    expect(repeatLast()).toBe(true);
+    await flush();
+    expect(started.map((u) => u.text)).toEqual(['Flashcards.', 'Flashcards.']);
+    const before = cancels;
+    speak('You have sixteen.', { interrupt: true });
+    await flush();
+    // Not held behind the repeat: it was cut, and the new line spoke at once.
+    expect(cancels, 'the repeat was not cancelled').toBeGreaterThan(before);
+    expect(started.map((u) => u.text)).toEqual(['Flashcards.', 'Flashcards.', 'You have sixteen.']);
   });
 });
 
