@@ -132,8 +132,15 @@ export function ProfileEditor({ onNavigate }: ProfileEditorProps) {
   const [exitTo, setExitTo] = useState<Screen | null>(null);
   // Navigates after the form has unmounted, so its leave guard is already
   // cleared and no discard prompt appears.
+  // Once: onNavigate is a new function on every App render, and while a lazy
+  // screen opens in a transition App re-renders with this screen still up --
+  // re-navigating each time restarted the transition forever (Wave O).
+  const exited = useRef(false);
   useEffect(() => {
-    if (exitTo) onNavigate(exitTo);
+    if (exitTo && !exited.current) {
+      exited.current = true;
+      onNavigate(exitTo);
+    }
   }, [exitTo, onNavigate]);
   const leaveEdit = () => {
     setMode({ kind: 'list' });
