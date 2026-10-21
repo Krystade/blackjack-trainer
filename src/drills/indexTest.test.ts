@@ -128,3 +128,43 @@ describe('#24 (R8): the Index test never repeats the item just answered', () => 
     expect(session.recent).toEqual(['16v10', '16v10']);
   });
 });
+
+/**
+ * Wave M review S5: the Index test dealt every soft hand ace-first, and the
+ * deviation quiz's close soft distractors did too while its real soft items
+ * were 50/50 -- a tell. Both now deal the ace first or second.
+ */
+describe('soft hands in both orders (Index test and quiz distractors)', () => {
+  const order = (cards: readonly { rank: string }[]) =>
+    cards[0]!.rank === 'A' ? 'first' : cards[1]!.rank === 'A' ? 'second' : 'none';
+
+  it('the Index test deals soft indexes ace-first and ace-second, graded the same', () => {
+    const softs = indexTestSet(H17_ALL).filter((d) => d.kind === 'soft');
+    expect(softs.length).toBeGreaterThan(0);
+    const seen = { first: 0, second: 0, none: 0 };
+    for (const dev of softs) {
+      for (let seed = 0; seed < 60; seed++) {
+        const item = indexTestItemFor(dev, H17_ALL, mulberry32(seed));
+        seen[order(item.cards!)]++;
+        expect(item.index).toBe(H17_PUBLISHED[dev.id]);
+      }
+    }
+    expect(seen.none).toBe(0);
+    expect(seen.first).toBeGreaterThan(softs.length * 15);
+    expect(seen.second).toBeGreaterThan(softs.length * 15);
+  });
+
+  it('the quiz deals its soft distractors in both orders, like its real soft items', async () => {
+    const { drawQuizItem } = await import('./deviationQuiz');
+    const { handValue } = await import('../engine/hand');
+    const tally: Record<string, number> = {};
+    for (let seed = 1; seed <= 6000; seed++) {
+      const item = drawQuizItem(seed, undefined, H17_ALL, 0.5);
+      if (!item.cards || item.cards[0]!.rank === item.cards[1]!.rank || !handValue(item.cards).soft) continue;
+      const k = `${item.isDistractor ? 'distractor' : 'real'}/${order(item.cards)}`;
+      tally[k] = (tally[k] ?? 0) + 1;
+    }
+    expect(tally['distractor/first'] ?? 0, JSON.stringify(tally)).toBeGreaterThan(0);
+    expect(tally['distractor/second'] ?? 0, JSON.stringify(tally)).toBeGreaterThan(0);
+  });
+});

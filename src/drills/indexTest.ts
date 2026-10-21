@@ -13,7 +13,7 @@ import type { StrategyRules } from '../engine/ruleset';
 import { correctPlay, insuranceCorrect } from '../engine/strategy';
 import type { GradedEvent } from '../engine/grade';
 import { actionCategory } from '../engine/grade';
-import { makeHardHand } from './buildHand';
+import { eitherOrder, makeHardHand } from './buildHand';
 import { askedIndexSet, entryCtx, makeSoftHand, makePair10Cards } from './deviationQuiz';
 import { srWeight } from './spacedRepetition';
 import type { SrDeck } from './spacedRepetition';
@@ -55,7 +55,8 @@ export function indexTestSet(rules: StrategyRules): Deviation[] {
 
 function cardsFor(dev: Deviation, rng: () => number): [Card, Card] {
   if (dev.kind === 'pair10') return makePair10Cards();
-  if (dev.kind === 'soft') return makeSoftHand(dev.total!);
+  // Wave M: the ace comes first or second, as at a real table.
+  if (dev.kind === 'soft') return eitherOrder(makeSoftHand(dev.total!), rng);
   const cards = makeHardHand(dev.total!, rng);
   if (!cards) throw new Error(`indexTestItemFor: cannot construct hard total ${dev.total}`);
   return cards;

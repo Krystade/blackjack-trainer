@@ -376,13 +376,13 @@ function buildClosePair10Candidate(entry: Deviation, rng: () => number, rules: S
 function buildCloseSoftCandidate(entry: Deviation, rng: () => number, rules: StrategyRules): Candidate | null {
   const total = entry.total!;
   const attempts: Array<() => Candidate | null> = [
-    () => ({ cards: makeSoftHand(total), up: entry.up!, tc: tcWrongSide(entry, rng) }),
+    () => ({ cards: eitherOrder(makeSoftHand(total), rng), up: entry.up!, tc: tcWrongSide(entry, rng) }),
     ...adjacentUps(entry.up!).map(
-      (up) => () => ({ cards: makeSoftHand(total), up, tc: tcNearThreshold(entry.threshold, rng) }),
+      (up) => () => ({ cards: eitherOrder(makeSoftHand(total), rng), up, tc: tcNearThreshold(entry.threshold, rng) }),
     ),
     ...[total - 1, total + 1]
       .filter((t) => t >= 13 && t <= 20)
-      .map((t) => () => ({ cards: makeSoftHand(t), up: entry.up!, tc: tcNearThreshold(entry.threshold, rng) })),
+      .map((t) => () => ({ cards: eitherOrder(makeSoftHand(t), rng), up: entry.up!, tc: tcNearThreshold(entry.threshold, rng) })),
   ];
 
   for (const attempt of shuffled(attempts, rng)) {
