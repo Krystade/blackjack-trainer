@@ -617,10 +617,10 @@ for (const theme of ['midnight-felt', 'bone-ink'] as const) {
       }
     };
     const fits = () => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-    await check(['.cas-rank-row:not([data-greyed]) .cas-rank-meta', '.cas-rank-place', '.cas-rank-row [data-testid="best-style"]', '.cas-row-note', '.cas-rank-controls .cas-note', '.cas-rank-row:not([data-greyed]) [data-testid="assumed-badge"]']);
+    await check(['.cas-rank-row:not([data-greyed]) .cas-rank-meta', '.cas-rank-place', '.cas-rank-row [data-testid="best-style"]', '.cas-row-note', '.cas-rank-controls .cas-note', '.cas-rank-row:not([data-greyed]) [data-testid="assumed-badge"]', '.cas-auto p', '.cas-rank-row [data-testid="partial-badge"]']);
     expect(await fits()).toBeLessThanOrEqual(0);
     await rows(page).and(page.locator('[data-game="g-good"]')).click();
-    await check(['.cas-gs-sub', '.cas-gs-fig dt', '.cas-gs-fig-sub', '.cas-gs-fig dd[data-sign="1"]', '.cas-gs-fig dd[data-sign="-1"]', '.cas-gs-notes', '.cas-gs-state']);
+    await check(['.cas-gs-sub', '.cas-gs-fig dt', '.cas-gs-fig-sub', '.cas-gs-fig dd[data-sign="1"]', '.cas-gs-fig dd[data-sign="-1"]', '.cas-gs-notes', '.cas-gs-state', '.cas-gs-state [data-testid="partial-badge"]']);
     expect(await fits()).toBeLessThanOrEqual(0);
     await back(page);
     await rows(page).and(page.locator('[data-game="g-deep"]')).click();
