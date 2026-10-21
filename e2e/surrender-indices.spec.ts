@@ -275,7 +275,19 @@ test('the blind pad refuses what the screen disables, out loud', async ({ page }
   expect(joined).not.toContain("isn't available on this hand");
   // Nothing was graded: no verdict, no chime, no feedback panel.
   expect(joined).not.toMatch(/Correct\.|Wrong\./);
-  await expect(page.locator('.drill-feedback')).toHaveCount(0);
+  // Read once, not retried: a panel that did open auto-advances away within
+  // seconds, so a retrying count(0) would wait for it to leave and pass.
+  expect(
+    await page.locator('.message-strip .result-correct, .message-strip .mistake-card, .message-strip .quiz-label').count(),
+    'no correction panel',
+  ).toBe(0);
+  // And nothing reached Stats or the review deck, which outlive the screen.
+  const graded = await page.evaluate(() => ({
+    perIndex: JSON.parse(localStorage.getItem('bjtrainer.stats.v1') ?? '{}').perIndex ?? {},
+    deck: JSON.parse(localStorage.getItem('bjtrainer.quizsr.v1') ?? '{}'),
+  }));
+  expect(graded.perIndex['16v9'], 'no Stats row for the refused tap').toBeUndefined();
+  expect(graded.deck['16v9'], 'no review-deck entry for the refused tap').toBeUndefined();
 });
 
 /**
