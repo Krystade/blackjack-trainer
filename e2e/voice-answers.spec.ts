@@ -81,7 +81,7 @@ test('a spoken answer grades the card', async ({ page }) => {
   await openFlashcardsWithVoice(page);
   await say(page, 'stand');
   // The correction panel only exists once an answer has been graded.
-  await expect(page.locator('.drill-feedback, [class*="feedback"]').first()).toBeVisible();
+  await expect(page.locator('.feedback-cell')).toBeVisible();
 });
 
 test('filler before the answer is ignored, because engines prepend it', async ({ page }) => {
@@ -98,7 +98,7 @@ test('ordinary conversation does not answer the card', async ({ page }) => {
   await openFlashcardsWithVoice(page);
   await say(page, 'what is the weather like tomorrow');
   await expect(page.locator('.voice-status-heard')).toContainText('not a command');
-  await expect(page.locator('.drill-feedback, [class*="feedback"]').first()).toBeHidden();
+  await expect(page.locator('.feedback-cell')).toBeHidden();
 });
 
 /**
@@ -114,7 +114,7 @@ test('the app does not grade its own voice', async ({ page }) => {
   await say(page, 'hit');
 
   await expect(page.locator('.voice-status-heard')).toContainText('the app was speaking');
-  await expect(page.locator('.drill-feedback, [class*="feedback"]').first()).toBeHidden();
+  await expect(page.locator('.feedback-cell')).toBeHidden();
 });
 
 /**
@@ -283,7 +283,7 @@ test('repeated misses escalate: tone, re-ask, then tone again with no hint', asy
   expect((await log()).join('|')).not.toMatch(/\bSay (hit|yes)/);
   // Still listening, and a recognised answer still grades the card.
   await sayOnceListening(page, 'stand');
-  await expect(page.locator('.drill-feedback, [class*="feedback"]').first()).toBeVisible();
+  await expect(page.locator('.feedback-cell')).toBeVisible();
 });
 
 // A word that WAS understood is answered by the card turning, not by a cue.
