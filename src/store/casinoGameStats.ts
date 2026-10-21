@@ -189,23 +189,55 @@ export function simInputFor(
   return { spec, key: `${SIM_VERSION}:${h.toString(36)}:${text.length.toString(36)}`, seed: h, assumed, cutUsed, methods, commissionPer100: wm.commissionPer100 };
 }
 
+/**
+ * Wave Q: the seed of a game's `n`th run. Run 0 is the input's own seed, so a
+ * game worked out in one go deals exactly the rounds it always did; every
+ * later run that continues it (casinoRun.ts `prior`) deals fresh ones.
+ */
+export function runSeed(input: Pick<SimInput, 'key' | 'seed'>, n: number): number {
+  return n <= 0 ? input.seed : fnv1a(`${input.key}#${n}`);
+}
+
 // ---------------------------------------------------------------- the cache
+
+/**
+ * Wave Q: 'partial' -- figures worked out so far, with more to come on their
+ * own (the quick first estimate, or a run paused when Casino closed). Every
+ * other status is where a run of this key stopped: 'done' (both targets met),
+ * 'time' (the cap), 'budget' (a test budget), 'cancelled' (stopped by hand,
+ * builds before Wave Q).
+ */
+export type ResultStatus = RunStatus | 'cancelled' | 'partial';
 
 export interface GameResult {
   /** The `simKey` the result was computed for. */
   key: string;
   computedAt: string;
   profileName: string;
-  status: RunStatus | 'cancelled';
+  status: ResultStatus;
+  /** Total time across every run merged into this result. */
   ms: number;
   basicRounds: number;
   countRounds: number;
   unit: number;
   basic: Accum;
   methods: { method: BetMethod; acc: Accum }[] | null;
+  /** Wave Q: runs merged into this result (absent = 1). The next run's seed is `runSeed(input, runs)`. */
+  runs?: number;
+  /** Wave Q: the total time this result is allowed (absent = the automatic cap); "Run another minute" raises it. */
+  capMs?: number;
 }
 
 type Results = Record<string, GameResult>;
+
+/**
+ * Wave Q: results for inputs no game has now, by key -- a rule changed back,
+ * the Play profile switched back, a deleted game's twin. Looked up before
+ * anything is worked out again, so going back costs nothing. The newest
+ * ARCHIVE_MAX are kept.
+ */
+type Archive = Record<string, GameResult>;
+export const ARCHIVE_MAX = 40;
 
 type MinimalStore = Pick<Storage, 'getItem' | 'setItem'>;
 let injected: MinimalStore | null = null;
@@ -229,43 +261,101 @@ function store(): MinimalStore {
 
 const isObj = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null && !Array.isArray(x);
 
-/** Every cached result by game id. Unreadable storage reads as empty: it is all recomputable. */
-export function loadGameResults(): Results {
+const readMap = (x: unknown): Results => {
+  const out: Results = {};
+  if (!isObj(x)) return out;
+  for (const [id, r] of Object.entries(x)) {
+    if (isObj(r) && typeof r.key === 'string' && isObj(r.basic)) out[id] = r as unknown as GameResult;
+  }
+  return out;
+};
+
+function readAll(): { results: Results; archive: Archive } {
   try {
     const raw = store().getItem(GAME_STATS_KEY);
-    if (!raw) return {};
+    if (!raw) return { results: {}, archive: {} };
     const parsed = JSON.parse(raw) as unknown;
-    if (!isObj(parsed) || parsed.version !== 1 || !isObj(parsed.results)) return {};
-    const out: Results = {};
-    for (const [id, r] of Object.entries(parsed.results)) {
-      if (isObj(r) && typeof r.key === 'string' && isObj(r.basic)) out[id] = r as unknown as GameResult;
-    }
-    return out;
+    if (!isObj(parsed) || parsed.version !== 1 || !isObj(parsed.results)) return { results: {}, archive: {} };
+    return { results: readMap(parsed.results), archive: readMap(parsed.archive) };
   } catch {
-    return {};
+    return { results: {}, archive: {} };
   }
+}
+
+/** Every cached result by game id. Unreadable storage reads as empty: it is all recomputable. */
+export function loadGameResults(): Results {
+  return readAll().results;
+}
+
+/** Wave Q: results kept by key for inputs no game has now. */
+export function loadGameArchive(): Archive {
+  return readAll().archive;
+}
+
+/** Wave Q: both, in one read. */
+export function loadGameCache(): { results: Results; archive: Archive } {
+  return readAll();
 }
 
 const listeners = new Set<() => void>();
 
-function write(results: Results): void {
+/** The newest ARCHIVE_MAX, minus any key a game's own result holds. */
+function trimArchive(archive: Archive, results: Results): Archive {
+  const live = new Set(Object.values(results).map((r) => r.key));
+  const kept = Object.entries(archive)
+    .filter(([k]) => !live.has(k))
+    .sort(([, a], [, b]) => Date.parse(b.computedAt) - Date.parse(a.computedAt))
+    .slice(0, ARCHIVE_MAX);
+  return Object.fromEntries(kept);
+}
+
+function write(results: Results, archive: Archive): void {
   try {
-    store().setItem(GAME_STATS_KEY, JSON.stringify({ version: 1, results }));
+    const trimmed = trimArchive(archive, results);
+    const blob: { version: 1; results: Results; archive?: Archive } = { version: 1, results };
+    if (Object.keys(trimmed).length > 0) blob.archive = trimmed;
+    store().setItem(GAME_STATS_KEY, JSON.stringify(blob));
   } catch {
     /* a full phone loses a cache, not data: the result shows until reload */
   }
   for (const fn of [...listeners]) fn();
 }
 
+/** A game's result; one it replaces for another key goes to the archive. */
 export function saveGameResult(gameId: string, result: GameResult): void {
-  write({ ...loadGameResults(), [gameId]: result });
+  const { results, archive } = readAll();
+  const prev = results[gameId];
+  const nextArchive = prev && prev.key !== result.key ? { ...archive, [prev.key]: prev } : archive;
+  write({ ...results, [gameId]: result }, nextArchive);
 }
 
-/** Drop results for games no longer in the log. */
+/** Results for games no longer in the log go to the archive (a twin, or an undo, may want them). */
 export function pruneGameResults(liveIds: ReadonlySet<string>): void {
-  const all = loadGameResults();
-  const kept = Object.fromEntries(Object.entries(all).filter(([id]) => liveIds.has(id)));
-  if (Object.keys(kept).length !== Object.keys(all).length) write(kept);
+  const { results, archive } = readAll();
+  const gone = Object.entries(results).filter(([id]) => !liveIds.has(id));
+  if (gone.length === 0) return;
+  const kept = Object.fromEntries(Object.entries(results).filter(([id]) => liveIds.has(id)));
+  const next = { ...archive };
+  for (const [, r] of gone) if (!next[r.key] || Date.parse(next[r.key]!.computedAt) < Date.parse(r.computedAt)) next[r.key] = r;
+  write(kept, next);
+}
+
+/** The one of two results for the same key that has more rounds behind it. */
+function fuller(a: GameResult | undefined, b: GameResult): GameResult {
+  if (!a) return b;
+  return b.basicRounds + b.countRounds > a.basicRounds + a.countRounds ? b : a;
+}
+
+/**
+ * Wave Q: a game's result for its inputs as they are now: its own, else any
+ * other game's with the same key (two games dealt alike are worked out once),
+ * else the archive's. Undefined when nothing has worked these inputs out.
+ */
+export function resultForKey(results: Readonly<Results>, archive: Readonly<Archive>, gameId: string, key: string): GameResult | undefined {
+  const own = results[gameId];
+  let best: GameResult | undefined = own?.key === key ? own : undefined;
+  for (const r of Object.values(results)) if (r.key === key) best = fuller(best, r);
+  return best ?? archive[key];
 }
 
 export function subscribeGameResults(fn: () => void): () => void {
@@ -279,8 +369,14 @@ export function subscribeGameResults(fn: () => void): () => void {
 
 export type ResultState = { kind: 'none' } | { kind: 'current'; result: GameResult } | { kind: 'stale'; result: GameResult };
 
-/** Whether a stored result is for the game and setup as they are now. */
-export function resultState(result: GameResult | undefined, key: string): ResultState {
+/**
+ * Whether a stored result is for the game and setup as they are now. Wave Q:
+ * `current` (resultForKey) is a result for these inputs found anywhere in the
+ * cache; without one, the game's own older result is stale -- shown, marked,
+ * until the new figures (worked out on their own) replace it.
+ */
+export function resultState(result: GameResult | undefined, key: string, current?: GameResult): ResultState {
+  if (current && current.key === key) return { kind: 'current', result: current };
   if (!result) return { kind: 'none' };
   return result.key === key ? { kind: 'current', result } : { kind: 'stale', result };
 }
