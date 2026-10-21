@@ -3,6 +3,8 @@ import { speechOptsFrom } from '../audio/speechOpts';
 import { effectiveVolume } from '../audio/volume';
 import { numberWord } from '../audio/narrate';
 import type { AudioSettings } from '../store/types';
+import { localDayKey } from '../store/practiceDays';
+import { habitClock } from './clock';
 
 /**
  * Wave N: the one spoken line when the daily goal is met eyes-free.
@@ -51,14 +53,31 @@ export function allMomentSentences(): string[] {
   return out;
 }
 
-let pending: string | null = null;
+/**
+ * How long a queued line may wait for its pause. Every hooked drill reaches a
+ * pause within seconds of the answer that met the goal; a line still waiting
+ * after this was met on a path with no pause (Play, deck estimation, a drill
+ * left open) and would only be said out of context, so it is dropped. It is
+ * also dropped once the local day has changed.
+ */
+export const MOMENT_TTL_MS = 2 * 60_000;
+
+let pending: { line: string; day: string; at: number } | null = null;
 
 export function queueMoment(line: string): void {
-  pending = line;
+  const at = habitClock();
+  pending = { line, day: localDayKey(new Date(at)), at };
 }
 
+/** The line still waiting, or null when none is or it has expired. */
 export function pendingMoment(): string | null {
-  return pending;
+  if (pending === null) return null;
+  const now = habitClock();
+  if (localDayKey(new Date(now)) !== pending.day || now - pending.at > MOMENT_TTL_MS) {
+    pending = null;
+    return null;
+  }
+  return pending.line;
 }
 
 /**
@@ -67,11 +86,14 @@ export function pendingMoment(): string | null {
  * pending. Muted, audio off or volume 0: the line is dropped unsaid.
  */
 export function sayMomentAtPause(audio: AudioSettings): number {
-  const line = pending;
+  const line = pendingMoment();
   if (line === null) return 0;
   pending = null;
   if (!audio.enabled || audio.verbosity === 'off' || effectiveVolume(audio) <= 0) return 0;
-  speak(line, speechOptsFrom(audio));
+  // Protected, as Home's Drive line is: the next prompt speaks with
+  // `interrupt`, and a deep voice runs past the estimate; a protected line
+  // makes that prompt wait instead of cutting it off. Mute still stops it.
+  speak(line, { ...speechOptsFrom(audio), protect: true });
   return estimateSpeechMs(line, audio.rate) + 300;
 }
 

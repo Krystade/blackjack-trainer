@@ -34,6 +34,9 @@ const runs = (n: number, extra: Record<string, unknown> = {}) =>
 const tcRows = (pattern: boolean[]) => pattern.map((correct) => ({ date: '2026-10-01T10:00:00Z', runningCount: 4, decksRemaining: 2, correctTc: 2, correct }));
 const sessions = (n: number, extra: Record<string, unknown> = {}) =>
   Array.from({ length: n }, () => ({ date: '2026-10-01T10:00:00Z', rounds: 25, graded: 40, correct: 39, bankrollDelta: 0, ...extra }));
+const timed = (cards: number, secondsPerDeck: number) => ({
+  date: '2026-10-01T10:00:00Z', cards, elapsedMs: (secondsPerDeck * cards * 1000) / 52, secondsPerDeck, tier: 'table-ready', correct: true,
+});
 const i18 = ILLUSTRIOUS_18.filter((d) => d.active).map((d) => d.id);
 const fab = FAB_4_H17.map((d) => d.id);
 
@@ -78,6 +81,10 @@ const CASES: Record<string, [AchievementContext, AchievementContext]> = {
     ctx({ stats: { countDrill: { history: [...runs(1, { cards: FULL_SHOE_CARDS, intervalMs: 600 }), ...runs(1, { cards: FULL_SHOE_CARDS - 1, intervalMs: 500 }), ...runs(1, { cards: FULL_SHOE_CARDS, intervalMs: 500, correct: false })] } } }),
     ctx({ stats: { countDrill: { history: runs(1, { cards: FULL_SHOE_CARDS, intervalMs: 576 }) } } }),
   ],
+  'count-full-shoe-timed': [
+    ctx({ stats: { timedCount: { history: [timed(FULL_SHOE_CARDS, 31), timed(FULL_SHOE_CARDS - 1, 20), { ...timed(FULL_SHOE_CARDS, 20), correct: false }] } } }),
+    ctx({ stats: { timedCount: { history: [timed(FULL_SHOE_CARDS, 30)] } } }),
+  ],
   'tc-run-10': [ctx({ stats: { trueCount: { history: tcRows([...Array(9).fill(true), false, ...Array(9).fill(true)]) } } }), ctx({ stats: { trueCount: { history: tcRows(Array(10).fill(true)) } } })],
   'tc-run-25': [ctx({ stats: { trueCount: { history: tcRows(Array(24).fill(true)) } } }), ctx({ stats: { trueCount: { history: tcRows(Array(25).fill(true)) } } })],
   'tc-run-50': [ctx({ stats: { trueCount: { history: tcRows(Array(49).fill(true)) } } }), ctx({ stats: { trueCount: { history: tcRows(Array(50).fill(true)) } } })],
@@ -88,15 +95,16 @@ const CASES: Record<string, [AchievementContext, AchievementContext]> = {
   'drive-min-30': [ctx({ progress: { drive: { totalMs: 29 * 60_000 + 59_999, runMs: 0, bestRunMs: 0 } } }), ctx({ progress: { drive: { totalMs: 30 * 60_000, runMs: 0, bestRunMs: 0 } } })],
   'drive-min-300': [ctx({ progress: { drive: { totalMs: 299 * 60_000, runMs: 0, bestRunMs: 0 } } }), ctx({ progress: { drive: { totalMs: 300 * 60_000, runMs: 0, bestRunMs: 0 } } })],
   'drive-freeway': [ctx({ progress: { drive: { totalMs: 0, runMs: 0, bestRunMs: 15 * 60_000 - 1 } } }), ctx({ progress: { drive: { totalMs: 0, runMs: 0, bestRunMs: 15 * 60_000 } } })],
-  'shoes-1': [ctx({ stats: { sessions: sessions(1, { rounds: 0 }) } }), ctx({ stats: { sessions: sessions(1) } })],
-  'shoes-10': [ctx({ stats: { sessions: sessions(9) } }), ctx({ stats: { sessions: sessions(10) } })],
+  // A shoe is a session of SHOE_MIN_ROUNDS (20) rounds: 19 is not one.
+  'shoes-1': [ctx({ stats: { sessions: sessions(3, { rounds: 19 }) } }), ctx({ stats: { sessions: sessions(1, { rounds: 20 }) } })],
+  'shoes-10': [ctx({ stats: { sessions: [...sessions(9), ...sessions(5, { rounds: 19 })] } }), ctx({ stats: { sessions: sessions(10, { rounds: 20 }) } })],
   'shoes-50': [ctx({ stats: { sessions: sessions(49) } }), ctx({ stats: { sessions: sessions(50) } })],
   'shoe-perfect-play': [
     ctx({ stats: { sessions: [...sessions(1, { plays: 30, playsCorrect: 29 }), ...sessions(1, { rounds: 19, plays: 30, playsCorrect: 30 })] } }),
     ctx({ stats: { sessions: sessions(1, { plays: 30, playsCorrect: 30 }) } }),
   ],
   'shoe-perfect-bets': [
-    ctx({ stats: { sessions: [...sessions(1, { plays: 30, betMisses: 1 }), ...sessions(1)] } }),
+    ctx({ stats: { sessions: [...sessions(1, { plays: 30, betMisses: 1 }), ...sessions(1), ...sessions(1, { rounds: 19, plays: 30 })] } }),
     ctx({ stats: { sessions: sessions(1, { plays: 30 }) } }),
   ],
   'wong-25': [
@@ -113,11 +121,13 @@ describe('achievements', () => {
   it('there are about forty, with unique ids, and every one has a case below', () => {
     expect(ACHIEVEMENTS.length).toBeGreaterThanOrEqual(38);
     expect(new Set(ACHIEVEMENTS.map((a) => a.id)).size).toBe(ACHIEVEMENTS.length);
-    expect(Object.keys(CASES).sort()).toEqual(ACHIEVEMENTS.map((a) => a.id).sort());
+    // `<id>-timed` is a second case for the same achievement.
+    expect([...new Set(Object.keys(CASES).map((k) => k.replace(/-timed$/, '')))].sort()).toEqual(ACHIEVEMENTS.map((a) => a.id).sort());
   });
 
-  for (const [id, [below, at]] of Object.entries(CASES)) {
-    it(`${id}: just short is not earned, with partial progress; the threshold earns it`, () => {
+  for (const [caseId, [below, at]] of Object.entries(CASES)) {
+    const id = caseId.replace(/-timed$/, '');
+    it(`${caseId}: just short is not earned, with partial progress; the threshold earns it`, () => {
       const b = statusOf(below, id);
       expect(b.earned).toBe(false);
       expect(b.fraction).toBeLessThan(1);

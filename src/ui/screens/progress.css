@@ -41,9 +41,22 @@
 .heat-cell.l2 { background: color-mix(in oklab, var(--good) 45%, var(--bg-sunken)); }
 .heat-cell.l3 { background: color-mix(in oklab, var(--good) 70%, var(--bg-sunken)); }
 .heat-cell.l4 { background: var(--good); border-color: var(--good); }
-.heat-cell.is-frozen { background: var(--accent-wash); border: 2px solid var(--accent); }
+.heat-cell { position: relative; }
+/* A frozen day: the ice fill and a flake, never a bare ring (that is today). */
+.heat-cell.is-frozen { background: var(--accent-wash); border-color: var(--accent); }
+.heat-cell.is-frozen::after {
+  content: '\2744';
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: var(--fs-2xs);
+  line-height: 1;
+  color: var(--accent);
+}
 .heat-cell.is-future { opacity: 0.35; }
-.heat-cell.is-today { outline: 2px solid var(--accent); outline-offset: 0; }
+/* Today: a ring in the text colour, outside the cell, distinct from the freeze. */
+.heat-cell.is-today { outline: 2px solid var(--ink); outline-offset: 1px; }
 
 .heatmap-legend { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin: var(--space-2, 0.5rem) 0 0; font-size: var(--fs-xs); color: var(--ink-soft); }
 .heatmap-legend .heat-cell { width: 12px; min-width: 12px; }
@@ -85,3 +98,5 @@
 .ach-note { font-size: var(--fs-2xs); color: var(--ink-faint); font-variant-numeric: tabular-nums; }
 .ach-bar { display: block; height: 4px; margin-top: 2px; border-radius: 2px; background: var(--line); overflow: hidden; }
 .ach-bar-fill { display: block; height: 100%; background: var(--accent); }
+.heatmap-legend .heat-cell.is-today { margin: 0 3px; }
+.heatmap-key { display: inline-flex; align-items: center; gap: 4px; margin-right: 6px; white-space: nowrap; }

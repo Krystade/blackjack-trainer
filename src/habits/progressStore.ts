@@ -3,7 +3,7 @@ import { getStorage, loadSettings, loadStats, setStatsSaveObserver } from '../st
 import { loadCasinoLog } from '../store/casinoLog';
 import { localDayKey } from '../store/practiceDays';
 import { diag } from '../diag/diagnosticLog';
-import { isEyesFreeOn } from '../ui/eyesFreeSession';
+import { habitClock as clock, _setHabitClockForTest } from './clock';
 import {
   backfillDays,
   computeStreak,
@@ -59,11 +59,13 @@ function emit(e: HabitEvent): void {
   }
 }
 
-/** Test seam: the clock. */
-let clock: () => number = () => Date.now();
-export function _setHabitClockForTest(fn: (() => number) | null): void {
-  clock = fn ?? (() => Date.now());
-}
+export { _setHabitClockForTest };
+
+/**
+ * Whether eyes-free (Drive) is on, supplied by the shell (installHabits) so
+ * this layer imports nothing from the UI.
+ */
+let isDrive: () => boolean = () => false;
 
 function storage(): Pick<Storage, 'getItem' | 'setItem'> | null {
   try {
@@ -137,21 +139,30 @@ export function ensureBackfilled(stats: Stats = loadStats()): ProgressState {
   return state;
 }
 
-/** The observer persist.ts calls after every stats write. */
-export function noteStatsSaved(written: Stats, replaced: boolean): void {
+/**
+ * The observer persist.ts calls after every stats write.
+ *
+ * `written` is what reached storage (histories trimmed to HISTORY_CAP);
+ * `untrimmed` is what the caller saved. The answers a save added are the rise
+ * from the stored baseline to the UNTRIMMED signature -- a full history goes
+ * 2000 -> 2001 there, where the trimmed one stays flat at 2000 -- and the
+ * trimmed signature becomes the next baseline, since that is what the next
+ * load will hold.
+ */
+export function noteStatsSaved(written: Stats, replaced: boolean, untrimmed: Stats = written): void {
   const prev = ensureBackfilledQuiet(written);
   const sig = statsSignature(written);
   if (replaced) {
     saveProgress({ ...prev, sig });
     return;
   }
-  const delta = signatureDelta(prev.sig, sig, written);
+  const delta = signatureDelta(prev.sig, statsSignature(untrimmed), untrimmed);
   let state: ProgressState = { ...prev, sig };
   const goal = currentGoal();
   let goalMet = false;
   const now = clock();
   if (delta.added > 0) {
-    const r = recordActivity(state, now, { answers: delta.added, drive: isEyesFreeOn(), durationHintMs: delta.durationHintMs }, goal);
+    const r = recordActivity(state, now, { answers: delta.added, drive: isDrive(), durationHintMs: delta.durationHintMs }, goal);
     state = r.state;
     goalMet = r.goalMet;
   } else if (delta.undone > 0) {
@@ -167,8 +178,8 @@ export function noteStatsSaved(written: Stats, replaced: boolean): void {
   saveProgress(state);
   if (goalMet) {
     const streak = ctx.streak.current;
-    diag('nav', 'habits-goal-met', { streak, drive: isEyesFreeOn() });
-    if (isEyesFreeOn()) queueMoment(momentLine(streak));
+    diag('nav', 'habits-goal-met', { streak, drive: isDrive() });
+    if (isDrive()) queueMoment(momentLine(streak));
     emit({ kind: 'goal', streak });
   }
   if (ids.length > 0) {
@@ -194,15 +205,35 @@ export function habitNow(): number {
   return clock();
 }
 
+/**
+ * Achievements that move without a stats save (a casino session logged, a
+ * goal setting changed): checked when Home shows, and toasted there.
+ */
+export function checkAchievementsNow(): void {
+  const prev = loadProgress();
+  if (!prev.backfilled) return;
+  const now = clock();
+  const ids = newlyEarned(contextFor(loadStats(), prev, now));
+  if (ids.length === 0) return;
+  const at = new Date(now).toISOString();
+  const earned = { ...prev.earned };
+  for (const id of ids) earned[id] = at;
+  saveProgress({ ...prev, earned });
+  diag('nav', 'habits-unlock', { ids: ids.join(','), from: 'home' });
+  emit({ kind: 'unlock', ids });
+}
+
 let installed = false;
 /** Wire the tracker to every stats save. Called once by the app shell. */
-export function installHabits(): void {
+export function installHabits(opts: { isDrive?: () => boolean } = {}): void {
+  if (opts.isDrive) isDrive = opts.isDrive;
   if (installed) return;
   installed = true;
   setStatsSaveObserver(noteStatsSaved);
 }
 export function _resetHabitsForTest(): void {
   installed = false;
+  isDrive = () => false;
   listeners.clear();
   undelivered = [];
   setStatsSaveObserver(null);

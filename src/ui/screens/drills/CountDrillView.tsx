@@ -443,6 +443,9 @@ export function CountDrillView({
     speak(correct ? 'Correct.' : 'Wrong.', speechOptsFrom(settings.audio, { interrupt: true }));
     // No number was given, so there is no last stretch to grade (#46).
     finishRun(correct, actualValue, actualValue, false);
+    // Wave N: the result now waits for the next run -- the natural pause. A
+    // goal this run met is said here, queued behind the verdict.
+    sayMomentAtPause(settings.audio);
   };
 
   const updateDrill = (patch: Partial<Settings['drill']>) => {
@@ -864,7 +867,7 @@ export function CountDrillView({
       nextTimer = window.setTimeout(() => {
         if (runIdRef.current !== runId) return;
         start();
-      }, nextQuestionDelayMs(answer, settings.audio) + sayMomentAtPause(settings.audio));
+      }, nextQuestionDelayMs(answer, settings.audio));
     }, answerPauseDelayMs(asked, settings.audio));
 
     return () => {

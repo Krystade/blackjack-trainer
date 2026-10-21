@@ -422,14 +422,14 @@ export function loadStats(): Stats {
  * depends on nothing above it. `replaced` is true when the stats were
  * replaced wholesale (a backup restore), which is a new baseline, not answers.
  */
-export type StatsSaveObserver = (written: Stats, replaced: boolean) => void;
+export type StatsSaveObserver = (written: Stats, replaced: boolean, untrimmed?: Stats) => void;
 let statsSaveObserver: StatsSaveObserver | null = null;
 export function setStatsSaveObserver(fn: StatsSaveObserver | null): void {
   statsSaveObserver = fn;
 }
-function notifyStatsSaved(written: Stats, replaced: boolean): void {
+function notifyStatsSaved(written: Stats, replaced: boolean, untrimmed?: Stats): void {
   try {
-    statsSaveObserver?.(written, replaced);
+    statsSaveObserver?.(written, replaced, untrimmed);
   } catch {
     /* a habit tracker must never break saving an answer */
   }
@@ -441,7 +441,9 @@ export function saveStats(s: Stats): boolean {
   // single choke point cannot be forgotten by the next one added.
   const capped = capHistories(s);
   const ok = writeKey('bjtrainer.stats.v1', JSON.stringify(capped));
-  if (ok) notifyStatsSaved(capped, false);
+  // Both: the trimmed blob is the next baseline, the untrimmed one says what
+  // this save added (a full history is flat once trimmed).
+  if (ok) notifyStatsSaved(capped, false, s);
   return ok;
 }
 

@@ -100,7 +100,8 @@ const fab4 = (stats: Stats): Measure => {
   return h.value / h.target >= s.value / s.target ? h : s;
 };
 
-const playSessions = (s: Stats) => (s.sessions ?? []).filter((r) => (r.rounds ?? 0) > 0);
+/** Play sessions long enough to be called a shoe (SHOE_MIN_ROUNDS rounds). */
+const playSessions = (s: Stats) => (s.sessions ?? []).filter((r) => (r.rounds ?? 0) >= SHOE_MIN_ROUNDS);
 const countRuns = (s: Stats) => s.countDrill?.history ?? [];
 
 const tiered = (
@@ -213,7 +214,7 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   {
     id: 'count-full-shoe',
     title: 'Full shoe',
-    how: `Count a ${FULL_SHOE_CARDS}-card shoe exactly at table-ready pace (a deck in 30 s or faster).`,
+    how: `Count a ${FULL_SHOE_CARDS}-card shoe exactly at table-ready pace (a deck in 30 s or faster), in the count drill or a Timed Challenge.`,
     tier: 'gold',
     group: 'Counting',
     measure: (c) =>
@@ -222,7 +223,10 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
           if (!r.correct || r.cards < FULL_SHOE_CARDS) return false;
           const perCard = r.manual ? r.meanTapMs : r.intervalMs;
           return typeof perCard === 'number' && perCard > 0 && classifySpeed((perCard * 52) / 1000) !== 'learning';
-        })
+        }) ||
+          (c.stats.timedCount?.history ?? []).some(
+            (r) => r.correct && r.cards >= FULL_SHOE_CARDS && r.secondsPerDeck > 0 && classifySpeed(r.secondsPerDeck) !== 'learning',
+          )
           ? 1
           : 0,
         1,
@@ -248,15 +252,15 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   {
     id: 'drive-freeway',
     title: 'Freeway drive',
-    how: 'One eyes-free Drive session of 15 active minutes without a break.',
+    how: 'One eyes-free Drive session of 15 minutes with answers flowing (no break over 3 minutes).',
     tier: 'silver',
     group: 'Drive',
     measure: (c) => m(Math.floor(c.progress.drive.bestRunMs / 60_000), FREEWAY_MS / 60_000),
   },
   ...tiered({ group: 'Play' }, 'shoes', [
-    ['bronze', 1, 'First shoe', 'Play a session at the table.'],
-    ['silver', 10, 'Ten shoes', 'Play 10 sessions at the table.'],
-    ['gold', 50, 'Table regular', 'Play 50 sessions at the table.'],
+    ['bronze', 1, 'First shoe', `Play a shoe at the table (a session of ${SHOE_MIN_ROUNDS}+ rounds).`],
+    ['silver', 10, 'Ten shoes', `Play 10 shoes at the table (sessions of ${SHOE_MIN_ROUNDS}+ rounds).`],
+    ['gold', 50, 'Table regular', `Play 50 shoes at the table (sessions of ${SHOE_MIN_ROUNDS}+ rounds).`],
   ], (c) => playSessions(c.stats).length),
   {
     id: 'shoe-perfect-play',
@@ -265,7 +269,7 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
     tier: 'gold',
     group: 'Play',
     measure: (c) =>
-      m(playSessions(c.stats).some((s) => (s.rounds ?? 0) >= SHOE_MIN_ROUNDS && (s.plays ?? 0) > 0 && s.playsCorrect === s.plays) ? 1 : 0, 1),
+      m(playSessions(c.stats).some((s) => (s.plays ?? 0) > 0 && s.playsCorrect === s.plays) ? 1 : 0, 1),
   },
   {
     id: 'shoe-perfect-bets',
@@ -275,7 +279,7 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
     group: 'Play',
     // `plays` marks a row new enough to have recorded bet misses at all.
     measure: (c) =>
-      m(playSessions(c.stats).some((s) => (s.rounds ?? 0) >= SHOE_MIN_ROUNDS && s.plays !== undefined && !s.betMisses) ? 1 : 0, 1),
+      m(playSessions(c.stats).some((s) => s.plays !== undefined && !s.betMisses) ? 1 : 0, 1),
   },
   {
     id: 'wong-25',

@@ -21,8 +21,9 @@ import {
   streakNow,
   type HabitEvent,
 } from './progressStore';
-import { _resetMomentForTest, pendingMoment, sayMomentAtPause, momentLine } from './moment';
-import { _resetEyesFreeForTest, setEyesFreeOn } from '../ui/eyesFreeSession';
+import { _resetMomentForTest, pendingMoment, sayMomentAtPause, momentLine, MOMENT_TTL_MS } from './moment';
+import { _resetEyesFreeForTest, isEyesFreeOn, setEyesFreeOn } from '../ui/eyesFreeSession';
+import { HISTORY_CAP } from '../store/retention';
 
 const ev = (correct = true): GradedEvent => ({
   kind: 'action',
@@ -56,7 +57,7 @@ beforeEach(() => {
   now = new Date(2026, 9, 21, 9, 0).getTime();
   _setHabitClockForTest(() => now);
   events = [];
-  installHabits();
+  installHabits({ isDrive: isEyesFreeOn });
   onHabitEvent((e) => events.push(e));
 });
 afterEach(() => {
@@ -108,6 +109,8 @@ describe('habit store, fed by stats saves', () => {
     expect(speak).toHaveBeenCalledTimes(1);
     expect(vi.mocked(speak).mock.calls[0][0]).toBe('Daily goal done. A new streak starts today.');
     expect(vi.mocked(speak).mock.calls[0][1]?.interrupt).toBeUndefined();
+    // Protected: the next prompt's interrupt waits behind it rather than cutting it off.
+    expect(vi.mocked(speak).mock.calls[0][1]?.protect).toBe(true);
     expect(sayMomentAtPause({ ...DEFAULT_SETTINGS.audio })).toBe(0);
     expect(speak).toHaveBeenCalledTimes(1);
     // Drive time was credited.
@@ -121,6 +124,60 @@ describe('habit store, fed by stats saves', () => {
     expect(sayMomentAtPause({ ...DEFAULT_SETTINGS.audio, muted: true })).toBe(0);
     expect(speak).not.toHaveBeenCalled();
     expect(pendingMoment()).toBeNull();
+  });
+
+  it('a line nobody paused for expires: next day, or after the TTL, it is never said', () => {
+    ensureBackfilled();
+    setEyesFreeOn(true, 'test');
+    // Met on a path with no pause hook (pair cancel, history-only).
+    for (let i = 0; i < 60; i++) {
+      now += 2000;
+      const cur = loadStats();
+      saveStats({ ...cur, pairCancel: { history: [...cur.pairCancel.history, { date: new Date(now).toISOString(), net: 0, guess: 0, correct: true, cancelling: true }] } });
+    }
+    expect(pendingMoment()).toBe(momentLine(1));
+    now = new Date(2026, 9, 22, 8, 0).getTime(); // next morning
+    expect(sayMomentAtPause({ ...DEFAULT_SETTINGS.audio })).toBe(0);
+    expect(speak).not.toHaveBeenCalled();
+  });
+
+  it('within the TTL the line is said; just past it, it is dropped', () => {
+    ensureBackfilled();
+    setEyesFreeOn(true, 'test');
+    answer(60, 2000);
+    now += MOMENT_TTL_MS;
+    expect(pendingMoment()).toBe(momentLine(1));
+    now += 1;
+    expect(sayMomentAtPause({ ...DEFAULT_SETTINGS.audio })).toBe(0);
+    expect(pendingMoment()).toBeNull();
+    expect(speak).not.toHaveBeenCalled();
+  });
+
+  it('a line queued just before midnight is not said after it, even inside the TTL', () => {
+    now = new Date(2026, 9, 21, 23, 57, 0).getTime();
+    ensureBackfilled();
+    setEyesFreeOn(true, 'test');
+    answer(60, 2000); // met at 23:59:00
+    expect(pendingMoment()).toBe(momentLine(1));
+    now = new Date(2026, 9, 22, 0, 0, 10).getTime(); // 70 s later, a new day
+    expect(sayMomentAtPause({ ...DEFAULT_SETTINGS.audio })).toBe(0);
+    expect(speak).not.toHaveBeenCalled();
+  });
+
+  it('a history drill at the 2000-row cap still credits every answer', () => {
+    const s = structuredClone(EMPTY_STATS);
+    const row = (date: string) => ({ date, runningCount: 4, decksRemaining: 2, correctTc: 2, correct: true });
+    s.trueCount = { history: Array.from({ length: HISTORY_CAP }, () => row('2026-01-01T10:00:00.000Z')) };
+    map.set('bjtrainer.stats.v1', JSON.stringify(s));
+    ensureBackfilled();
+    for (let i = 0; i < 10; i++) {
+      now += 5000;
+      const cur = loadStats();
+      expect(cur.trueCount.history).toHaveLength(HISTORY_CAP);
+      saveStats({ ...cur, trueCount: { history: [...cur.trueCount.history, row(new Date(now).toISOString())] } });
+    }
+    expect(loadProgress().days['2026-10-21'].answers).toBe(10);
+    expect(loadProgress().days['2026-10-21'].activeMs).toBe(45_000);
   });
 
   it('not eyes-free: no line is queued', () => {

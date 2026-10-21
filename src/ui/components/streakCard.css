@@ -49,10 +49,11 @@
   color: var(--ink-faint);
 }
 .streak-dot.is-met { background: var(--good); border-color: var(--good); color: var(--bg); }
-.streak-dot.is-frozen { border: 2px solid var(--accent); background: var(--bg-sunken); color: var(--ink); }
-.streak-dot.is-today { border-color: var(--accent); color: var(--ink); }
+.streak-dot.is-frozen { border: 1.5px solid var(--accent); background: var(--accent-wash); color: var(--accent); }
+.streak-dot.is-today { border: 2px solid var(--ink); color: var(--ink); font-weight: 700; }
 .streak-dot.is-missed { border-style: dashed; }
-.streak-dot.is-future { opacity: 0.5; }
+.streak-dot.is-future,
+.streak-dot.is-before { opacity: 0.5; }
 .streak-week-text { margin-left: 4px; font-size: var(--fs-xs); color: var(--ink-soft); }
 .streak-freezes { font-size: var(--fs-sm); color: var(--ink-soft); white-space: nowrap; }
 

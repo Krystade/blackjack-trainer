@@ -14,6 +14,7 @@ import { StorageToast } from './components/StorageToast';
 import { HabitToasts } from './components/HabitToasts';
 import { Progress } from './screens/Progress';
 import { installHabits, ensureBackfilled } from '../habits/progressStore';
+import { isEyesFreeOn } from './eyesFreeSession';
 import { KIT_PROGRESS_KEY, parseProgress } from '../diag/testKit';
 import { fieldTestRunIsResumable } from '../diag/fieldTestRun';
 import { loadSettings, saveSettings } from '../store/persist';
@@ -179,7 +180,7 @@ function App() {
   // rebuild the habit record from history (one quiet summary toast).
   // Before the first render, so Home's first paint already has the record.
   useState(() => {
-    installHabits();
+    installHabits({ isDrive: isEyesFreeOn });
     ensureBackfilled();
     return 0;
   });

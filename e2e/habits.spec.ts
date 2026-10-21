@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings, withProfile, withStats, playRoundByAdvice } from './helpers';
+import { withSettings, withProfile, withStats, playRoundByAdvice, openCountOptions } from './helpers';
 
 /**
  * Wave N: daily goal, streak, freezes and achievements. The clock is fixed
@@ -36,9 +36,9 @@ async function withProgress(page: Page, p: Record<string, unknown>): Promise<voi
 }
 
 /** `n` met days ending `lastOffset` days from today. */
-function metDays(n: number, lastOffset: number): Record<string, unknown> {
+function metDays(n: number, lastOffset: number, activeMs = 0): Record<string, unknown> {
   const out: Record<string, unknown> = {};
-  for (let i = 0; i < n; i++) out[day(lastOffset - i)] = { answers: 60, activeMs: 0, met: true };
+  for (let i = 0; i < n; i++) out[day(lastOffset - i)] = { answers: 60, activeMs, met: true };
   return out;
 }
 
@@ -144,20 +144,25 @@ test('first run earns from history, with one summary toast', async ({ page }) =>
 test('the Progress screen: streaks, heatmap and the achievements grid', async ({ page }) => {
   await page.clock.setFixedTime(at(10));
   await withProgress(page, {
-    days: { ...metDays(9, -1), ...metDays(4, -14), [day(-20)]: { answers: 20, activeMs: 0 } },
+    days: { ...metDays(9, -1, 11 * 60_000), ...metDays(7, -11, 10 * 60_000), [day(-20)]: { answers: 20, activeMs: 3 * 60_000 } },
     answersTotal: 1200,
-    earned: { 'answers-100': '2026-10-01T10:00:00.000Z', 'answers-1000': '2026-10-18T10:00:00.000Z', 'streak-3': '2026-10-14', 'streak-7': '2026-10-18' },
+    earned: { 'answers-100': '2026-10-01T10:00:00.000Z', 'answers-1000': '2026-10-18T10:00:00.000Z', 'streak-3': '2026-10-14', 'streak-7': '2026-10-18',
+      'days-10': '2026-10-19', 'minutes-60': '2026-10-08', 'week-goal': '2026-10-19', 'week-perfect': '2026-10-18' },
     drive: { totalMs: 12 * 60_000, runMs: 0, bestRunMs: 9 * 60_000 },
   });
   await page.goto('/?e2e=1');
   await page.getByTestId('streak-card').click();
   await expect(page.getByTestId('progress-screen')).toBeVisible();
-  await expect(page.getByTestId('progress-current')).toHaveText('9');
-  await expect(page.getByTestId('progress-longest')).toHaveText('9');
-  await expect(page.locator('.heatmap .heat-cell.l4')).toHaveCount(13);
+  // 7 met, a missed day the freeze covers, then 9 more: 16.
+  await expect(page.getByTestId('progress-current')).toHaveText('16');
+  await expect(page.getByTestId('progress-longest')).toHaveText('16');
+  await expect(page.locator('.heatmap .heat-cell.is-frozen')).toHaveCount(1);
+  await expect(page.locator('.heatmap .heat-cell.l4')).toHaveCount(16);
   await expect(page.getByTestId('ach-answers-1000')).toHaveAttribute('data-earned', '1');
   await expect(page.getByTestId('ach-answers-10000')).toHaveAttribute('data-earned', '0');
-  await expect(page.getByTestId('ach-freeze-used')).toContainText('Secret');
+  await expect(page.getByTestId('ach-freeze-full')).toContainText('Secret');
+  // The freeze this fixture spent reveals its secret.
+  await expect(page.getByTestId('ach-freeze-used')).toContainText('Saved by the freeze');
   await shot(page, 'progress-top');
   await page.locator('.ach-group').first().scrollIntoViewIfNeeded();
   await shot(page, 'progress-achievements');
@@ -216,4 +221,31 @@ test('eyes-free but muted: the banner shows and nothing is said', async ({ page 
   await page.clock.setFixedTime(at(10));
   const said = await eyesFreeMixedAnswer(page, { muted: true });
   expect(said.filter((l) => l.includes('Daily goal'))).toEqual([]);
+});
+
+test('eyes-free count drill: the goal line follows the self-report verdict', async ({ page }) => {
+  await page.clock.setFixedTime(at(10));
+  await withProfile(page);
+  await withSettings(page, {
+    audio: { enabled: true, verbosity: 'full', answerPauseMs: 0 },
+    drill: { countLengthCards: 4, countGroup: 1, countIntervalMs: 0, countManual: false },
+  });
+  await withProgress(page, { days: { [day(-1)]: { answers: 60, activeMs: 0, met: true }, [day(0)]: { answers: 59, activeMs: 0 } } });
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Count drill', exact: true }).click();
+  await openCountOptions(page);
+  await page.locator('label', { hasText: 'Eyes-free audio' }).locator('input').check();
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+  const yes = page.getByRole('button', { name: 'I had it' });
+  await expect(yes).toBeVisible({ timeout: 15_000 });
+  await page.evaluate(() => {
+    ((window as unknown as { __speechLog?: string[] }).__speechLog ?? []).length = 0;
+  });
+  await yes.click();
+  await expect(page.getByTestId('habit-toast-goal')).toBeVisible();
+  const said = await page.evaluate(() => [...((window as unknown as { __speechLog?: string[] }).__speechLog ?? [])]);
+  const verdict = said.indexOf('Correct.');
+  expect(verdict).toBeGreaterThanOrEqual(0);
+  expect(said.slice(verdict + 1).filter((l) => !l.startsWith('chime:'))[0]).toBe('Daily goal done. Two days in a row.');
 });

@@ -75,8 +75,11 @@ export function Progress({ settings, onNavigate }: { settings: Settings; onNavig
           ))}
         </div>
         <p className="heatmap-legend">
-          <span className="heat-cell l0" /> none <span className="heat-cell l2" /> some <span className="heat-cell l4" /> goal met{' '}
-          <span className="heat-cell l0 is-frozen" /> freeze
+          <span className="heatmap-key"><span className="heat-cell l0" /> none</span>
+          <span className="heatmap-key"><span className="heat-cell l2" /> some</span>
+          <span className="heatmap-key"><span className="heat-cell l4" /> goal met</span>
+          <span className="heatmap-key"><span className="heat-cell l0 is-frozen" /> freeze</span>
+          <span className="heatmap-key"><span className="heat-cell l0 is-today" /> today</span>
         </p>
         <dl className="progress-totals">
           <div><dt>Days met</dt><dd>{daysMet}</dd></div>

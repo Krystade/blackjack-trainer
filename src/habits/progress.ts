@@ -36,6 +36,14 @@ export function goalFor(level: unknown): DailyGoal {
  */
 export const IDLE_CAP_MS = 60_000;
 
+/**
+ * A Drive session (for the freeway achievement) ends after this long with no
+ * eyes-free answer. Longer than IDLE_CAP_MS on purpose: active minutes stop
+ * at a minute's silence, but a 90-second correction or a junction is still
+ * the same drive.
+ */
+export const DRIVE_SESSION_GAP_MS = 3 * 60_000;
+
 /** Freezes: one earned per 7 met days of streak, at most two held. */
 export const FREEZE_EVERY = 7;
 export const FREEZE_MAX = 2;
@@ -43,8 +51,8 @@ export const FREEZE_MAX = 2;
 /** Weekly goal: days met in the calendar week (Monday first). */
 export const WEEK_TARGET = 5;
 
-/** Days kept in the store; the heatmap reads 84. */
-export const DAYS_KEPT = 400;
+/** Days kept in the store (~70 bytes each); the heatmap reads 84, streaks and totals read all. */
+export const DAYS_KEPT = 2000;
 
 export interface DayRecord {
   answers: number;
@@ -65,7 +73,12 @@ export interface ProgressState {
   /** Lifetime answers seen (backfill + every save since). */
   answersTotal: number;
   /** Drive: total ms, the current contiguous run, and the longest run. */
-  drive: { totalMs: number; runMs: number; bestRunMs: number };
+  /**
+   * Drive: total active ms, and the current and longest DRIVE SESSION in wall
+   * time (see recordActivity). `runStartAt` / `lastAt` are epoch ms of the
+   * session's start and of its last answer; absent when no session is open.
+   */
+  drive: { totalMs: number; runMs: number; bestRunMs: number; runStartAt?: number; lastAt?: number };
   /** Achievement id -> ISO date earned, or '' when earned from history undated. */
   earned: Record<string, string>;
   /** First-run backfill from history has been done. */
@@ -101,6 +114,8 @@ export function normalizeProgress(raw: unknown): ProgressState {
       totalMs: num(p.drive?.totalMs),
       runMs: num(p.drive?.runMs),
       bestRunMs: num(p.drive?.bestRunMs),
+      ...(num(p.drive?.runStartAt) > 0 ? { runStartAt: num(p.drive?.runStartAt) } : {}),
+      ...(num(p.drive?.lastAt) > 0 ? { lastAt: num(p.drive?.lastAt) } : {}),
     },
     earned: {},
   };
@@ -269,11 +284,24 @@ export function recordActivity(prev: ProgressState, nowMs: number, act: Activity
   if (act.drive) {
     day.driveMs = (day.driveMs ?? 0) + credit;
     state.drive.totalMs += credit;
-    // A drive "session" is contiguous eyes-free activity: a stopped clock ends it.
-    state.drive.runMs = gap <= IDLE_CAP_MS || (credit > 0 && credit === gap) ? state.drive.runMs + credit : credit;
+    // A DRIVE SESSION is wall time with eyes-free answers flowing. The idle
+    // gap is measured from the last answer to the START of this one -- a
+    // count run's own duration is not idle -- and a session survives gaps up
+    // to DRIVE_SESSION_GAP_MS (a long correction, a junction), longer than
+    // the active-time cap, so one stretch of driving is one session.
+    const hint = Math.max(0, act.durationHintMs ?? 0);
+    const startedAt = nowMs - hint;
+    const idle = prev.drive.lastAt === undefined ? Infinity : startedAt - prev.drive.lastAt;
+    if (prev.drive.runStartAt !== undefined && idle <= DRIVE_SESSION_GAP_MS) {
+      state.drive.runMs = nowMs - prev.drive.runStartAt;
+    } else {
+      state.drive.runStartAt = startedAt;
+      state.drive.runMs = hint;
+    }
+    state.drive.lastAt = nowMs;
     state.drive.bestRunMs = Math.max(state.drive.bestRunMs, state.drive.runMs);
   } else {
-    state.drive.runMs = 0;
+    state.drive = { totalMs: state.drive.totalMs, runMs: 0, bestRunMs: state.drive.bestRunMs };
   }
 
   let goalMet = false;
@@ -367,7 +395,8 @@ export function computeStreak(days: Record<string, DayRecord>, today: string): S
 
 /* -------------------------------------------------------------- week ---- */
 
-export type DotState = 'met' | 'frozen' | 'missed' | 'today' | 'future';
+/** `before` is a day before anything was ever recorded: not a miss. */
+export type DotState = 'met' | 'frozen' | 'missed' | 'today' | 'future' | 'before';
 
 export interface WeekView {
   dots: { key: string; state: DotState }[];
@@ -377,6 +406,8 @@ export interface WeekView {
 
 export function weekView(days: Record<string, DayRecord>, today: string, frozen: Set<string>): WeekView {
   const start = weekStart(today);
+  const recorded = Object.keys(days).sort();
+  const first = recorded.length > 0 ? recorded[0] : today;
   const dots: WeekView['dots'] = [];
   let met = 0;
   for (let i = 0; i < 7; i++) {
@@ -388,6 +419,7 @@ export function weekView(days: Record<string, DayRecord>, today: string, frozen:
     } else if (frozen.has(key)) state = 'frozen';
     else if (key === today) state = 'today';
     else if (key > today) state = 'future';
+    else if (key < first) state = 'before';
     else state = 'missed';
     dots.push({ key, state });
   }

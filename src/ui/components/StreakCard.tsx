@@ -1,4 +1,5 @@
-import { loadProgress, streakNow, habitNow } from '../../habits/progressStore';
+import { useEffect } from 'react';
+import { loadProgress, streakNow, habitNow, checkAchievementsNow } from '../../habits/progressStore';
 import { addDays, goalFraction, goalFor, weekView } from '../../habits/progress';
 import { localDayKey } from '../../store/practiceDays';
 import type { Settings } from '../../store/types';
@@ -9,10 +10,17 @@ export const AT_RISK_HOUR = 18;
 
 const DOW = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
+/** Largest arc drawn for an unmet goal (see GoalRing). */
+export const RING_UNMET_MAX = 0.9;
+
 /** A small ring: today's progress toward the goal. */
 export function GoalRing({ fraction, size = 52, label }: { fraction: number; size?: number; label: string }) {
   const r = size / 2 - 5;
   const c = 2 * Math.PI * r;
+  // Round caps add half the stroke at each end, so an arc past ~95% draws as
+  // a closed ring. Until the goal is met the arc stops short enough that the
+  // gap always shows.
+  const drawn = fraction >= 1 ? 1 : Math.min(fraction, RING_UNMET_MAX);
   return (
     <svg className="streak-ring" width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label={label}>
       <circle cx={size / 2} cy={size / 2} r={r} className="streak-ring-track" />
@@ -22,7 +30,7 @@ export function GoalRing({ fraction, size = 52, label }: { fraction: number; siz
         cy={size / 2}
         r={r}
         className={`streak-ring-fill${fraction >= 1 ? ' is-met' : ''}`}
-        strokeDasharray={`${c * Math.min(1, fraction)} ${c}`}
+        strokeDasharray={`${c * drawn} ${c}`}
         transform={`rotate(-90 ${size / 2} ${size / 2})`}
       />
       )}
@@ -43,6 +51,9 @@ export function FlameIcon({ lit }: { lit: boolean }) {
  * this week's dots. Tapping it opens Progress.
  */
 export function StreakCard({ settings, onOpen }: { settings: Settings; onOpen: () => void }) {
+  // Achievements that move without an answer (a casino session logged) are
+  // toasted on the way back to Home rather than at some later answer.
+  useEffect(() => checkAchievementsNow(), []);
   const now = habitNow();
   const today = localDayKey(new Date(now));
   const progress = loadProgress();
@@ -83,8 +94,8 @@ export function StreakCard({ settings, onOpen }: { settings: Settings; onOpen: (
       <span className="streak-foot">
         <span className="streak-week" aria-label={`${week.met} of ${week.target} days this week`} data-testid="streak-week">
           {week.dots.map((d, i) => (
-            <span key={d.key} className={`streak-dot is-${d.state}`} title={d.key}>
-              <span className="streak-dot-day" aria-hidden="true">{DOW[i]}</span>
+            <span key={d.key} className={`streak-dot is-${d.state}`} title={d.key} data-state={d.state}>
+              <span className="streak-dot-day" aria-hidden="true">{d.state === 'frozen' ? '❄' : DOW[i]}</span>
             </span>
           ))}
           <span className="streak-week-text">

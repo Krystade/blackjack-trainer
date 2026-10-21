@@ -11,7 +11,6 @@ import { loadMasteryRun } from '../../drills/masteryChallenge';
 import { launchSettings, reviewIndexesLaunch, reviewLaunch, setDrillLaunch, weakCellsLaunch } from '../drillLaunch';
 import { loadFlashSr, loadQuizSr } from '../../drills/gradeAnswer';
 import { LadderCard } from './LadderCard';
-import { practiceDaysText } from '../../store/practiceDays';
 import { strategyRulesFor } from '../../store/profiles';
 import './nextStep.css';
 import { driveTarget, setDriveAutoStart } from '../driveLaunch';
@@ -68,7 +67,6 @@ export function Home({ onNavigate, activeProfile, settings, onSettingsChange }: 
     now: Date.now(),
   });
   const step = ladder.step;
-  const practiceLine = practiceDaysText(stats, new Date());
   const openStep = (t: StartTarget & Pick<NextStep, 'reviewCells' | 'reviewIndexes'>) => {
     if (t.kind === 'play') {
       onNavigate('table');
@@ -191,12 +189,8 @@ export function Home({ onNavigate, activeProfile, settings, onSettingsChange }: 
           </p>
         )}
 
-        {/* F10 (L-2): days practised this week, no streak; hidden until there is any practice. */}
-        {practiceLine !== null && (
-          <p className="u-note home-practice-days" data-testid="practice-days">
-            {practiceLine}
-          </p>
-        )}
+        {/* Wave N: F10's "Practised N of the last 7 days" line is gone; the
+            streak card's week dots above say it. */}
 
         <button type="button" className="home-stats-link" onClick={() => onNavigate('stats')}>
           All stats

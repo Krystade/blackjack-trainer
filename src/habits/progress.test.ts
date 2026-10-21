@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   GOALS,
   IDLE_CAP_MS,
+  DRIVE_SESSION_GAP_MS,
   addDays,
   backfillDays,
   computeStreak,
@@ -143,6 +144,29 @@ describe('active time', () => {
     expect(p.days['2026-10-04'].driveMs).toBe(17 * 60_000);
   });
 
+  it('a Drive session is wall time: 30 min of count runs 2.5 min apart is one session', () => {
+    // 52 cards at 2 s: each run is 104 s of its own, then a 46 s gap.
+    let p = emptyProgress();
+    const t0 = local(10, 6, 7);
+    for (let i = 0; i < 12; i++) {
+      p = recordActivity(p, t0 + i * 150_000, { answers: 1, drive: true, durationHintMs: 104_000 }, goal).state;
+    }
+    // From the first run's start (t0 - 104 s) to the last answer.
+    expect(p.drive.bestRunMs).toBe(11 * 150_000 + 104_000);
+    expect(p.drive.bestRunMs).toBeGreaterThanOrEqual(15 * 60_000);
+  });
+
+  it('a pause over the idle cap keeps the session; one over the session gap ends it', () => {
+    let p = burst(emptyProgress(), local(10, 6, 7), 5, 30_000, true); // 2 min
+    p = recordActivity(p, local(10, 6, 7) + 120_000 + DRIVE_SESSION_GAP_MS, { answers: 1, drive: true }, goal).state;
+    expect(p.drive.runMs).toBe(120_000 + DRIVE_SESSION_GAP_MS); // a 3-min junction: same drive
+    expect(p.days['2026-10-06'].activeMs).toBe(120_000); // but no active minutes for it
+    const last = local(10, 6, 7) + 120_000 + DRIVE_SESSION_GAP_MS;
+    p = recordActivity(p, last + DRIVE_SESSION_GAP_MS + 1, { answers: 1, drive: true }, goal).state;
+    expect(p.drive.runMs).toBe(0); // a new session
+    expect(p.drive.bestRunMs).toBe(120_000 + DRIVE_SESSION_GAP_MS);
+  });
+
   it('an undo takes the answer back off today', () => {
     let p = burst(emptyProgress(), local(10, 5), 3, 5000);
     p = recordActivity(p, local(10, 5, 12, 1), { answers: -1, drive: false }, goal).state;
@@ -222,6 +246,12 @@ describe('week and heatmap', () => {
     expect(w.dots.map((d) => d.state)).toEqual(['met', 'met', 'frozen', 'today', 'future', 'future', 'future']);
     expect(w.met).toBe(2);
     expect(weekView(days, '2026-10-24', new Set()).dots[3].state).toBe('missed');
+  });
+
+  it('days before anything was recorded are not misses', () => {
+    const w = weekView({ '2026-10-21': { answers: 3, activeMs: 0 } }, '2026-10-22', new Set());
+    expect(w.dots.map((d) => d.state)).toEqual(['before', 'before', 'missed', 'today', 'future', 'future', 'future']);
+    expect(weekView({}, '2026-10-22', new Set()).dots[0].state).toBe('before');
   });
 
   it('counts weeks with at least n met days', () => {
