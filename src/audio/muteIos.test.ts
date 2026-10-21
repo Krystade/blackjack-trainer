@@ -53,7 +53,9 @@ function installIos(): void {
     return body ? { ok: true, json: async () => body } : { ok: false };
   });
   (globalThis as any).SpeechSynthesisUtterance = class {
-    constructor(public text: string) {
+    text: string;
+    constructor(text: string) {
+      this.text = text;
       utterances.push(this);
     }
   };

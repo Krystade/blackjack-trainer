@@ -369,6 +369,8 @@ export function verdictFor(match: SpokenMatch): string {
       return `${match.action} (rescued)`;
     case 'approximate':
       return `${match.action} (approximate)`;
+    case 'misheard':
+      return `${match.action} (misheard)`;
   }
 }
 

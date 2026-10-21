@@ -517,7 +517,37 @@ export type SpokenMatch = {
    * 'direct' -- the winner said it. 'alternative' -- a runner-up did.
    * 'approximate' -- nothing said it, but something was one sound away.
    */
-  via: 'direct' | 'alternative' | 'approximate';
+  via: 'direct' | 'alternative' | 'approximate' | 'misheard';
+};
+
+/**
+ * MISHEARINGS FROM THE OWNER'S OWN DRIVES, accepted as the WHOLE WINNING
+ * transcript only (Wave M, freeway flashcards drive `btf`, 2026-10-20).
+ *
+ * Not in ALIASES on purpose. An alias also counts as a token inside a longer
+ * sentence and lets a RUNNER-UP rescue the winner; these are ordinary English
+ * ("spot", "let me"), so they are trusted only when they are everything the
+ * engine heard, and only as its first choice. "Spot" in particular is one
+ * edit from both split and repeat, and as a runner-up it must still not play
+ * a hand (the 2026-10-05 "But"/"Spot" test) -- but as the whole winner it
+ * came back twice for "split" in `btf` and was rescued only when a runner-up
+ * said "Split".
+ *
+ * Each was checked against every answer word and the app's own phrases: none
+ * is a command, none is said by the app, and none is closer to a different
+ * action than to the one it maps to. Rejected from the same drive, and why:
+ *   "tag", "play button"           -- nothing of "split" in them
+ *   "thank you"                    -- a real thing to say to a voice app
+ *   "dead man", "please head back" -- unclear what was asked; could be anything
+ *   "register"                     -- no context says which command
+ */
+export const MISHEARD_FORMS: Readonly<Record<string, VoiceAction>> = {
+  spot: 'split',
+  'play them': 'split',
+  'hate me': 'hit',
+  'teach me': 'hit',
+  'let me': 'hit',
+  'settle down': 'double',
 };
 
 function isShort(cleaned: string): boolean {
@@ -553,6 +583,8 @@ export function resolveSpoken(transcripts: readonly string[]): SpokenMatch | nul
   if (topRead) return { action: topRead, via: 'direct' };
 
   const cleanedTop = normalise(top);
+  const misheard = MISHEARD_FORMS[cleanedTop.replace(/\s+/g, ' ')];
+  if (misheard) return { action: misheard, via: 'misheard' };
   if (!isShort(cleanedTop)) return null;
 
   const shortRest = rest.map(normalise).filter(isShort);
