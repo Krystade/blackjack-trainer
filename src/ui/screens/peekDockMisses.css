@@ -1,22 +1,48 @@
-/* Wave O: on a short screen the bet / side-bet miss lines ride in the peek
-   dock, a full-width row above the peek button, so the sticky dock can never
-   cover them (see useShortScreen). */
-.peek-dock > .peek-dock-misses {
-  grid-column: 1 / -1;
+/* Wave O (review B1/S1): a miss line the sticky dock would cover rides in
+   the dock instead, beside the peek button, so it costs the band above no
+   height -- the dealer, the hands and the result keep the room they had.
+   Table measures the overlap and adds .peek-dock--misses. */
+.peek-dock.peek-dock--misses {
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 8px;
+}
+
+.peek-dock--misses > .peek-hold-btn {
+  grid-column: 1;
   grid-row: 1;
+}
+
+.peek-dock--misses > .peek-dock-misses {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: center;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding-bottom: 4px;
+  gap: 3px;
 }
 
-.peek-dock > .peek-dock-misses ~ * {
-  grid-row: 2;
+/* No peek (a count check owed): the line has the row to itself. */
+.peek-dock--misses:not(:has(> .peek-hold-btn)):not(:has(> .fast-forward-btn)) > .peek-dock-misses {
+  grid-column: 1 / -1;
 }
 
-.peek-dock > .peek-dock-misses .result-strip {
+/* Skip shows only while cards are dealt or bots play; then it takes the
+   peek's slot (Table hides the peek meanwhile), so the dock keeps its height. */
+.peek-dock--misses > .fast-forward-btn {
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: start;
+  width: 8.75rem;
+  justify-content: center;
+}
+
+.peek-dock--misses > .peek-dock-misses .result-strip {
   margin: 0;
   min-height: 0;
-  padding: 4px 10px;
-  font-size: var(--fs-sm);
+  /* Three lines fit the peek button's 48px, so the dock keeps its height. */
+  padding: 1px 6px;
+  font-size: var(--fs-xs);
+  line-height: 1.2;
+  border-radius: 8px;
 }

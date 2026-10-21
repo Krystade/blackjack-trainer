@@ -69,7 +69,6 @@ import { DEAL_WORDS, isDealWord } from '../dealWord';
 import { TOGGLE_BIAS, toggleWordIn } from '../backCountWords';
 import './backCount.css';
 import './peekDockMisses.css';
-import { useShortScreen } from '../useShortScreen';
 import './tableDock.css';
 import './tableCompact.css';
 import { spreadHasTwoHands, startShoeOutOf } from '../../engine/wong';
@@ -494,6 +493,10 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
    * changes with its mode, so it is measured after every render.
    */
   const screenRef = useRef<HTMLDivElement>(null);
+  // Wave O (review B1/S1): the round whose miss lines were found covered by
+  // the dock, and the check that finds it (set each render, below).
+  const [dockedMissKey, setDockedMissKey] = useState<string | null>(null);
+  const missCoverRef = useRef<() => void>(() => {});
   useLayoutEffect(() => {
     const el = screenRef.current;
     const bar = el?.querySelector<HTMLElement>(':scope > .action-bar');
@@ -510,7 +513,8 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
    * scrolls the least that puts it in the band -- and if it ever did not fit,
    * keeps its TOP (the dealer) on screen rather than its bottom.
    */
-  const handScrollKey = `${game.roundNo}:${game.phase}:${game.hands.length}:${game.active}:${game.watching}`;
+  // Wave O: and again when a covered miss line moves into the dock (its height changes the band).
+  const handScrollKey = `${game.roundNo}:${game.phase}:${game.hands.length}:${game.active}:${game.watching}:${dockedMissKey ?? ""}`;
   useLayoutEffect(() => {
     const el = screenRef.current;
     const scroller = document.scrollingElement;
@@ -543,6 +547,8 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
       const most = regionTop - bandTop; // the largest keeping the top
       const target = Math.max(0, least > most ? most : Math.min(Math.max(y, least), most));
       if (Math.abs(target - y) > 0.5) window.scrollTo(0, target);
+      // Wave O: with the page placed, are the miss lines under the dock?
+      missCoverRef.current();
     };
     place();
     // The narration and the bots' cards keep arriving after the phase
@@ -561,6 +567,10 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
       window.removeEventListener('touchstart', stop);
     };
   }, [handScrollKey]);
+  // Wave O (review B1/S1): after every render too -- a miss line can arrive,
+  // or the strip grow, without the hand moving. Declared after the placing
+  // effect above, so it measures the placed page.
+  useLayoutEffect(() => missCoverRef.current());
   const setBetForHand = (i: number, units: number) => {
     setSelectedBets((prev) => prev.map((v, idx) => (idx === i ? units : v)));
   };
@@ -570,7 +580,6 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
   const countStage: 'rc' | 'tc' = game.askRc ? rcStage : 'tc';
   const [pendingRc, setPendingRc] = useState(0);
   const [peeking, setPeeking] = useState(false);
-  const shortScreen = useShortScreen();
   const [showReport, setShowReport] = useState(false);
   // #7: the strategy chart opened over a wrong play, ringed on its cell.
   const [showChart, setShowChart] = useState(false);
@@ -1075,10 +1084,16 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
   const multiHand = game.hands.length > 1;
   // #41: built every render, but only drawn while the peek is held.
   const peek = peekReadout(game.runningCount, game.exactDecksRemaining);
-  // Wave O: on a short screen (320x568) the sticky peek dock covered the
-  // message strip, so the bet and side-bet miss lines -- said as a round
-  // opens -- were hidden under it. There they ride in the dock itself, above
-  // the peek button; on a taller screen they stay in the strip.
+  /*
+   * Wave O (review B1/S1): the bet and side-bet miss lines, said as a round
+   * opens and kept with it. They sit in the message strip, which a short
+   * screen can push under the sticky dock -- mid-round, after the settle, or
+   * for a whole round that settles at the deal. Whether it does is MEASURED
+   * (checkMissCover, after Table's own placing scroll), not guessed from the
+   * viewport: when a line would be covered it moves into the dock, beside the
+   * peek button, where it costs the band no height, and stays there for the
+   * rest of its round. The next round's lines start in the strip again.
+   */
   const missStrips = (
     <>
       {/* B2 #13 (R2): a wrong bet or sit decision, said as it is made and
@@ -1096,10 +1111,28 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
       )}
     </>
   );
-  const hasMiss = betMiss?.round === game.roundNo || sideMiss?.round === game.roundNo;
-  // Only while the round is being played: once it settles, the dealer, the
-  // hands and the result line need the band, and the miss returns to the strip.
-  const missInDock = shortScreen && game.phase !== 'settled' && game.phase !== 'idle';
+  const betMissNow = betMiss && betMiss.round === game.roundNo ? betMiss.text : null;
+  const sideMissNow = sideMiss && sideMiss.round === game.roundNo ? sideMiss.text : null;
+  const missKey = betMissNow !== null || sideMissNow !== null ? `${game.roundNo}|${betMissNow ?? ''}|${sideMissNow ?? ''}` : null;
+  const missInDock = missKey !== null && dockedMissKey === missKey;
+  missCoverRef.current = () => {
+    if (missKey === null || missInDock) return;
+    const el = screenRef.current;
+    if (!el || !el.isConnected) return;
+    const misses = [...el.querySelectorAll<HTMLElement>(':scope > .message-strip .bet-miss')].map(
+      (m) => m.closest<HTMLElement>('.result-strip') ?? m,
+    );
+    if (misses.length === 0) return;
+    // The result lines too: in the strip the misses sit above them, so a
+    // result pushed under the dock is freed by moving the misses out.
+    const lines = [...misses, ...el.querySelectorAll<HTMLElement>(':scope > .message-strip > .message-result')];
+    const docked = [...el.querySelectorAll<HTMLElement>(':scope > .peek-dock, :scope > .action-bar')].filter(
+      (d) => d.offsetHeight > 0 && getComputedStyle(d).position === 'sticky',
+    );
+    if (docked.length === 0) return;
+    const dockTop = Math.min(...docked.map((d) => d.getBoundingClientRect().top));
+    if (lines.some((l) => l.getBoundingClientRect().bottom > dockTop + 0.5)) setDockedMissKey(missKey);
+  };
 
   // Cycle-2 Task 6: bot seats/narration/fast-forward are a strict no-op when
   // the profile has no bots (v1-solo parity — `game.seats` holds just the
@@ -1110,6 +1143,15 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
   const botLabels = botSeatLabels(game.seats);
   const botNarrationLines = buildBotNarration(game, botNarrationRevealed);
   const pacingPending = botNarrationRevealed < game.botActionLog.length;
+  const skipShown = (hasBots && pacingPending) || dealAnimating;
+  // Wave O (review B1): with the misses in the dock, Skip takes the peek's
+  // slot while it shows (dealing, bots' turns) rather than a row of its own,
+  // so the dock never grows over the band. The peek is back when Skip goes.
+  const peekGivesWayToSkip = missInDock && skipShown;
+  // A peek held as Skip appears ends there (the button unmounts under the
+  // thumb, so its release never arrives). Set in render: past the report's
+  // early return, so no hook here.
+  if (peekGivesWayToSkip && peeking) setPeeking(false);
   /**
    * M8: HOW MANY CARDS EACH BOT HAND HAS EARNED ON SCREEN.
    *
@@ -1425,11 +1467,11 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
 
       {/* #40: the peek under the left thumb, just above the bar. The skip
           control shares the row, so the dock costs no height when it shows. */}
-      <div className="peek-dock">
-        {missInDock && hasMiss && <div className="peek-dock-misses">{missStrips}</div>}
+      <div className={`peek-dock${missInDock ? ' peek-dock--misses' : ''}`}>
+        {missInDock && <div className="peek-dock-misses">{missStrips}</div>}
         {/* F9 / B2 #31: no peek while a count check is owed or open -- the
             peeked answer was graded correct. */}
-        {!peekBlocked && (
+        {!peekBlocked && !peekGivesWayToSkip && (
         <PeekButton
           revealed={peeking}
           onReveal={revealPeek}
@@ -1446,7 +1488,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
           }
         />
         )}
-        {((hasBots && pacingPending) || dealAnimating) && (
+        {skipShown && (
           <button
             type="button"
             className="fast-forward-btn"
