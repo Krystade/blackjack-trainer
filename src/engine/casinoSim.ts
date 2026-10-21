@@ -212,6 +212,11 @@ function addShoe(a: Accum, y: number, x: number, e: number): void {
 
 const isTenUp = (r: Rank) => VAL[r] === 10;
 
+/** Card type index as sideBets/comp.ts numbers them: rank (A..K) x 4 + suit (s, h, d, c). */
+const RANK_I = Object.fromEntries(RANKS.map((r, i) => [r, i])) as Record<Rank, number>;
+const SUIT_I: Record<Card['suit'], number> = { s: 0, h: 1, d: 2, c: 3 };
+const typeOfCard = (c: Card) => RANK_I[c.rank] * 4 + SUIT_I[c.suit];
+
 export class CasinoSim {
   readonly mode: SimMode;
   readonly spec: SimSpec;
@@ -250,6 +255,15 @@ export class CasinoSim {
   private readonly csmCards: Card[] = [];
   private csmLeft = 0;
   private readonly csmRng: () => number;
+  /**
+   * Wave L (side bets): the cards left in the shoe, per card type
+   * (sideBets/comp.ts), kept only after `trackComposition()`. A side bet's
+   * odds are a function of exactly this, so its simulation reads it before
+   * every round (`onPreDeal`). Off, nothing here costs a thing.
+   */
+  left: Int16Array | null = null;
+  /** Wave L: called before each round is dealt, after any shuffle. */
+  onPreDeal?: () => void;
 
   constructor(spec: SimSpec, mode: SimMode, seed: number) {
     this.spec = spec;
@@ -345,6 +359,18 @@ export class CasinoSim {
     this.cutPos = this.cards.length - this.cutCards();
   }
 
+  /** Wave L: keep `left` from now on (a fresh count of the shoe as it stands). */
+  trackComposition(): void {
+    const left = new Int16Array(52);
+    const from = this.spec.csm ? this.csmCards.slice(0, this.csmLeft) : this.cards.slice(this.pos);
+    for (const c of from) left[typeOfCard(c)]! += 1;
+    this.left = left;
+  }
+
+  private refillLeft(): void {
+    if (this.left) this.left.fill(this.decks);
+  }
+
   /** Test hook: the next `n` cards this shoe will deal, without dealing them. */
   peekCards(n: number): Card[] {
     return this.cards.slice(this.pos, this.pos + n);
@@ -354,6 +380,7 @@ export class CasinoSim {
     this.closeShoe();
     if (this.spec.csm) this.csmLeft = this.csmCards.length;
     else this.shuffleShoe();
+    this.refillLeft();
     this.rc = 0;
     this.roundInShoe = 0;
     this.shuffledThisRound = true;
@@ -376,6 +403,7 @@ export class CasinoSim {
       this.csmCards[j] = this.csmCards[n - 1]!;
       this.csmCards[n - 1] = c;
       this.csmLeft = n - 1;
+      if (this.left) this.left[typeOfCard(c)]! -= 1;
       return c;
     }
     // cutCardsFor never leaves fewer than half a deck behind the cut, so a
@@ -385,10 +413,13 @@ export class CasinoSim {
     // like any other (`step`), so a method that had left comes back for it.
     if (this.pos >= this.cards.length) {
       this.shuffleShoe();
+      this.refillLeft();
       this.rc = 0;
       this.midShuffle = true;
     }
-    return this.cards[this.pos++]!;
+    const c = this.cards[this.pos++]!;
+    if (this.left) this.left[typeOfCard(c)]! -= 1;
+    return c;
   }
 
   private drawTo(h: SimHand): void {
@@ -439,6 +470,7 @@ export class CasinoSim {
   private step(): void {
     this.shuffledThisRound = false;
     if (this.spec.csm || this.pos >= this.cutPos || this.cards.length - this.pos < (this.spec.reserveCards ?? 0)) this.newShoe();
+    this.onPreDeal?.();
     const tc = this.tcNow();
     const counting = this.mode === 'count';
     const clamped = tc > TC_CLAMP ? TC_CLAMP : tc < -TC_CLAMP ? -TC_CLAMP : tc;
