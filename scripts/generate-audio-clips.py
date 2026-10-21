@@ -139,13 +139,17 @@ def capitalize(s: str) -> str:
 def narrate_decks_remaining(decks: float) -> str:
     """Mirror of narrateDecksRemaining() in TrueCountDrillView.tsx."""
     whole = int(decks // 1)
-    is_half = (decks % 1) != 0
+    frac = decks - whole
     whole_word = DECK_WORDS[whole] if 0 <= whole < len(DECK_WORDS) else str(whole)
-    if whole == 0 and is_half:
+    if frac == 0:
+        return f"{whole_word} {'deck' if whole == 1 else 'decks'} remaining"
+    if frac == 0.25:
+        return "a quarter of a deck remaining" if whole == 0 else f"{whole_word} and a quarter decks remaining"
+    if frac == 0.75:
+        return "three quarters of a deck remaining" if whole == 0 else f"{whole_word} and three quarter decks remaining"
+    if whole == 0:
         return "half a deck remaining"
-    if is_half:
-        return f"{whole_word} and a half decks remaining"
-    return f"{whole_word} {'deck' if whole == 1 else 'decks'} remaining"
+    return f"{whole_word} and a half decks remaining"
 
 
 SPOKEN_PHRASES_PATH = Path(__file__).with_name("spoken-phrases.json")
@@ -229,7 +233,7 @@ def build_vocabulary() -> list[str]:
         phrases.append(f"Running count {narrate_tc(tc)}.")
 
     # True-count drill: narrateDecksRemaining(), capitalized as a sentence.
-    deck_values: list[float] = [0.5]  # "half a deck remaining"
+    deck_values: list[float] = [0.5, 0.75]  # "half a deck", "three quarters of a deck"
     deck_values.extend(w + 0.5 for w in range(1, 9))  # "<word> and a half decks remaining"
     deck_values.append(1.0)  # "one deck remaining"
     deck_values.extend(range(2, 9))  # "<word> decks remaining"

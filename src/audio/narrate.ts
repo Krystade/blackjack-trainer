@@ -121,12 +121,17 @@ const DECK_WORDS: Record<number, string> = {
  * two clip vocabularies that can drift.
  */
 export function narrateDecksRemaining(decks: number): string {
+  // Wave O: quarters too -- a two-deck side count snaps the last deck to
+  // quarters, and 0.75 used to be read as "half a deck". Any other fraction
+  // keeps the old reading (a half), as it always did.
   const whole = Math.floor(decks);
-  const isHalf = decks % 1 !== 0;
+  const frac = decks - whole;
   const wholeWord = DECK_WORDS[whole] ?? String(whole);
-  if (whole === 0 && isHalf) return 'half a deck remaining';
-  if (isHalf) return `${wholeWord} and a half decks remaining`;
-  return `${wholeWord} ${whole === 1 ? 'deck' : 'decks'} remaining`;
+  if (frac === 0) return `${wholeWord} ${whole === 1 ? 'deck' : 'decks'} remaining`;
+  if (frac === 0.25) return whole === 0 ? 'a quarter of a deck remaining' : `${wholeWord} and a quarter decks remaining`;
+  if (frac === 0.75) return whole === 0 ? 'three quarters of a deck remaining' : `${wholeWord} and three quarter decks remaining`;
+  if (whole === 0) return 'half a deck remaining';
+  return `${wholeWord} and a half decks remaining`;
 }
 
 /** Sentence-case a spoken fragment, so two of them can be joined. */

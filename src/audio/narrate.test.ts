@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { Card } from '../engine/cards';
+import { snapDecksRemaining, type Card } from '../engine/cards';
 import type { GradedEvent } from '../engine/grade';
 import type { Stats } from '../store/types';
 import { EMPTY_STATS } from '../store/types';
@@ -7,7 +7,7 @@ import {
   narrateCard, narrateCards, narrateTc, narrateAction, narrateBotAction,
   narrateResult, narrateHandResult, narrateCorrection, narrateCountAnswer,
   narrateFlashcardPrompt, narrateQuizPrompt, narrateTotal, narrateStatsSummary,
-  narrateHandPhrase, narrateReason,
+  narrateHandPhrase, narrateReason, narrateDecksRemaining,
 } from './narrate';
 
 const c = (rank: Card['rank'], suit: Card['suit']): Card => ({ rank, suit });
@@ -366,5 +366,45 @@ describe('narrateReason — dealer upcard ranks (bug hunt, 2026-08-17)', () => {
     expect(narrateReason('No index applies here — basic strategy. (near 10,10 v 5: split at TC ≥ +5)')).toContain(
       'a pair of tens versus five',
     );
+  });
+});
+
+describe('Wave O: narrateDecksRemaining — the whole mapping table', () => {
+  // Every depth the drills can reach: snapDecksRemaining's quarters up to one
+  // deck (two-deck shoes) and half steps to eight decks.
+  const TABLE: [number, string][] = [
+    [0.5, 'half a deck remaining'],
+    [0.75, 'three quarters of a deck remaining'],
+    [1, 'one deck remaining'],
+    [1.5, 'one and a half decks remaining'],
+    [2, 'two decks remaining'],
+    [2.5, 'two and a half decks remaining'],
+    [3, 'three decks remaining'],
+    [3.5, 'three and a half decks remaining'],
+    [4, 'four decks remaining'],
+    [4.5, 'four and a half decks remaining'],
+    [5, 'five decks remaining'],
+    [5.5, 'five and a half decks remaining'],
+    [6, 'six decks remaining'],
+    [6.5, 'six and a half decks remaining'],
+    [7, 'seven decks remaining'],
+    [7.5, 'seven and a half decks remaining'],
+    [8, 'eight decks remaining'],
+    [8.5, 'eight and a half decks remaining'],
+    [0.25, 'a quarter of a deck remaining'],
+    [1.25, 'one and a quarter decks remaining'],
+    [1.75, 'one and three quarter decks remaining'],
+  ];
+  it.each(TABLE)('%s -> %s', (d, words) => {
+    expect(narrateDecksRemaining(d)).toBe(words);
+  });
+  it('every depth snapDecksRemaining can produce reads as itself, never a different fraction', () => {
+    for (const decks of [1, 2, 6, 8]) {
+      for (let c = 1; c <= decks * 52; c++) {
+        const d = snapDecksRemaining(c, decks);
+        const row = TABLE.find(([v]) => v === d);
+        expect(row, `depth ${d}`).toBeDefined();
+      }
+    }
   });
 });

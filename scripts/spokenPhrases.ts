@@ -349,7 +349,8 @@ export function spokenSentences(): string[] {
       ...answerEchoSentences(),
       ...drillSentences(),
       // Wave L: the side bet at the table and in its drill.
-      ...sideBetSentences(DECK_DEPTHS).flatMap(splitIntoSentences),
+      // Wave O: a two-deck side count snaps the last deck to quarters (0.75).
+      ...sideBetSentences([0.75, ...DECK_DEPTHS]).flatMap(splitIntoSentences),
     ]),
   ].sort();
 }
