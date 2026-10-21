@@ -607,14 +607,28 @@ export interface SwitchChoice {
  * The switch decision: hands (a, b) and (c, d) as dealt, or (a, d) and (c, b)
  * with the second cards switched. Values summed over both hands, after the peek.
  */
-export function switchChoice(a: number, b: number, c: number, d: number, t: EvTable): SwitchChoice {
-  const keep = switchHandValue(a, b, true, t) + switchHandValue(c, d, true, t);
-  const swap = switchHandValue(a, d, false, t) + switchHandValue(c, b, false, t);
+/** A starting hand's value: (card values, dealt as a natural?, table). */
+export type SwitchHandValue = (v1: number, v2: number, natural: boolean, t: EvTable) => number;
+
+export function switchChoice(
+  a: number,
+  b: number,
+  c: number,
+  d: number,
+  t: EvTable,
+  value: SwitchHandValue = switchHandValue,
+): SwitchChoice {
+  const keep = value(a, b, true, t) + value(c, d, true, t);
+  const swap = value(a, d, false, t) + value(c, b, false, t);
   return { keep, swap, switchIt: swap > keep + 1e-12 };
 }
 
-/** Switch's expected return per unit bet (two equal bets), switching optimally. */
-export function switchReturn(rules: VariantRules): number {
+/**
+ * Switch's expected return per unit bet (two equal bets), switching optimally.
+ * `value` prices each starting hand: the engine's by default; the published
+ * per-hand table in the test that checks this layer on its own.
+ */
+export function switchReturn(rules: VariantRules, value: SwitchHandValue = switchHandValue): number {
   const draw = drawWeights(rules.spanishDeck);
   let total = 0;
   for (const up of draw) {
@@ -634,7 +648,7 @@ export function switchReturn(rules: VariantRules): number {
       for (const b of draw)
         for (const c of draw)
           for (const d of draw) {
-            const ch = switchChoice(a.value, b.value, c.value, d.value, t);
+            const ch = switchChoice(a.value, b.value, c.value, d.value, t, value);
             live += a.p * b.p * c.p * d.p * Math.max(ch.keep, ch.swap);
           }
     total += up.p * (pNat * vsNatural + (1 - pNat) * live);

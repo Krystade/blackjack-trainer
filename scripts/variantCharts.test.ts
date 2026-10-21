@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { generateAll } from '../src/engine/variants/chartGen';
+import { chartRules, generateAll } from '../src/engine/variants/chartGen';
 import { compareAll, upLabel } from '../src/engine/variants/compare';
 import {
   DISAGREEMENT_REASONS,
@@ -12,7 +12,8 @@ import {
   SOURCES,
 } from '../src/engine/variants/published';
 import { PRESETS } from '../src/engine/variants/rules';
-import { roundReturn } from '../src/engine/variants/ev';
+import { evTable, roundReturn, switchReturn } from '../src/engine/variants/ev';
+import type { SwitchHandValue } from '../src/engine/variants/ev';
 
 const JSON_PATH = fileURLToPath(new URL('../src/engine/variants/generated.json', import.meta.url));
 
@@ -69,6 +70,12 @@ describe('variant charts', () => {
     expect(derived.disagreements.filter((d) => d.reason === null).map((d) => d.key)).toEqual([]);
   });
 
+  // Round-2 N-e: the reasons are shown in the app, so they name sources, not repo files.
+  it('no reason shown in the app cites a repo path', () => {
+    const paths = Object.entries(DISAGREEMENT_REASONS).filter(([, r]) => /\.(ts|tsx|py|json|mjs)\b|scripts\/|src\/|header\b/.test(r));
+    expect(paths.map(([k]) => k)).toEqual([]);
+  });
+
   it('every disagreement has a grade: which play the drill grades and the chart shows', () => {
     expect(derived.disagreements.filter((d) => d.grade === null).map((d) => d.key)).toEqual([]);
   });
@@ -98,10 +105,10 @@ describe('variant charts', () => {
 
 /**
  * Review N4 (a): the Switch edge is a property of the switch layer, not only of
- * the engine's own hand values. Fed the Wizard's PUBLISHED per-hand values
- * (appendix 1, six decks), the same keep-or-switch maximisation must land on
- * the published six-deck edge -- so a wrong switch rule fails even where the
- * engine's hand values would hide it.
+ * the engine's own hand values. The engine's switchReturn, fed the Wizard's
+ * PUBLISHED per-hand values (appendix 1, six decks) in place of its own, must
+ * land on the published six-deck edge -- so a wrong switch rule in ev.ts fails
+ * here even where the engine's hand values would hide it.
  */
 describe('Switch layer on the published hand values', () => {
   const table = new Map<string, number[]>();
@@ -118,36 +125,20 @@ describe('Switch layer on the published hand values', () => {
     return String(a + b);
   };
   const VALUES = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
-  const P = (v: number) => (v === 10 ? 4 / 13 : 1 / 13);
-  const value = (x: number, y: number, natural: boolean, col: number) => {
+  // Published columns are dealer 2..10, A.
+  const published: SwitchHandValue = (x, y, natural, t) => {
     const row = table.get(label(x, y, natural));
     if (!row) throw new Error(`no published row for ${label(x, y, natural)}`);
-    return row[col]!;
+    return row[t.upValue === 11 ? 9 : t.upValue - 2]!;
   };
 
   it('every two-card hand has a published row', () => {
-    for (const x of VALUES) for (const y of VALUES) for (const n of [true, false]) expect(() => value(x, y, n, 0)).not.toThrow();
+    const t = evTable(chartRules('switch'), 2);
+    for (const x of VALUES) for (const y of VALUES) for (const n of [true, false]) expect(() => published(x, y, n, t)).not.toThrow();
   });
 
   it(`lands on the published ${PUBLISHED_HOUSE_EDGE.switch.decks}-deck edge (${PUBLISHED_HOUSE_EDGE.switch.edge}%)`, () => {
-    const pBj = 2 * P(10) * P(11);
-    let total = 0;
-    VALUES.forEach((up, col) => {
-      const pNat = up === 11 ? P(10) : up === 10 ? P(11) : 0;
-      // Against a dealer natural both hands lose, but a dealt natural pushes.
-      const vsNatural = -2 * (1 - pBj);
-      let live = 0;
-      for (const a of VALUES)
-        for (const b of VALUES)
-          for (const c of VALUES)
-            for (const d of VALUES) {
-              const keep = value(a, b, true, col) + value(c, d, true, col);
-              const swap = value(a, d, false, col) + value(c, b, false, col);
-              live += P(a) * P(b) * P(c) * P(d) * Math.max(keep, swap);
-            }
-      total += P(up) * (pNat * vsNatural + (1 - pNat) * live);
-    });
-    const edge = (-total / 2) * 100;
+    const edge = -switchReturn(chartRules('switch'), published) * 100;
     // The appendix values are rounded to 4 dp and the edge to 2.
     expect(Math.abs(edge - PUBLISHED_HOUSE_EDGE.switch.edge)).toBeLessThan(0.01);
   });

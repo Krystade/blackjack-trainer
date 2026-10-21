@@ -82,14 +82,23 @@ describe('variant drill grading', () => {
     expect(gradeVariantItem(item, wrong).correct).toBe(false);
   });
 
-  it('a Spanish deck never deals a 10', () => {
+  it('a Spanish deck never deals a 10, to the player or the dealer', () => {
+    const ups = new Set<string>();
     for (let seed = 1; seed <= 500; seed++) {
       for (const p of ['s21-h17', 's21-s17', 's21-h17-rdd'] as const) {
-        expect(drawVariantItem(p, seed).cards.map((x) => x.rank)).not.toContain('10');
+        const item = drawVariantItem(p, seed);
+        expect(item.cards.map((x) => x.rank)).not.toContain('10');
+        expect(item.up).not.toBe('10');
+        ups.add(item.up);
+        // The id names the cell by value: a J, Q or K up is the ten column.
+        if (['J', 'Q', 'K'].includes(item.up)) expect(item.id).toMatch(/\|10(\||$)/);
       }
     }
-    const fb = Array.from({ length: 300 }, (_, i) => drawVariantItem('freebet', i + 1).cards.map((x) => x.rank)).flat();
-    expect(fb).toContain('10');
+    // Ten-value up cards are still dealt, as J, Q and K.
+    expect([...ups].filter((u) => ['J', 'Q', 'K'].includes(u)).sort()).toEqual(['J', 'K', 'Q']);
+    const fb = Array.from({ length: 300 }, (_, i) => drawVariantItem('freebet', i + 1));
+    expect(fb.flatMap((x) => x.cards.map((c) => c.rank))).toContain('10');
+    expect(fb.map((x) => x.up)).toContain('10');
   });
 
   it('grades a right and a wrong answer', () => {

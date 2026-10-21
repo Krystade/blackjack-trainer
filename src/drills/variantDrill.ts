@@ -61,6 +61,21 @@ function pick<T>(xs: readonly T[], rng: () => number): T {
   return xs[Math.floor(rng() * xs.length)]!;
 }
 
+/**
+ * The dealer's up card. A ten-value up card in Spanish 21 is a J, Q or K
+ * (round-2 N-b): the deck has no 10s, for the dealer either. Other games
+ * keep '10' and draw nothing extra, so their seeds deal what they did.
+ */
+function drawUp(rng: () => number): Rank {
+  const up = pick(UPS, rng);
+  return up === '10' && tensInPlay === SPANISH_TENS ? rankFor(10, rng) : up;
+}
+
+/** The up card in an item id: by value, so a J and a K up are the same cell. */
+function upKey(up: Rank): string {
+  return up === 'J' || up === 'Q' || up === 'K' ? '10' : up;
+}
+
 /** Cards of the given values with mixed suits (never a suited 6-7-8 start). */
 function dealCards(values: number[], rng: () => number): Card[] {
   const cards = values.map((v) => ({ rank: rankFor(v, rng), suit: pick(SUITS, rng) }));
@@ -118,7 +133,7 @@ function presetCtx(preset: PresetId, overrides: Partial<PlayContext> = {}): Play
 function twoCardItem(preset: PresetId, kind: 'hand' | 'free', rng: () => number): VariantItem {
   const rules = PRESETS[preset];
   const table = rules.variant === 'freebet' ? (kind === 'free' ? 'free' : 'real') : 'main';
-  const up = pick(UPS, rng);
+  const up = drawUp(rng);
   const avoid = rules.cardBonuses ? ['6,7', '6,8', '7,8'] : [];
   const shape = rng();
   let values: number[];
@@ -145,7 +160,7 @@ function twoCardItem(preset: PresetId, kind: 'hand' | 'free', rng: () => number)
   // A free hand came from a split: no surrender on it.
   const ctx = presetCtx(preset, kind === 'free' ? { canSurrender: false } : {});
   return {
-    id: `${preset}|${kind}|${label}|${up}`,
+    id: `${preset}|${kind}|${label}|${upKey(up)}`,
     preset,
     kind,
     table,
@@ -158,7 +173,7 @@ function twoCardItem(preset: PresetId, kind: 'hand' | 'free', rng: () => number)
 
 function multiCardItem(preset: PresetId, rng: () => number): VariantItem {
   for (;;) {
-    const up = pick(UPS, rng);
+    const up = drawUp(rng);
     const n = 3 + Math.floor(rng() * 3); // 3..5
     const soft = rng() < 0.35;
     const total = soft ? 13 + Math.floor(rng() * 7) : 9 + Math.floor(rng() * 9); // soft 13-19, hard 9-17
@@ -170,7 +185,7 @@ function multiCardItem(preset: PresetId, rng: () => number): VariantItem {
     if (hv.total !== total || hv.soft !== soft) continue;
     const ctx = presetCtx(preset, { canSplit: false, canSurrender: false });
     return {
-      id: `${preset}|multi|${soft ? 'soft' : 'hard'}-${total}|${up}|${n}`,
+      id: `${preset}|multi|${soft ? 'soft' : 'hard'}-${total}|${upKey(up)}|${n}`,
       preset,
       kind: 'multi',
       table: 'main',
@@ -185,7 +200,7 @@ function multiCardItem(preset: PresetId, rng: () => number): VariantItem {
 function afterDoubleItem(preset: PresetId, rng: () => number): VariantItem {
   const rdd = PRESETS[preset].maxDoubles > 1;
   for (;;) {
-    const up = pick(UPS, rng);
+    const up = drawUp(rng);
     // The totals a double can leave a hand on that are worth asking about.
     // 8-17 or 12-17: a doubled 6 or 7 needs a 2,2 or 2,3 double, too rare to drill.
     const total = rdd ? 8 + Math.floor(rng() * 10) : 12 + Math.floor(rng() * 6);
@@ -194,7 +209,7 @@ function afterDoubleItem(preset: PresetId, rng: () => number): VariantItem {
     const cards = values.map((v) => ({ rank: rankFor(v, rng), suit: pick(SUITS, rng) }));
     if (handValue(cards).soft) continue;
     return {
-      id: `${preset}|afterDouble|hard-${total}|${up}`,
+      id: `${preset}|afterDouble|hard-${total}|${upKey(up)}`,
       preset,
       kind: 'afterDouble',
       table: 'main',

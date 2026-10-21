@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { FiniteShoe, FREE_BET_GAME, S21_GAME } from './finiteShoe';
 import type { FiniteGame } from './finiteShoe';
-import { DISAGREEMENT_GRADES } from '../src/engine/variants/published';
+import { DISAGREEMENT_GRADES, DISAGREEMENT_REASONS } from '../src/engine/variants/published';
 import { PRESETS } from '../src/engine/variants/rules';
 import type { PresetId } from '../src/engine/variants/rules';
 import generated from '../src/engine/variants/generated.json' with { type: 'json' };
@@ -82,5 +82,24 @@ describe('the six-deck flips are deck-count effects', () => {
   it('at eight decks the 6-card 15 v 6 goes back to the computed hit', () => {
     const o = new FiniteShoe(H, 8).options([2, 2, 2, 3, 3, 3], 6);
     expect(o.H).toBeGreaterThan(o.S);
+  });
+
+  it('at eight decks the 5-card 14 v 6 goes back to the computed hit', () => {
+    const o = new FiniteShoe(H, 8).options([2, 2, 3, 3, 4], 6);
+    expect(o.H).toBeGreaterThan(o.S);
+  });
+
+  /** Round-2 N-d: the cell notes say so, for exactly those two H17 steps. */
+  it('the cell note names the eight-deck reversion on those cells only', () => {
+    const eight = Object.entries(DISAGREEMENT_REASONS)
+      .filter(([, r]) => r.includes('At eight decks'))
+      .map(([k]) => k)
+      .sort();
+    expect(eight).toEqual([
+      's21-h17-rdd:main:HARD:14:6',
+      's21-h17-rdd:main:HARD:15:6',
+      's21-h17:main:HARD:14:6',
+      's21-h17:main:HARD:15:6',
+    ]);
   });
 });

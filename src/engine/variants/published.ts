@@ -405,13 +405,17 @@ function buildReasons(): { reasons: Record<string, string>; grades: Record<strin
     }
   };
 
+  // The reasons are shown in the app (cell notes, the disagreement list), so
+  // they cite sources by name and never repo paths (round-2 N-e). "A six-deck
+  // calculation" is scripts/finiteShoe.ts, checked in variantFinite.test.ts.
+  //
   // A two-card call the infinite deck makes the other way by a few
   // thousandths. These are the deck-count-sensitive cells: the standard
   // one-deck and six-deck charts in docs/sources/ differ on exactly this kind
   // of soft double too.
   const BORDERLINE =
     'Borderline: under the infinite deck the computed play is better by the margin shown (a few thousandths of a bet); ' +
-    "a six-deck shoe, with the player's own cards removed, tips it the other way (scripts/variantFinite.test.ts). " +
+    "a six-deck calculation, with the player's own cards removed from the shoe, tips it the other way. " +
     'Graded as published; the infinite-deck play is the note.';
   add(BORDERLINE, 'published', [
     'freebet:real:SOFT:16:6',
@@ -439,14 +443,18 @@ function buildReasons(): { reasons: Record<string, string>; grades: Record<strin
     'Card-count step one card earlier than published: an n-card hand of this total is all small cards, and removing them ' +
     'from a real six-deck shoe makes standing or doubling a little better than the infinite deck allows. Every step ' +
     'disagreement goes this one way (computed hits sooner); the margin is what the published step costs under the infinite deck. ' +
-    'A six-deck shoe flips the cells tested to the published step (scripts/variantFinite.test.ts), so the published step is graded.';
+    'A six-deck calculation flips the cells tested to the published step, so the published step is graded.';
+  // Round-2 N-d: two H17 steps are six-deck only. At eight decks the same
+  // calculation goes back to the computed hit (variantFinite.test.ts).
+  const EIGHT_DECKS = (hand: string) =>
+    ` At eight decks the ${hand} goes back to hitting, as computed: at an eight-deck table, hit it.`;
+  add(CARD_STEP + EIGHT_DECKS('5-card 14 v 6'), 'published', ['s21-h17:main:HARD:14:6', 's21-h17-rdd:main:HARD:14:6']);
+  add(CARD_STEP + EIGHT_DECKS('6-card 15 v 6'), 'published', ['s21-h17:main:HARD:15:6', 's21-h17-rdd:main:HARD:15:6']);
   add(CARD_STEP, 'published', [
     's21-h17:main:HARD:9:6',
     's21-h17:main:HARD:10:4',
     's21-h17:main:HARD:14:5',
-    's21-h17:main:HARD:14:6',
     's21-h17:main:HARD:15:4',
-    's21-h17:main:HARD:15:6',
     's21-h17:main:HARD:16:2',
     's21-h17:main:SOFT:15:6',
     's21-h17:main:SOFT:18:6',
@@ -460,9 +468,7 @@ function buildReasons(): { reasons: Record<string, string>; grades: Record<strin
     's21-h17-rdd:main:HARD:8:5',
     's21-h17-rdd:main:HARD:10:4',
     's21-h17-rdd:main:HARD:14:5',
-    's21-h17-rdd:main:HARD:14:6',
     's21-h17-rdd:main:HARD:15:4',
-    's21-h17-rdd:main:HARD:15:6',
     's21-h17-rdd:main:HARD:16:2',
     's21-h17-rdd:main:SOFT:18:6',
   ]);
@@ -488,9 +494,9 @@ function buildReasons(): { reasons: Record<string, string>; grades: Record<strin
   );
 
   add(
-    'Rule assumption: bonuses are not paid on split hands (most casinos, per the Wizard; ev.ts header). With them paid after a ' +
-      'split (bonusAfterSplit, the game as designed) the computed play flips to split, matching the chart -- ' +
-      'variantCharts.test.ts checks that flip. Whether bonuses are paid after a split is the casino\'s rule, so either play is graded right.',
+    'Rule assumption: bonuses are not paid on split hands (most casinos, per the Wizard of Odds). With them paid after a ' +
+      'split (the game as designed) the computed play flips to split, matching the chart. Whether bonuses are paid after a ' +
+      'split is the casino\'s rule, so either play is graded right.',
     'either',
     [
       's21-h17:main:PAIRS:2:2',
@@ -539,8 +545,8 @@ function buildReasons(): { reasons: Record<string, string>; grades: Record<strin
 
   add(
     'Six decks: the Switch page\'s strategy table is for eight decks and adds "If 6 decks are used the player should double 9 ' +
-      'against a 5." The preset is six decks; the infinite deck hits by the margin shown, a six-deck shoe doubles ' +
-      '(scripts/variantFinite.test.ts). Graded as published.',
+      'against a 5." The preset is six decks; the infinite deck hits by the margin shown, a six-deck calculation doubles. ' +
+      'Graded as published.',
     'published',
     ['switch:main:HARD:9:5'],
   );
