@@ -27,7 +27,7 @@ import type { Action } from '../src/engine/deviations';
 import { DEFAULT_RULES } from '../src/engine/ruleset';
 import { drawFlashcard } from '../src/drills/flashcards';
 import { drawQuizItem } from '../src/drills/deviationQuiz';
-import { reachableReasons, drillSentences } from './spokenPhrases';
+import { reachableReasons, drillSentences, indexTestUtterances } from './spokenPhrases';
 import { FIELD_TEST_STEPS } from '../src/diag/fieldTest';
 import { betMissFeedback } from '../src/ui/betFeedback';
 import { DC_LINES, QUEUE_TTS_LINE } from '../src/diag/driveChecks';
@@ -315,6 +315,13 @@ describe('shipped clip coverage', () => {
       const manifest = manifestFor(voice);
       const missing = drillSentences().filter((t) => segmentForClips(t, manifest) === null);
       expect(missing.sort()).toEqual([...NEEDS_RECORDING].sort());
+    });
+
+    it(`Wave O: resolves every prompt and correction the Index test can speak (${voice})`, () => {
+      const manifest = manifestFor(voice);
+      const texts = indexTestUtterances();
+      expect(texts.some((t) => t.endsWith('Index to double?'))).toBe(true);
+      expect(texts.filter((t) => segmentForClips(t, manifest) === null)).toEqual([]);
     });
 
     it(`resolves every true-count drill question (${voice})`, () => {

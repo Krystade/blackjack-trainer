@@ -31,6 +31,9 @@ import type { Card, Rank, Suit } from '../src/engine/cards';
 import { indexSetFor } from '../src/engine/deviations';
 import type { Action } from '../src/engine/deviations';
 import { drawQuizItem } from '../src/drills/deviationQuiz';
+import { indexTestSet, indexTestItemFor, narrateIndexTestPrompt, narrateIndexTestCorrection } from '../src/drills/indexTest';
+import { mulberry32 } from '../src/engine/cards';
+import type { StrategyRules } from '../src/engine/ruleset';
 import {
   narrateBotAction,
   narrateCorrection,
@@ -339,6 +342,33 @@ export function drillSentences(): string[] {
   return [...sentences];
 }
 
+/**
+ * Wave O: every WHOLE utterance the Index test can speak -- its prompt for
+ * every index under every rule variant and training option (the hand's cards
+ * come from an rng, so many draws per index), and both corrections. The full
+ * prompt ("... Index to double?") never had a recording and fell to live TTS.
+ */
+export function indexTestUtterances(): string[] {
+  const out = new Set<string>();
+  const variants: StrategyRules[] = ruleVariants().flatMap((r) => [
+    r,
+    { ...r, surrenderIndices: true },
+    { ...r, bjaExtras: true },
+    { ...r, surrenderIndices: true, bjaExtras: true },
+  ]);
+  for (const rules of variants) {
+    for (const dev of indexTestSet(rules)) {
+      for (let seed = 1; seed <= 40; seed++) {
+        const item = indexTestItemFor(dev, rules, mulberry32(seed));
+        out.add(narrateIndexTestPrompt(item));
+        out.add(narrateIndexTestCorrection(item, true));
+        out.add(narrateIndexTestCorrection(item, false));
+      }
+    }
+  }
+  return [...out];
+}
+
 /** The sorted, de-duplicated list the generator turns into clips. */
 export function spokenSentences(): string[] {
   return [
@@ -348,6 +378,7 @@ export function spokenSentences(): string[] {
       ...voiceSentences(),
       ...answerEchoSentences(),
       ...drillSentences(),
+      ...indexTestUtterances().flatMap(splitIntoSentences),
       // Wave L: the side bet at the table and in its drill.
       // Wave O: a two-deck side count snaps the last deck to quarters (0.75).
       ...sideBetSentences([0.75, ...DECK_DEPTHS]).flatMap(splitIntoSentences),
