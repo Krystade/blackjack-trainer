@@ -193,6 +193,10 @@ describe('OWNED_KEYS', () => {
     // re-sort a list the user is looking at.
     'bjtrainer.casinoUseLocation.v1': 'per-device toggle, read when the ranking opens',
     'bjtrainer.casinoRankSort.v1': 'per-device sort choice, read when the ranking opens',
+    // Wave L: the variant being studied (read when Charts or the drill opens)
+    // and that drill's right/wrong tally, a scoreboard on one screen.
+    'bjtrainer.variant.v1': 'view preference, read when Charts or the variant drill opens',
+    'bjtrainer.variantTally.v1': 'one drill screen scoreboard, last writer wins a count',
   };
 
   /**

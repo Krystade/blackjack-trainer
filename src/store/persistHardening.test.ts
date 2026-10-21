@@ -123,6 +123,20 @@ describe('exportAll — is actually a backup', () => {
     expect(blob.masteryRun).toEqual({ scope: 'pairs', seed: 42, index: 17 });
   });
 
+  it('round-trips the Variant hands tally (practice history), and leaves the variant choice out', () => {
+    store.map.set('bjtrainer.variantTally.v1', JSON.stringify({ switch: { right: 7, wrong: 2 } }));
+    store.map.set('bjtrainer.variant.v1', 'switch');
+    const blob = exportAll();
+    expect(JSON.parse(blob).variantTally).toEqual({ switch: { right: 7, wrong: 2 } });
+    expect(blob).not.toContain('bjtrainer.variant.v1');
+
+    const fresh = memStore();
+    _setStorage(fresh);
+    expect(importAll(blob).ok).toBe(true);
+    expect(JSON.parse(fresh.map.get('bjtrainer.variantTally.v1')!)).toEqual({ switch: { right: 7, wrong: 2 } });
+    expect(fresh.map.has('bjtrainer.variant.v1')).toBe(false);
+  });
+
   it('round-trips the mastery run key back through importAll', () => {
     store.map.set('bjtrainer.profiles.v1', JSON.stringify([{ id: 'p1', name: 'Vegas 6D' }]));
     store.map.set('bjtrainer.activeProfile.v1', 'p1');
@@ -375,6 +389,7 @@ const NOT_BACKED_UP: Record<string, string> = {
     'wave K ranking cache: simulation sums derived from the casino log and the profile, recomputable at any time, and it belongs with the casino data, not the training backup',
   'bjtrainer.casinoUseLocation.v1': 'a per-device yes/no for "Use my location" in the casino ranking',
   'bjtrainer.casinoRankSort.v1': 'which order the casino ranking was last sorted in, on this device',
+  'bjtrainer.variant.v1': 'wave L: which variant chart was last picked, on this device -- a bare id, one tap to choose again',
   'bjtrainer.stats.v1.corrupt':
     'written by the reader, not the app, and already carried verbatim by exportAll when present',
 };

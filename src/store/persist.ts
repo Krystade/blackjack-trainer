@@ -462,6 +462,10 @@ const EXTRA_KEYS: { key: string; field: string }[] = [
   { key: 'bjtrainer.chartOrder.v1', field: 'chartOrder' },
   // Wave N: streaks, daily-goal days and earned achievements (habits/progressStore.ts).
   { key: 'bjtrainer.progress.v1', field: 'progress' },
+  // Wave L: the Variant hands drill's right/wrong tally -- practice history,
+  // backed up like the SR decks. The variant being studied
+  // (bjtrainer.variant.v1) is a device preference and stays out.
+  { key: 'bjtrainer.variantTally.v1', field: 'variantTally' },
 ];
 
 /**

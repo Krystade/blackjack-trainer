@@ -718,7 +718,6 @@
     "Check eight, mute. When it is safe, press the Mute button at the top of the screen. It keeps talking until you do.": "check-eight-mute-when-it-is-safe-press-the-mute-button-at-the-top-of-the-screen-it-keeps-talking-until-you-do.mp3",
     "One hand.": "one-hand.mp3",
     "Two hands.": "two-hands.mp3",
-    "Watching.": "watching.mp3",
     "In.": "in.mp3",
     "Out.": "out.mp3",
     "Daily goal done.": "daily-goal-done.mp3",
@@ -822,6 +821,18 @@
     "Ninety-seven days in a row.": "ninety-seven-days-in-a-row.mp3",
     "Ninety-eight days in a row.": "ninety-eight-days-in-a-row.mp3",
     "Ninety-nine days in a row.": "ninety-nine-days-in-a-row.mp3",
-    "One hundred days in a row.": "one-hundred-days-in-a-row.mp3"
+    "One hundred days in a row.": "one-hundred-days-in-a-row.mp3",
+    "Basic surrender versus dealer eight.": "basic-surrender-versus-dealer-eight.mp3",
+    "Basic surrender versus dealer five.": "basic-surrender-versus-dealer-five.mp3",
+    "Basic surrender versus dealer four.": "basic-surrender-versus-dealer-four.mp3",
+    "Basic surrender versus dealer seven.": "basic-surrender-versus-dealer-seven.mp3",
+    "Basic surrender versus dealer six.": "basic-surrender-versus-dealer-six.mp3",
+    "Basic surrender versus dealer three.": "basic-surrender-versus-dealer-three.mp3",
+    "Basic surrender versus dealer two.": "basic-surrender-versus-dealer-two.mp3",
+    "Doubled.": "doubled.mp3",
+    "Five cards.": "five-cards.mp3",
+    "Four cards.": "four-cards.mp3",
+    "Free hand.": "free-hand.mp3",
+    "Three cards.": "three-cards.mp3"
   }
 }

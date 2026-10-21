@@ -25,6 +25,11 @@ import {
   rulesetSummary,
 } from './chartRows';
 import type { ChartHighlight, ChartSection, RowOrder } from './chartRows';
+import { VariantCharts } from './VariantCharts';
+import { loadVariantChoice, saveVariantChoice } from '../../drills/variantDrill';
+import type { VariantChoice } from '../../drills/variantDrill';
+import { DEFAULT_PRESET, PRESETS, VARIANT_LABEL } from '../../engine/variants/rules';
+import type { ChartVariant } from '../../engine/variants/rules';
 
 export type { ChartHighlight, ChartSection, RowOrder } from './chartRows';
 export { highlightForHand } from './chartRows';
@@ -311,6 +316,19 @@ export function Charts({
   const [modeChoice, setModeChoice] = useState<'chart' | 'test'>('chart');
   const mode = canTest ? modeChoice : 'chart';
 
+  // Wave L: Free Bet / Spanish 21 / Switch. Only on the Charts screen itself;
+  // the study overlay and the first-run intro always show the standard chart
+  // the trainer graded with.
+  const canPickVariant = backPlacement === 'topbar';
+  const [variantChoice, setVariantChoice] = useState<VariantChoice>(() => loadVariantChoice());
+  const shownVariant: VariantChoice = canPickVariant ? variantChoice : 'standard';
+  const chooseVariant = (next: VariantChoice) => {
+    setVariantChoice(next);
+    saveVariantChoice(next);
+  };
+  const variantOf = (choice: VariantChoice): ChartVariant =>
+    choice === 'standard' ? 'standard' : PRESETS[choice].variant;
+
   const goBack = () => (onBack ? onBack() : onNavigate('home'));
   const backText = backTextProp ?? `Back to ${backLabel ?? 'Home'}`;
 
@@ -335,6 +353,29 @@ export function Charts({
       </div>
       {backPlacement === 'floating' && <FloatingBackPill label={backText} onClick={goBack} />}
 
+      {canPickVariant && (
+        <div className="charts-modes variant-picker" role="group" aria-label="Game" data-testid="variant-picker">
+          {(['standard', 'freebet', 'spanish21', 'switch'] as const).map((v) => (
+            <button
+              key={v}
+              type="button"
+              className="charts-mode-btn"
+              aria-pressed={variantOf(shownVariant) === v}
+              onClick={() =>
+                chooseVariant(
+                  v === 'standard' ? 'standard' : variantOf(shownVariant) === v ? shownVariant : DEFAULT_PRESET[v],
+                )
+              }
+            >
+              {VARIANT_LABEL[v]}
+            </button>
+          ))}
+        </div>
+      )}
+      {shownVariant !== 'standard' ? (
+        <VariantCharts preset={shownVariant} order={order} onPreset={chooseVariant} />
+      ) : (
+      <>
       <p className="charts-ruleset">{rulesetSummary(activeProfile.rules)}</p>
       {canTest && (
         <div className="charts-modes" role="group" aria-label="Charts mode">
@@ -588,6 +629,8 @@ export function Charts({
             ))}
           </section>
         </>
+      )}
+      </>
       )}
     </div>
   );
