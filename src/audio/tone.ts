@@ -221,12 +221,17 @@ export function toneDataUri(spec: ToneSpec, peak = 1, endHz?: number): string {
  */
 const cache = new Map<string, string>();
 
-export function cachedToneDataUri(spec: ToneSpec, endHz?: number): string {
+export function cachedToneDataUri(spec: ToneSpec, endHz?: number, peak = 1): string {
   const earcon = asEarcon(spec, endHz);
-  const key = JSON.stringify(earcon);
+  // The level is BAKED INTO THE SAMPLES (Wave M): iOS ignores
+  // `HTMLMediaElement.volume`, so an element-levelled tone played at full
+  // scale there whatever the setting said. Quantised so a slider does not
+  // grow the cache without bound.
+  const q = Math.round(Math.min(1, Math.max(0, peak)) * 1000) / 1000;
+  const key = `${q}|${JSON.stringify(earcon)}`;
   const hit = cache.get(key);
   if (hit !== undefined) return hit;
-  const built = toneDataUri(earcon, 1);
+  const built = toneDataUri(earcon, q);
   cache.set(key, built);
   return built;
 }

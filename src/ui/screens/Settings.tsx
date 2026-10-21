@@ -21,7 +21,7 @@ import {
 } from '../../audio/clips';
 import { micSessionCostPaid } from '../../audio/micSessionCost';
 import { TEST_AUDIO_LINE } from '../../audio/narrate';
-import { MAX_VOLUME, effectiveVolume } from '../../audio/volume';
+import { DEFAULT_CHIME_LEVEL, MAX_VOLUME, effectiveVolume } from '../../audio/volume';
 import {
   readVoiceHistory,
   clearVoiceHistory,
@@ -281,6 +281,21 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
           onChange={(v) => updateAudio({ volume: v })}
           disabled={audioDisabled}
         />
+        {/* Wave M: "Chimes way too loud" from the freeway drive. 100% is the
+            old level; the 35% default is measured (audio/volume.ts). */}
+        <Stepper
+          label="Chime volume"
+          value={settings.audio.chimeVolume ?? DEFAULT_CHIME_LEVEL}
+          min={0}
+          max={1}
+          step={0.05}
+          format={(v) => `${Math.round(v * 100)}%`}
+          onChange={(v) => {
+            updateAudio({ chimeVolume: v });
+            chime('good', { volume: effectiveVolume(settings.audio), level: v });
+          }}
+          disabled={audioDisabled}
+        />
         {settings.audio.volume > 1 && (
           <div className="settings-note-row u-note">
             Above 100% raises the alert tones only. Neither voice can go past 100% on
@@ -440,7 +455,7 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
                   voiceURI: settings.audio.voiceURI,
                   volume: effectiveVolume(settings.audio),
                 });
-                chime('good', { volume: effectiveVolume(settings.audio) });
+                chime('good', { volume: effectiveVolume(settings.audio), level: settings.audio.chimeVolume });
               }}
             >
               Test audio

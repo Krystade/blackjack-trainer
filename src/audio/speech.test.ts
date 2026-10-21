@@ -2,17 +2,18 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { _resetQuietWaitersForTest } from './speechActivity';
 import { readDiagnosticLog, clearDiagnosticLog } from '../diag/diagnosticLog';
 import { _resetClipsForTest } from './clips';
-import { _resetToneCacheForTest } from './tone';
+import { _resetToneCacheForTest, earconSamples } from './tone';
 import { _resetAudioSessionForTest } from './audioSession';
+import { DEFAULT_CHIME_LEVEL } from './volume';
 import {
-  speak, speakAsync, chime, chimeFrequencyForTest, isSpeechSupported, listVoices, cancelSpeech, pickBestVoice,
+  speak, speakAsync, chime, chimeFrequencyForTest, chimeEarconForTest, isSpeechSupported, listVoices, cancelSpeech, pickBestVoice,
   getLastSpoken, repeatLast, _resetLastSpokenForTest, _resetSharedAudioContextForTest,
   lastSpeechPath, _resetSpeechPathForTest,
   setSpeechActivityListener,
   chimeWhenQuiet,
   CUE_WAIT_CEILING_MS,
   primeVoices, _resetVoiceCacheForTest,
-  _resetSpeakQueueForTest,
+  _resetSpeakQueueForTest, isAppSpeaking,
 } from './speech';
 
 describe('speech wrapper — absence guards (no browser APIs in jsdom/node)', () => {
@@ -446,12 +447,26 @@ describe('speak()/speakAsync() — opts.volume', () => {
     expect(spoken[0].volume).toBe(0.4);
   });
 
-  it('applies a volume of 0 (silence is a real setting, not "unset")', () => {
-    // The rate path guards with a truthiness check, which would silently drop
-    // a 0 here — volume must be presence-checked instead.
-    const spoken = installFakeSpeechEnv([]);
-    speak('hello', { volume: 0 });
-    expect(spoken[0].volume).toBe(0);
+  it('volume 0 (mute) starts NO utterance, but still occupies its length', () => {
+    // Presence-checked, not truthiness: a 0 must not fall through to the
+    // engine default. Since Wave M a muted line is not spoken at volume 0 at
+    // all -- iOS ignores element volume, so "0" was full level there.
+    vi.useFakeTimers();
+    try {
+      _resetSpeakQueueForTest();
+      clearDiagnosticLog();
+      const spoken = installFakeSpeechEnv([]);
+      let ended = false;
+      speak('hello', { volume: 0, onEnd: () => (ended = true) });
+      expect(spoken).toHaveLength(0);
+      expect(readDiagnosticLog().some((e) => e.detail?.path === 'muted')).toBe(true);
+      expect(isAppSpeaking()).toBe(true);
+      expect(ended).toBe(false);
+      vi.advanceTimersByTime(10_000);
+      expect(ended).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('leaves the utterance volume untouched when none is given (engine default)', () => {
@@ -495,6 +510,23 @@ class FakeChimeElement {
   }
 }
 
+/** Peak |sample| of a 16-bit mono WAV data URI, full scale = 1. */
+function wavPeak(uri: string): number {
+  const bin = atob(uri.slice(uri.indexOf(',') + 1));
+  let peak = 0;
+  for (let i = 44; i + 1 < bin.length; i += 2) {
+    let v = bin.charCodeAt(i) | (bin.charCodeAt(i + 1) << 8);
+    if (v >= 0x8000) v -= 0x10000;
+    peak = Math.max(peak, Math.abs(v) / 32767);
+  }
+  return peak;
+}
+
+/** The peak the app's own renderer gives a kind at a requested peak. */
+function earconPeak(kind: 'good', peak: number): number {
+  return earconSamples(chimeEarconForTest(kind), peak).reduce((m, v) => Math.max(m, Math.abs(v)), 0);
+}
+
 describe('chime() — volume', () => {
   afterEach(() => {
     _resetClipsForTest();
@@ -521,20 +553,21 @@ describe('chime() — volume', () => {
     return made;
   }
 
-  it("scales the tone's level by opts.volume", () => {
+  // Wave M: the level is BAKED INTO THE SAMPLES and the element stays at 1,
+  // because iOS ignores HTMLMediaElement.volume.
+  it("scales the tone's level by opts.volume, in the samples", () => {
     const made = installFakeChimeElements();
-    chime('good', { volume: 0.5 });
+    chime('good', { volume: 0.5, level: 1 });
     expect(made.length, 'no element was asked to play the tone').toBe(1);
-    expect(made[0]!.volume).toBeCloseTo(0.25, 5);
+    expect(made[0]!.volume).toBe(1);
+    expect(wavPeak(made[0]!.src)).toBeCloseTo(earconPeak('good', 0.25), 2);
     expect(made[0]!.played).toBe(true);
   });
 
-  // The peak was 0.3 for most of this app's life. Half scale at full volume
-  // keeps a beep from being as loud as a voice, which in a car is startling.
-  it('uses the full-volume peak when no volume is given', () => {
+  it('uses half scale x the Chime volume default when nothing is given', () => {
     const made = installFakeChimeElements();
     chime('good');
-    expect(made[0]!.volume).toBeCloseTo(0.5, 5);
+    expect(wavPeak(made[0]!.src)).toBeCloseTo(earconPeak('good', 0.5 * DEFAULT_CHIME_LEVEL), 2);
   });
 
   // The headroom above 100% reaches the chime and nothing else, which is the
@@ -542,9 +575,9 @@ describe('chime() — volume', () => {
   // element throws above 1, so it has to saturate rather than overshoot.
   it('rings louder at the boost ceiling, but never above full scale', () => {
     const made = installFakeChimeElements();
-    chime('good', { volume: 2 });
-    expect(made[0]!.volume).toBeGreaterThan(0.5);
-    expect(made[0]!.volume).toBeLessThanOrEqual(1);
+    chime('good', { volume: 2, level: 1 });
+    expect(wavPeak(made[0]!.src)).toBeGreaterThan(0.5);
+    expect(wavPeak(made[0]!.src)).toBeLessThanOrEqual(1);
   });
 
   it('plays a real sound rather than an empty source', () => {
@@ -646,9 +679,9 @@ describe('last-utterance tracking', () => {
     // volume, while the app was muted. Muting is implemented AS volume zero,
     // so this is the mute switch failing, not a cosmetic difference.
     const spoken = installFakeSpeechEnv([]);
-    speak('You have sixteen.', { volume: 0, rate: 1.4 });
+    speak('You have sixteen.', { volume: 0.2, rate: 1.4 });
     expect(repeatLast()).toBe(true);
-    expect(spoken[1].volume).toBe(0);
+    expect(spoken[1].volume).toBe(0.2);
     expect(spoken[1].rate).toBe(1.4);
   });
 

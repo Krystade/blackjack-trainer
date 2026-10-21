@@ -81,6 +81,31 @@ export function utteranceVolume(v: number): number {
   return Math.min(1, clampVolume(v));
 }
 
+/**
+ * The default Chime volume: 35% of the chime's old level (Wave M, 2026-10-20,
+ * "Chimes way too loud" after the freeway drive).
+ *
+ * MEASURED, not picked: scratchpad waveL/fix-tools/chime-level.mts renders
+ * every earcon with tone.ts and decodes 21 speech clips (3 voices) with
+ * ffmpeg. Speech: median active RMS 0.114 (-18.9 dBFS), median peak 0.49.
+ * The old level (peak 0.5) put every chime 4.0-8.3 dB ABOVE speech RMS -- and
+ * on the iOS element path, where `.volume` is ignored, the tone played at
+ * peak 1.0, another +6 dB. At 0.35 every kind sits 0.8-5.1 dB below speech
+ * RMS (turn -0.8, ready -1.4, heard -2.7, good -3.3, bad -5.1) with peaks of
+ * 0.11-0.18, about 9 dB under the voice's.
+ */
+export const DEFAULT_CHIME_LEVEL = 0.35;
+
+export function clampChimeLevel(v: number): number {
+  if (!Number.isFinite(v)) return DEFAULT_CHIME_LEVEL;
+  return Math.min(1, Math.max(0, v));
+}
+
+/** The chime's peak for a master volume and a Chime volume level. 0 = silent. */
+export function chimeLevelPeak(volume: number, level: number): number {
+  return Math.min(1, chimePeak(volume) * clampChimeLevel(level));
+}
+
 /** Chime envelope peak, kept inside full scale so the tone cannot clip. */
 export function chimePeak(v: number): number {
   return Math.min(1, CHIME_PEAK_GAIN * clampVolume(v));

@@ -26,6 +26,8 @@ import { diag } from '../diag/diagnosticLog';
 import { invokeWheelCommand, type WheelCommand } from '../audio/wheelCommands';
 import { releaseAudioFocus } from '../audio/audioFocus';
 import { installAudioUnlock } from '../audio/unlock';
+import { setChimeLevels } from '../audio/speech';
+import { effectiveVolume } from '../audio/volume';
 import { installAudioContextKeepAlive } from '../audio/audioContext';
 import { useActivityLive } from './activityLive';
 import { mayLeave } from './leaveGuard';
@@ -213,6 +215,11 @@ function App() {
    * lands, before any drill has begun.
    */
   useEffect(() => installAudioUnlock(), []);
+  // Chimes that pass no options (turn, heard, the field test) read these, so
+  // mute and Chime volume reach every chime path, not just useAudio's.
+  useEffect(() => {
+    setChimeLevels(effectiveVolume(settings.audio), settings.audio.chimeVolume);
+  }, [settings.audio]);
   useEffect(() => installAudioContextKeepAlive(), []);
 
   // Give the car's media slot back when there is nothing here to control.
