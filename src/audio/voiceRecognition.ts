@@ -526,7 +526,7 @@ export type SpokenMatch = {
  *
  * Not in ALIASES on purpose. An alias also counts as a token inside a longer
  * sentence and lets a RUNNER-UP rescue the winner; these are ordinary English
- * ("spot", "let me"), so they are trusted only when they are everything the
+ * ("spot", "play them"), so they are trusted only when they are everything the
  * engine heard, and only as its first choice. "Spot" in particular is one
  * edit from both split and repeat, and as a runner-up it must still not play
  * a hand (the 2026-10-05 "But"/"Spot" test) -- but as the whole winner it
@@ -540,13 +540,18 @@ export type SpokenMatch = {
  *   "thank you"                    -- a real thing to say to a voice app
  *   "dead man", "please head back" -- unclear what was asked; could be anything
  *   "register"                     -- no context says which command
+ *   "let me"                       -- a hesitation ("let me... think") that
+ *                                     iOS finalises at the pause, so the whole
+ *                                     winner can be "Let me" with no hit meant
+ *
+ * And a misheard winner never outvotes a runner-up that says a different
+ * command outright (see resolveSpoken).
  */
 export const MISHEARD_FORMS: Readonly<Record<string, VoiceAction>> = {
   spot: 'split',
   'play them': 'split',
   'hate me': 'hit',
   'teach me': 'hit',
-  'let me': 'hit',
   'settle down': 'double',
 };
 
@@ -584,7 +589,20 @@ export function resolveSpoken(transcripts: readonly string[]): SpokenMatch | nul
 
   const cleanedTop = normalise(top);
   const misheard = MISHEARD_FORMS[cleanedTop.replace(/\s+/g, ' ')];
-  if (misheard) return { action: misheard, via: 'misheard' };
+  if (misheard) {
+    /*
+     * A misheard form is weaker evidence than a command said outright, so it
+     * may not outvote one. If ANY runner-up names a different command (or
+     * several), the engine itself is undecided: ["Hate me", "Stand"] is as
+     * likely a stand as a hit. Same convention as a winner naming two
+     * commands -- not evidence for either, ask again.
+     */
+    const contested = rest.some((alt) => {
+      const read = classify(alt);
+      return read === 'conflict' || (read !== null && read !== misheard);
+    });
+    return contested ? null : { action: misheard, via: 'misheard' };
+  }
   if (!isShort(cleanedTop)) return null;
 
   const shortRest = rest.map(normalise).filter(isShort);

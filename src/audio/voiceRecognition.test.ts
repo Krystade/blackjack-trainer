@@ -757,8 +757,26 @@ describe('misheard forms from the btf drive', () => {
     expect(resolveSpoken(['Play them'])).toEqual({ action: 'split', via: 'misheard' });
     expect(resolveSpoken(['Hate me'])).toEqual({ action: 'hit', via: 'misheard' });
     expect(resolveSpoken(['Teach me.'])).toEqual({ action: 'hit', via: 'misheard' });
-    expect(resolveSpoken(['Let me'])).toEqual({ action: 'hit', via: 'misheard' });
     expect(resolveSpoken(['Settle down'])).toEqual({ action: 'double', via: 'misheard' });
+    // A runner-up agreeing (or saying nothing) leaves it standing.
+    expect(resolveSpoken(['Hate me', 'Hit me'])).toEqual({ action: 'hit', via: 'misheard' });
+    expect(resolveSpoken(['Spot', 'Spit', 'Split'])).toEqual({ action: 'split', via: 'misheard' });
+  });
+
+  it('never outvotes a runner-up that says a different command outright', () => {
+    // The engine is undecided between them: ask again, as for a winner naming two commands.
+    expect(resolveSpoken(['Hate me', 'Stand'])).toBe(null);
+    expect(resolveSpoken(['Spot', 'Stand'])).toBe(null);
+    expect(resolveSpoken(['Settle down', 'Surrender'])).toBe(null);
+    expect(resolveSpoken(['Teach me', 'Spit', 'Double'])).toBe(null);
+    expect(resolveSpoken(['Play them', 'Hit or stand'])).toBe(null);
+  });
+
+  it('does not take "let me": a hesitation iOS finalises at the pause', () => {
+    expect(MISHEARD_FORMS['let me']).toBeUndefined();
+    expect(resolveSpoken(['Let me'])).toBe(null);
+    // Now an ordinary short winner: a runner-up that says a command rescues it as before.
+    expect(resolveSpoken(['Let me', 'Stand pat'])).toEqual({ action: 'stand', via: 'alternative' });
   });
 
   it('never as a runner-up, and never inside a longer sentence', () => {
