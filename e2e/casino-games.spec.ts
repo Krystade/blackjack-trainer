@@ -19,7 +19,11 @@ const KEY = 'bjtrainer.casinoLog.v2';
 const STATS_KEY = 'bjtrainer.casinoGameStats.v1';
 const AT = '2026-10-01T00:00:00.000Z';
 
-const good = { id: 'g-good', decks: 6, s17: false, das: true, surrender: true, payout: '3:2', cutDecksLeft: 1, minBet: 25, maxBet: 1000, midShoeEntry: 'allowed', csm: false };
+// Wave M: every rule logged, including the split / double rules added then, so nothing is "Assumed".
+const good = {
+  id: 'g-good', decks: 6, s17: false, das: true, surrender: true, payout: '3:2', cutDecksLeft: 1, minBet: 25, maxBet: 1000, midShoeEntry: 'allowed', csm: false,
+  rsa: false, doubleSplitAces: false, maxSplitHands: 4, doubleOn: 'any2',
+};
 const csm = { id: 'g-csm', label: 'CSM pit', decks: 6, s17: false, das: true, surrender: false, payout: '6:5', cutDecksLeft: null, minBet: 15, maxBet: null, midShoeEntry: 'unknown', csm: true };
 const deep = { id: 'g-deep', decks: 2, s17: true, das: true, surrender: false, payout: '3:2', cutDecksLeft: 0.75, minBet: 25, maxBet: 500, midShoeEntry: 'no', csm: false };
 const base = { notes: '', createdAt: AT, updatedAt: AT, status: 'ok' };
