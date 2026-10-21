@@ -277,9 +277,8 @@ test('a finished session can be edited and deleted, and the figures follow', asy
   await page.goto('/?e2e=1');
   await openCasino(page);
   // Exported yesterday: no nudge. The row warns about no mid-shoe entry.
-  // The row first: Casino is lazy, and before it mounts the nudge is absent too.
-  await expect(page.getByTestId('casino-row').getByTestId('warn-badge')).toHaveText('No mid-shoe');
   await expect(page.getByTestId('casino-export-nudge')).toHaveCount(0);
+  await expect(page.getByTestId('casino-row').getByTestId('warn-badge')).toHaveText('No mid-shoe');
   await expect(page.getByTestId('casino-row')).toContainText('3 days ago');
   await expect(page.getByTestId('casino-net')).toHaveText('+$300');
 
