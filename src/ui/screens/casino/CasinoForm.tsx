@@ -24,7 +24,7 @@ import {
   standing,
   totals,
 } from '../../casinoFigures';
-import { Choice, DeleteButton, Field, HeatBadge } from './fields';
+import { Choice, DeleteButton, Field, FieldGroup, HeatBadge } from './fields';
 import { GameEditor } from './GameEditor';
 import { gameText, type GameText } from './casinoInputs';
 import { NotesEditor } from './NotesEditor';
@@ -59,6 +59,7 @@ export function CasinoForm({
     Object.fromEntries((existing?.games ?? draft.games).map((g) => [g.id, gameText(g)])),
   );
   const [drive, setDrive] = useState(() => (existing?.driveMinutes === null || existing?.driveMinutes === undefined ? '' : String(existing.driveMinutes)));
+  const [milesText, setMilesText] = useState(() => (existing?.miles === null || existing?.miles === undefined ? '' : String(existing.miles)));
   const [touched, setTouched] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [locMsg, setLocMsg] = useState<string | null>(null);
@@ -126,6 +127,11 @@ export function CasinoForm({
       setError('Drive time is minutes, one way. Fix or clear it.');
       return;
     }
+    const miles = milesText.trim() === '' ? null : Number(milesText);
+    if (miles !== null && !(Number.isFinite(miles) && miles >= 0 && miles <= 5000)) {
+      setError('Miles is a distance, one way. Fix or clear it.');
+      return;
+    }
     const games: CasinoGame[] = [];
     for (const g of draft.games) {
       const t = texts[g.id] ?? gameText(g);
@@ -133,15 +139,26 @@ export function CasinoForm({
       const maxBet = parseMoney(t.maxBet);
       const cut = parseMoney(t.cut);
       const rph = parseMoney(t.roundsPerHour);
-      if ([minBet, maxBet, cut, rph].some((n) => Number.isNaN(n)) || (rph !== null && (rph < 1 || rph > 1000))) {
-        setError('Bets are dollar amounts, the cut a number of decks and rounds per hour a count. Fix or clear them.');
+      const fee = parseMoney(t.commission ?? '');
+      if ([minBet, maxBet, cut, rph, fee].some((n) => Number.isNaN(n)) || (rph !== null && (rph < 1 || rph > 1000)) || (fee !== null && fee > 25)) {
+        setError('Bets are dollar amounts, the cut a number of decks, rounds per hour a count and commission dollars per $100. Fix or clear them.');
         return;
       }
-      games.push({ ...g, minBet, maxBet, cutDecksLeft: cut, roundsPerHour: rph, label: g.label?.trim() || undefined, notes: g.notes?.trim() ? g.notes : undefined });
+      games.push({
+        ...g,
+        minBet,
+        maxBet,
+        cutDecksLeft: cut,
+        roundsPerHour: rph,
+        commissionPer100: fee,
+        label: g.label?.trim() || undefined,
+        variantName: g.variantName?.trim() || undefined,
+        notes: g.notes?.trim() ? g.notes : undefined,
+      });
     }
     // The notes save themselves on this page; take the stored copy, not the one this form opened with.
     const notes = existing ? (casinoById(log, existing.id)?.notes ?? '') : draft.notes;
-    const r = saveCasino(log, { ...draft, games, driveMinutes, notes }, Date.now(), id ?? undefined);
+    const r = saveCasino(log, { ...draft, games, driveMinutes, miles, notes }, Date.now(), id ?? undefined);
     if (!r) {
       setError('Give the casino a name.');
       return;
@@ -183,6 +200,34 @@ export function CasinoForm({
               value={drive}
               onChange={(e) => {
                 setDrive(e.target.value);
+                setTouched(true);
+              }}
+            />
+          </Field>
+        </div>
+        {/* Wave M: card rooms (California, player-banked, commission) and miles from home. */}
+        <div className="cas-pair">
+          <FieldGroup label="Kind">
+            <Choice
+              label="Kind"
+              value={draft.kind ?? 'casino'}
+              options={[
+                { value: 'casino', label: 'Casino' },
+                { value: 'cardroom', label: 'Card room' },
+              ]}
+              onChange={(v) => update({ kind: v })}
+            />
+          </FieldGroup>
+          <Field label="Miles, one way">
+            <input
+              className="cas-input"
+              name="miles"
+              inputMode="decimal"
+              autoComplete="off"
+              placeholder="From home"
+              value={milesText}
+              onChange={(e) => {
+                setMilesText(e.target.value);
                 setTouched(true);
               }}
             />

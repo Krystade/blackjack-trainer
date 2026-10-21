@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { CasinoLog } from '../../../store/casinoLog';
 import { methodBadge } from '../../../engine/betMethods';
-import { labelledSummary } from '../../casinoFigures';
+import { kindBadge, labelledSummary } from '../../casinoFigures';
 import { buildRanking, needsCompute, type RankRow, type RankSort } from '../../casinoRanking';
 import { ciText, evHourText, n0Text, pctText, roundsText } from '../../casinoStatsText';
 import { Choice } from './fields';
@@ -167,6 +167,11 @@ function RankItem({ row, place, sort, running, onOpen }: { row: RankRow; place: 
             </span>
           )}
           {row.greyed && <span className="cas-badge">Avoid</span>}
+          {kindBadge(row.casino) && (
+            <span className="cas-badge" data-tone="info" data-testid="kind-badge">
+              {kindBadge(row.casino)}
+            </span>
+          )}
           {sort === 'trip' && f && row.tripEv === null && <span className="cas-badge">No drive time</span>}
           {row.warns.map((w) => (
             <span key={w} className="cas-badge" data-tone="warn" data-testid="warn-badge">

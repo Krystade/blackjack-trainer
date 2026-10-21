@@ -64,4 +64,10 @@ export const ASSUMED_TEXT: Record<AssumedField, string> = {
   payout: 'blackjack pays 6:5',
   cut: 'cut 1.5 decks from the end',
   minBet: 'min bet = your profile unit',
+  // Wave M
+  rsa: 'no resplitting aces',
+  doubleSplitAces: 'no doubling split aces',
+  maxSplitHands: 'split to 2 hands only',
+  doubleOn: 'double on 10-11 only',
+  commission: 'commission $1 per $100 (card room)',
 };

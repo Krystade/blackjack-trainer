@@ -64,8 +64,9 @@ const LEGACY_CORRUPT_KEY = `${LEGACY_CASINO_LOG_KEY}.corrupt`;
 
 // ---------------------------------------------------------------- types
 
-export type DeckCount = 1 | 2 | 6 | 8;
-export const DECK_COUNTS: readonly DeckCount[] = [1, 2, 6, 8];
+// Wave M: 4 and 5 added (The Gardens deals four decks from a CSM).
+export type DeckCount = 1 | 2 | 4 | 5 | 6 | 8;
+export const DECK_COUNTS: readonly DeckCount[] = [1, 2, 4, 5, 6, 8];
 
 export type MidShoeEntry = 'allowed' | 'no' | 'unknown';
 export type CasinoStatus = 'ok' | 'avoid' | 'burned';
@@ -103,13 +104,39 @@ export interface CasinoGame {
   /** Rounds dealt per hour at this game; absent = DEFAULT_ROUNDS_PER_HOUR. */
   roundsPerHour?: number | null;
   notes?: string;
+  // ---- Wave M (lane m): the owner's real notes. All optional; null/absent = not known.
+  /** Resplit aces. */
+  rsa?: boolean | null;
+  /** Double down on split aces. */
+  doubleSplitAces?: boolean | null;
+  /** Most hands one original hand can be split into. */
+  maxSplitHands?: 2 | 3 | 4 | null;
+  /** Which first two cards may be doubled: any two, hard 9-11, hard 10-11. */
+  doubleOn?: 'any2' | '9-11' | '10-11' | null;
+  /** California card rooms: dollars collected per $100 wagered, per hand. */
+  commissionPer100?: number | null;
+  /** Free text, e.g. "21st Century Blackjack". */
+  variantName?: string;
+  /** Field names the owner marked with "?": shown with a "?", value kept. */
+  unsure?: string[];
+  // ---- end Wave M
 }
 
 /** Rounds an hour when a game does not say: a typical shoe game with a few players. */
 export const DEFAULT_ROUNDS_PER_HOUR = 80;
 
 /** The game's rules as the summary and the simulator read them. */
-export type GameRules = Pick<CasinoGame, 'decks' | 's17' | 'das' | 'surrender' | 'payout' | 'cutDecksLeft'>;
+export type GameRules = Pick<CasinoGame, 'decks' | 's17' | 'das' | 'surrender' | 'payout' | 'cutDecksLeft'> &
+  Partial<Pick<CasinoGame, WaveMGameField | 'unsure'>>;
+
+/** Wave M: the game fields added for the owner's notes (see CasinoGame). */
+export type WaveMGameField = 'rsa' | 'doubleSplitAces' | 'maxSplitHands' | 'doubleOn' | 'commissionPer100' | 'variantName';
+
+/** Every field name `unsure` may hold. */
+export const UNSURE_FIELDS = [
+  'decks', 's17', 'das', 'surrender', 'payout', 'cutDecksLeft', 'minBet', 'maxBet', 'midShoeEntry', 'csm',
+  'rsa', 'doubleSplitAces', 'maxSplitHands', 'doubleOn', 'commissionPer100',
+] as const;
 
 export interface GeoPoint {
   lat: number;
@@ -126,6 +153,12 @@ export interface Casino {
   driveMinutes?: number | null;
   /** Saved with "Save this spot" while standing there; never captured otherwise. */
   location?: GeoPoint | null;
+  // ---- Wave M (lane m)
+  /** A California card room (player-banked, commission) or a casino; absent = casino. */
+  kind?: 'casino' | 'cardroom';
+  /** One way from home, in miles. */
+  miles?: number | null;
+  // ---- end Wave M
   status: CasinoStatus;
   /** Local date (YYYY-MM-DD) the cool-off ends; null = indefinitely. Only read when burned. */
   burnedUntil?: string | null;
@@ -274,7 +307,7 @@ function boolOrNull(x: unknown): boolean | null {
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
-function normRules(g: Record<string, unknown>): Required<GameRules> {
+function normRules(g: Record<string, unknown>): Required<Pick<GameRules, 'decks' | 's17' | 'das' | 'surrender' | 'payout' | 'cutDecksLeft'>> {
   const decks = DECK_COUNTS.includes(g.decks as DeckCount) ? (g.decks as DeckCount) : null;
   const payout = g.payout === '3:2' || g.payout === '6:5' ? g.payout : null;
   const cut = typeof g.cutDecksLeft === 'number' && Number.isFinite(g.cutDecksLeft) && g.cutDecksLeft >= 0 ? g.cutDecksLeft : null;
@@ -316,7 +349,29 @@ export function normGame(x: unknown, fallbackId: string, legacy?: Record<string,
   if (typeof g.label === 'string' && g.label.trim() !== '') game.label = g.label.trim().slice(0, 60);
   const notes = notesOf(g.notes);
   if (notes !== '') game.notes = notes;
+  Object.assign(game, normWaveMGame(g));
   return game;
+}
+
+/**
+ * Wave M: the added game fields, repaired. Written only when known, so a game
+ * saved before them reads back exactly as it was.
+ */
+function normWaveMGame(g: Record<string, unknown>): Partial<CasinoGame> {
+  const out: Partial<CasinoGame> = {};
+  if (typeof g.rsa === 'boolean') out.rsa = g.rsa;
+  if (typeof g.doubleSplitAces === 'boolean') out.doubleSplitAces = g.doubleSplitAces;
+  if (g.maxSplitHands === 2 || g.maxSplitHands === 3 || g.maxSplitHands === 4) out.maxSplitHands = g.maxSplitHands;
+  if (g.doubleOn === 'any2' || g.doubleOn === '9-11' || g.doubleOn === '10-11') out.doubleOn = g.doubleOn;
+  const fee = boundedOrNull(g.commissionPer100, 0, 25);
+  if (fee !== null) out.commissionPer100 = fee;
+  if (typeof g.variantName === 'string' && g.variantName.trim() !== '') out.variantName = g.variantName.trim().slice(0, 60);
+  if (Array.isArray(g.unsure)) {
+    const known = new Set<string>(UNSURE_FIELDS);
+    const list = [...new Set(g.unsure.filter((f): f is string => typeof f === 'string' && known.has(f)))];
+    if (list.length > 0) out.unsure = list;
+  }
+  return out;
 }
 
 /** A game with nothing known: every rule "?". */
@@ -373,12 +428,22 @@ export function normCasino(x: unknown): Casino | null {
     games: normGames(x, id),
     driveMinutes: boundedOrNull(x.driveMinutes, 0, 24 * 60),
     location: normPoint(x.location),
+    ...normWaveMCasino(x),
     status,
     burnedUntil: typeof x.burnedUntil === 'string' && DATE_ONLY.test(x.burnedUntil) ? x.burnedUntil : null,
     notes: notesOf(x.notes),
     createdAt,
     updatedAt: iso(x.updatedAt) ?? createdAt,
   };
+}
+
+/** Wave M: a casino's kind and miles, written only when set. */
+function normWaveMCasino(x: Record<string, unknown>): Pick<Casino, 'kind' | 'miles'> {
+  const out: Pick<Casino, 'kind' | 'miles'> = {};
+  if (x.kind === 'casino' || x.kind === 'cardroom') out.kind = x.kind;
+  const miles = boundedOrNull(x.miles, 0, 5000);
+  if (miles !== null) out.miles = miles;
+  return out;
 }
 
 /** A stored or imported session, repaired; null without an id, a casino or a start time. */

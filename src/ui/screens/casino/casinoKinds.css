@@ -1,0 +1,6 @@
+/* Wave M: the "Card room" badge -- a fact, not a warning, so neither the
+   accent nor a tone colour: the dim ink, on a soft fill so it still reads. */
+.cas-badge[data-tone='info'] {
+  color: var(--ink-dim);
+  background: var(--surface);
+}

@@ -256,8 +256,11 @@ describe('the cache key', () => {
 
   it('unknown rules are simulated at the conservative choice and listed as assumed', () => {
     const input = simInputFor(blankGame('b'), profile, []);
-    expect(input.assumed).toEqual(['decks', 's17', 'das', 'surrender', 'payout', 'cut', 'minBet']);
-    expect(input.spec.rules).toMatchObject({ decks: 6, s17: false, das: false, ls: false, bj65: true });
+    // Wave M adds rsa, doubling split aces, the split cap and double-on.
+    expect(input.assumed).toEqual(['decks', 's17', 'das', 'surrender', 'rsa', 'payout', 'doubleSplitAces', 'maxSplitHands', 'doubleOn', 'cut', 'minBet']);
+    expect(input.spec.rules).toMatchObject({ decks: 6, s17: false, das: false, ls: false, rsa: false, bj65: true });
+    expect(input.spec).toMatchObject({ maxSplitHands: 2, doubleOn: '10-11' });
+    expect(input.spec.commissionPct).toBeUndefined();
     expect(input.cutUsed).toBe(1.5);
   });
 

@@ -4,7 +4,7 @@ import type { Profile } from '../store/types';
 import { resultState, simInputFor, type GameResult, type ResultState, type SimInput } from '../store/casinoGameStats';
 import { EV_REL_TARGET, hourly, houseEdge, summarize, type HourlyStats, type RoundStats } from '../engine/casinoStats';
 import type { BetMethod } from '../engine/betMethods';
-import { distanceMinutes, distanceOf, evPerTripHour, standing, warnBadges, type Distance } from './casinoFigures';
+import { distanceMinutes, distanceOf, evPerTripHour, standing, tripMinutesOf, warnBadges, type Distance } from './casinoFigures';
 
 /**
  * Wave K: the "Games ranked" list -- every logged game, its figures from the
@@ -146,7 +146,7 @@ export function buildRanking(
     if (group === 'burned') continue;
     const distance = distanceOf(casino, here);
     for (const game of casino.games) {
-      const input = simInputFor(game, profile, custom);
+      const input = simInputFor(game, profile, custom, casino.kind);
       const state = resultState(results[game.id], input.key);
       const figures = state.kind === 'none' ? null : gameFigures(state.result, roundsPerHourOf(game), bankroll, exitMinutesOf(log, game));
       rows.push({
@@ -158,7 +158,7 @@ export function buildRanking(
         greyed: group === 'avoid',
         warns: warnBadges(game),
         distance,
-        tripEv: figures ? evPerTripHour(figures.evHour, session, casino.driveMinutes) : null,
+        tripEv: figures ? evPerTripHour(figures.evHour, session, tripMinutesOf(casino)) : null,
         midShoeUnknown: game.midShoeEntry === 'unknown' && figures?.best?.method.entryTc != null,
         exitRounds: (roundsPerHourOf(game) * exitMinutesOf(log, game)) / 60,
       });

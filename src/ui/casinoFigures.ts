@@ -228,22 +228,37 @@ export function burnSuggestion(heat: HeatLevel, sessionDayKey: string): { until:
 
 // ---------------------------------------------------------------- game summary
 
-/** "6D S17 DAS LS 3:2 · cut 1.0"; unknown rules are left out rather than guessed. */
+/**
+ * "6D H17 DAS LS RSA 3:2 · split 4 · $1/100 · cut 1.0"; unknown rules are
+ * left out rather than guessed. Wave M: RSA and DSA when offered (an unsure
+ * "no" shows as NRSA? / NDSA?), D9-11 / D10-11 when doubling is restricted,
+ * the split cap, a card room's commission, and a "?" on every field the
+ * owner marked unsure.
+ */
 export function gameSummary(g: GameRules): string {
+  const unsure = new Set(g.unsure ?? []);
+  const q = (field: string, token: string) => (unsure.has(field) ? `${token}?` : token);
   const parts: string[] = [];
-  if (g.decks) parts.push(`${g.decks}D`);
-  if (g.s17 === true) parts.push('S17');
-  if (g.s17 === false) parts.push('H17');
-  if (g.das === true) parts.push('DAS');
-  if (g.das === false) parts.push('NDAS');
-  if (g.surrender === true) parts.push('LS');
-  if (g.surrender === false) parts.push('NS');
-  if (g.payout) parts.push(g.payout);
+  if (g.decks) parts.push(q('decks', `${g.decks}D`));
+  if (g.s17 === true) parts.push(q('s17', 'S17'));
+  if (g.s17 === false) parts.push(q('s17', 'H17'));
+  if (g.das === true) parts.push(q('das', 'DAS'));
+  if (g.das === false) parts.push(q('das', 'NDAS'));
+  if (g.surrender === true) parts.push(q('surrender', 'LS'));
+  if (g.surrender === false) parts.push(q('surrender', 'NS'));
+  if (g.rsa === true) parts.push(q('rsa', 'RSA'));
+  if (g.rsa === false && unsure.has('rsa')) parts.push('NRSA?');
+  if (g.doubleSplitAces === true) parts.push(q('doubleSplitAces', 'DSA'));
+  if (g.doubleSplitAces === false && unsure.has('doubleSplitAces')) parts.push('NDSA?');
+  if (g.doubleOn === '9-11' || g.doubleOn === '10-11') parts.push(q('doubleOn', `D${g.doubleOn}`));
+  if (g.payout) parts.push(q('payout', g.payout));
   const rules = parts.join(' ');
+  const split = g.maxSplitHands ? q('maxSplitHands', `split ${g.maxSplitHands}`) : '';
+  const fee = g.commissionPer100 ? q('commissionPer100', `$${g.commissionPer100}/100`) : '';
   const c = g.cutDecksLeft;
   // One decimal as you would say it ("cut 1.0"), two when that is what was entered (0.75).
-  const cut = c !== null && c !== undefined ? `cut ${Number.isInteger(Math.round(c * 1000) / 100) ? c.toFixed(1) : c.toFixed(2)}` : '';
-  return [rules, cut].filter(Boolean).join(' · ') || 'Game not logged';
+  const cut = c !== null && c !== undefined ? q('cutDecksLeft', `cut ${Number.isInteger(Math.round(c * 1000) / 100) ? c.toFixed(1) : c.toFixed(2)}`) : '';
+  return [rules, split, fee, cut].filter(Boolean).join(' · ') || 'Game not logged';
 }
 
 /** The conditions that change whether a game is worth playing at all. */
@@ -262,9 +277,15 @@ export function casinoWarnBadges(c: Pick<Casino, 'games'>): string[] {
   return per[0]!.filter((w) => per.every((ws) => ws.includes(w)));
 }
 
-/** "DD pit 3: 2D H17 · cut 0.75", or the summary alone without a label. */
+/** "DD pit 3: 2D H17 · cut 0.75", or the summary alone without a label. Wave M: a variant name leads. */
 export function labelledSummary(g: CasinoGame): string {
-  return g.label ? `${g.label}: ${gameSummary(g)}` : gameSummary(g);
+  const name = [g.label, g.variantName && g.variantName !== g.label ? g.variantName : null].filter(Boolean).join(', ');
+  return name ? `${name}: ${gameSummary(g)}` : gameSummary(g);
+}
+
+/** Wave M: "Card room" for a California card room, else null. */
+export function kindBadge(c: Pick<Casino, 'kind'>): string | null {
+  return c.kind === 'cardroom' ? 'Card room' : null;
 }
 
 /** The first line of a casino's notes, for its row; null when there are none. */
@@ -302,16 +323,20 @@ export function driveText(minutes: number): string {
   return `${h} h${m % 60 ? ` ${m % 60} min` : ''} drive`;
 }
 
-export type Distance = { kind: 'miles'; miles: number; text: string } | { kind: 'drive'; minutes: number; text: string };
+export type Distance = { kind: 'miles'; miles: number; text: string; logged?: true } | { kind: 'drive'; minutes: number; text: string };
 
 /**
  * How far a casino is, as a row shows it: live miles when the phone's position
- * is known and the casino has a saved spot, else the logged drive time, else nothing.
+ * is known and the casino has a saved spot, else (Wave M) the logged miles
+ * from home, else the logged drive time, else nothing.
  */
-export function distanceOf(c: Pick<Casino, 'location' | 'driveMinutes'>, here: GeoPoint | null): Distance | null {
+export function distanceOf(c: Pick<Casino, 'location' | 'driveMinutes' | 'miles'>, here: GeoPoint | null): Distance | null {
   if (here && c.location) {
     const miles = haversineMiles(here, c.location);
     return { kind: 'miles', miles, text: milesText(miles) };
+  }
+  if (c.miles !== null && c.miles !== undefined) {
+    return { kind: 'miles', miles: c.miles, text: `${milesText(c.miles)} from home`, logged: true };
   }
   if (c.driveMinutes !== null && c.driveMinutes !== undefined) {
     return { kind: 'drive', minutes: c.driveMinutes, text: driveText(c.driveMinutes) };
@@ -329,6 +354,16 @@ export function distanceOf(c: Pick<Casino, 'location' | 'driveMinutes'>, here: G
  * formula would rank a far losing game above a near one); it stays at its EV
  * per hour, so losing games sort among themselves by how much they lose.
  */
+/**
+ * Wave M: one-way drive minutes for EV per trip hour -- the logged drive time,
+ * else the logged miles at ASSUMED_MPH, else null.
+ */
+export function tripMinutesOf(c: Pick<Casino, 'driveMinutes' | 'miles'>): number | null {
+  if (c.driveMinutes !== null && c.driveMinutes !== undefined) return c.driveMinutes;
+  if (c.miles !== null && c.miles !== undefined) return (c.miles / ASSUMED_MPH) * 60;
+  return null;
+}
+
 export function evPerTripHour(evHour: number, sessionHours: number, driveMinutes: number | null | undefined): number | null {
   if (driveMinutes === null || driveMinutes === undefined || !(sessionHours > 0)) return null;
   if (evHour <= 0) return evHour;

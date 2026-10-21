@@ -61,6 +61,17 @@ export function GameEditor({
       <Field label="Label" hint={'Optional, e.g. "DD pit 3".'}>
         <input className="cas-input" name={n('label')} autoComplete="off" maxLength={60} value={game.label ?? ''} onChange={(e) => onChange({ label: e.target.value })} />
       </Field>
+      <Field label="Variant" hint={'Optional, e.g. "21st Century Blackjack".'}>
+        <input className="cas-input" name={n('variantName')} autoComplete="off" maxLength={60} value={game.variantName ?? ''} onChange={(e) => onChange({ variantName: e.target.value })} />
+      </Field>
+      {game.unsure && game.unsure.length > 0 && (
+        <p className="cas-field-hint" data-testid="game-unsure">
+          Marked unsure: {game.unsure.join(', ')}.{' '}
+          <button type="button" className="cas-link" onClick={() => onChange({ unsure: undefined })}>
+            Confirmed
+          </button>
+        </p>
+      )}
       <FieldGroup label="Decks">
         <Choice
           label="Decks"
@@ -69,6 +80,8 @@ export function GameEditor({
             { value: 'unknown', label: '?' },
             { value: '1', label: '1' },
             { value: '2', label: '2' },
+            { value: '4', label: '4' },
+            { value: '5', label: '5' },
             { value: '6', label: '6' },
             { value: '8', label: '8' },
           ]}
@@ -95,6 +108,46 @@ export function GameEditor({
           <Choice label="Late surrender" value={tri(game.surrender)} options={YES_NO} onChange={(v) => onChange({ surrender: fromTri(v) })} />
         </FieldGroup>
       </div>
+      {/* Wave M: the rest of the rules the owner's notes carry. */}
+      <div className="cas-pair">
+        <FieldGroup label="Resplit aces">
+          <Choice label="Resplit aces" value={tri(game.rsa)} options={YES_NO} onChange={(v) => onChange({ rsa: fromTri(v) })} />
+        </FieldGroup>
+        <FieldGroup label="Double split aces">
+          <Choice label="Double split aces" value={tri(game.doubleSplitAces)} options={YES_NO} onChange={(v) => onChange({ doubleSplitAces: fromTri(v) })} />
+        </FieldGroup>
+      </div>
+      <div className="cas-pair">
+        <FieldGroup label="Split to, hands">
+          <Choice
+            label="Split to, hands"
+            value={game.maxSplitHands ? String(game.maxSplitHands) : 'unknown'}
+            options={[
+              { value: 'unknown', label: '?' },
+              { value: '2', label: '2' },
+              { value: '3', label: '3' },
+              { value: '4', label: '4' },
+            ]}
+            onChange={(v) => onChange({ maxSplitHands: v === 'unknown' ? null : (Number(v) as 2 | 3 | 4) })}
+          />
+        </FieldGroup>
+        <Field label="Commission per $100" hint="Card rooms. 0 = none.">
+          <MoneyInput name={n('commission')} value={text.commission} onChange={(v) => onText({ commission: v })} />
+        </Field>
+      </div>
+      <FieldGroup label="Double on">
+        <Choice
+          label="Double on"
+          value={game.doubleOn ?? 'unknown'}
+          options={[
+            { value: 'unknown', label: '?' },
+            { value: 'any2', label: 'Any two' },
+            { value: '9-11', label: '9-11' },
+            { value: '10-11', label: '10-11' },
+          ]}
+          onChange={(v) => onChange({ doubleOn: v === 'unknown' ? null : v })}
+        />
+      </FieldGroup>
       <div className="cas-pair">
         <FieldGroup label="Blackjack pays">
           <Choice

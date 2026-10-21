@@ -1,7 +1,7 @@
-import { casinoById, type CasinoLog } from '../../../store/casinoLog';
+import { casinoById, type CasinoGame, type CasinoLog } from '../../../store/casinoLog';
 import { simRules, type GameResult } from '../../../store/casinoGameStats';
 import { describeMethod, methodBadge } from '../../../engine/betMethods';
-import { gameSummary, labelledSummary, money, shortDate, warnBadges } from '../../casinoFigures';
+import { gameSummary, kindBadge, labelledSummary, money, shortDate, warnBadges } from '../../casinoFigures';
 import { buildRanking, evTargetMet, exitMinutesOf, gameFigures, roundsPerHourOf, type GameFigures, type RankRow } from '../../casinoRanking';
 import { ASSUMED_TEXT, ciText, edgeText, evHourText, n0Text, roundsText, rorText, sdHourText } from '../../casinoStatsText';
 import { enqueue, cancelAll } from './simRunner';
@@ -66,7 +66,17 @@ export function GameStats({ log, casinoId, gameId, go }: { log: CasinoLog; casin
   return (
     <div className="cas-gs" data-testid="game-stats" data-state={running ? 'running' : queued ? 'queued' : row.state.kind}>
       <header className="cas-pad cas-gs-head">
-        <p className="cas-gs-casino">{casino.name}</p>
+        <p className="cas-gs-casino">
+          {casino.name}
+          {kindBadge(casino) && (
+            <>
+              {' '}
+              <span className="cas-badge" data-testid="kind-badge">
+                {kindBadge(casino)}
+              </span>
+            </>
+          )}
+        </p>
         <h2 className="cas-gs-title">{labelledSummary(game)}</h2>
         {warnBadges(game).length > 0 && (
           <span className="cas-row-badges">
@@ -221,10 +231,35 @@ export function GameStats({ log, casinoId, gameId, go }: { log: CasinoLog; casin
         </div>
         <div className="cas-pad-x cas-gs-notes">
           <p>
-            <strong>Game:</strong> {gameSummary({ decks: rules.decks, s17: rules.s17, das: rules.das, surrender: rules.ls, payout: rules.bj65 ? '6:5' : '3:2', cutDecksLeft: row.input.cutUsed })}
-            , no resplit of aces, min bet {money(row.input.spec.unit)}
+            <strong>Game:</strong>{' '}
+            {gameSummary({
+              decks: (row.input.spec.shoeDecks ?? rules.decks) as CasinoGame['decks'],
+              s17: rules.s17,
+              das: rules.das,
+              surrender: rules.ls,
+              payout: rules.bj65 ? '6:5' : '3:2',
+              cutDecksLeft: row.input.cutUsed,
+              rsa: rules.rsa,
+              doubleSplitAces: row.input.spec.doubleSplitAces === true,
+              doubleOn: row.input.spec.doubleOn ?? 'any2',
+              maxSplitHands: row.input.spec.maxSplitHands ?? 4,
+            })}
+            {rules.rsa ? '' : ', no resplit of aces'}
+            {row.input.spec.doubleSplitAces ? ', split aces may double (never hit)' : ''}
+            {row.input.spec.doubleOn ? `, double on ${row.input.spec.doubleOn} only` : ', double any two'}, min bet {money(row.input.spec.unit)}
             {row.input.spec.maxBet !== null ? `, max ${money(row.input.spec.maxBet)}` : ', no table max'}, {rph} rounds/h.
           </p>
+          {row.input.commissionPer100 > 0 && (
+            <p data-testid="gs-commission">
+              <strong>Commission:</strong> {money(row.input.commissionPer100)} per $100 wagered, taken from every hand dealt to you, win or lose
+              (a card room&rsquo;s collection). It is inside the house edge and every EV here: {(row.input.commissionPer100).toFixed(2)}% of each bet.
+            </p>
+          )}
+          {(row.input.spec.shoeDecks === 4 || row.input.spec.shoeDecks === 5) && (
+            <p>
+              A {row.input.spec.shoeDecks}-deck shoe is played with the multi-deck chart and index set, the ones the app uses for every shoe of 4 decks or more.
+            </p>
+          )}
           {!game.csm && (
             <p data-testid="gs-exit-cost">
               <strong>Leaving:</strong> each exit (a wong-out, or a back-counter leaving at its exit count) costs {exitMinutes} min of table time,{' '}
