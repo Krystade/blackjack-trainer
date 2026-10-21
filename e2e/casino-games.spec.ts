@@ -137,6 +137,35 @@ test('compute all, then the ranking follows the figures; the cards say what they
   await expect(rows(page).and(page.locator('[data-state="current"]'))).toHaveCount(3);
 });
 
+/*
+ * Wave M review S4: games logged before the split / double rules existed are
+ * simulated at split-to-2 and double-10-11, which can decide their place in
+ * the ranking, so the row and the card say a rule was assumed, and which.
+ */
+test('rows and stats cards mark the rules their figures assumed', async ({ page }) => {
+  await seed(page);
+  await page.goto('/?e2e=1');
+  await openCasino(page);
+  const goodRow = rows(page).and(page.locator('[data-game="g-good"]'));
+  const deepRow = rows(page).and(page.locator('[data-game="g-deep"]'));
+  await expect(deepRow.getByTestId('assumed-badge')).toHaveText('4 rules assumed');
+  await expect(goodRow.getByTestId('assumed-badge')).toHaveCount(0);
+  // The shuffler's unknown cut is assumed too, but it is not a rule: still 4.
+  await expect(rows(page).and(page.locator('[data-game="g-csm"]')).getByTestId('assumed-badge')).toHaveText('4 rules assumed');
+
+  await deepRow.click();
+  const head = page.getByTestId('gs-assumed-rules');
+  await expect(head).toBeVisible();
+  for (const t of ['no resplitting aces', 'no doubling split aces', 'split to 2 hands only', 'double on 10-11 only']) await expect(head).toContainText(t);
+  // The cut is logged here and the min bet is never a rule: neither is in the marker.
+  await expect(head).not.toContainText('cut');
+  await expect(head).not.toContainText('min bet');
+  await back(page);
+  await goodRow.click();
+  await expect(page.getByTestId('game-stats')).toBeVisible();
+  await expect(page.getByTestId('gs-assumed-rules')).toHaveCount(0);
+});
+
 test('editing a rule makes the result stale; Re-run makes it current again', async ({ page }) => {
   await seed(page);
   await page.goto('/?e2e=1');
@@ -435,10 +464,15 @@ for (const theme of ['midnight-felt', 'bone-ink'] as const) {
       }
     };
     const fits = () => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-    await check(['.cas-rank-row:not([data-greyed]) .cas-rank-meta', '.cas-rank-place', '.cas-rank-row [data-testid="best-style"]', '.cas-row-note', '.cas-rank-controls .cas-note']);
+    await check(['.cas-rank-row:not([data-greyed]) .cas-rank-meta', '.cas-rank-place', '.cas-rank-row [data-testid="best-style"]', '.cas-row-note', '.cas-rank-controls .cas-note', '.cas-rank-row:not([data-greyed]) [data-testid="assumed-badge"]']);
     expect(await fits()).toBeLessThanOrEqual(0);
     await rows(page).and(page.locator('[data-game="g-good"]')).click();
     await check(['.cas-gs-sub', '.cas-gs-fig dt', '.cas-gs-fig-sub', '.cas-gs-fig dd[data-sign="1"]', '.cas-gs-fig dd[data-sign="-1"]', '.cas-gs-notes', '.cas-gs-state']);
+    expect(await fits()).toBeLessThanOrEqual(0);
+    await back(page);
+    await rows(page).and(page.locator('[data-game="g-deep"]')).click();
+    await expect(page.getByTestId('gs-assumed-rules')).toBeVisible();
+    await check(['.cas-gs-assumed-rules', '.cas-gs-assumed-rules .cas-badge']);
     expect(await fits()).toBeLessThanOrEqual(0);
     expect(bad, `low contrast in ${theme}`).toEqual([]);
   });

@@ -102,7 +102,7 @@ export interface SimSpec {
    * hit: it doubles when the chart says double and stands otherwise.
    */
   doubleSplitAces?: boolean;
-  /** Commission, in percent of each hand's initial bet, charged on every hand dealt. */
+  /** Commission, in percent of each hand's initial bet, charged once per hand dealt (not on split hands or doubles). */
   commissionPct?: number;
   // ---- end Wave M
 }
@@ -689,7 +689,8 @@ export class CasinoSim {
       total += h.net;
       if (h.origin === n - 1) first += h.net;
     }
-    // Wave M: a card room's commission, on every hand dealt, win or lose.
+    // Wave M: a card room's commission, once per hand DEALT (its initial bet),
+    // win or lose -- not again on a split hand or a double (review N5).
     this.lastFirst = first + insurance - this.fee;
     this.lastTotal = total + insurance * n - this.fee * n;
   }

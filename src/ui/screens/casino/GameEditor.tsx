@@ -150,7 +150,7 @@ export function GameEditor({
             onChange={(v) => onChange({ maxSplitHands: v === 'unknown' ? null : (Number(v) as 2 | 3 | 4) })}
           />
         </FieldGroup>
-        <Field label="Commission per $100" hint="Card rooms. 0 = none.">
+        <Field label="Commission per $100" hint="Card rooms and some casinos. 0 = none.">
           <MoneyInput name={n('commission')} value={text.commission} onChange={(v) => onText({ commission: v })} />
         </Field>
       </div>

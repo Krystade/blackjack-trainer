@@ -10,3 +10,12 @@
 .cas-ge-unsure {
   margin: 0;
 }
+
+/* Wave M review S4: the rules a stats card's figures assumed, under its title
+   where the numbers are read, not only in the notes at the bottom. */
+.cas-gs-assumed-rules {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--ink-dim);
+  line-height: 1.45;
+}

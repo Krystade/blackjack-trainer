@@ -71,3 +71,19 @@ export const ASSUMED_TEXT: Record<AssumedField, string> = {
   doubleOn: 'double on 10-11 only',
   commission: 'commission $1 per $100 (card room)',
 };
+
+/**
+ * Wave M review S4: the assumed fields that are table RULES the simulator
+ * models (everything but the cut and the min bet, which are conditions of the
+ * visit). An unlogged rule is simulated at the conservative choice, and that
+ * choice can decide a game's place in the ranking (split to 2 + double 10-11
+ * alone cost about 0.22% of action), so rows and the stats card say so.
+ */
+export function assumedRules(assumed: readonly AssumedField[]): AssumedField[] {
+  return assumed.filter((a) => a !== 'cut' && a !== 'minBet');
+}
+
+/** "1 rule assumed", "3 rules assumed". */
+export function assumedRulesBadge(n: number): string {
+  return `${n} rule${n === 1 ? '' : 's'} assumed`;
+}

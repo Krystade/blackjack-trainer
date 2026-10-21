@@ -3,7 +3,7 @@ import type { CasinoLog } from '../../../store/casinoLog';
 import { methodBadge } from '../../../engine/betMethods';
 import { kindBadge, labelledSummary } from '../../casinoFigures';
 import { buildRanking, needsCompute, type RankRow, type RankSort } from '../../casinoRanking';
-import { ciText, evHourText, n0Text, pctText, roundsText } from '../../casinoStatsText';
+import { ASSUMED_TEXT, assumedRules, assumedRulesBadge, ciText, evHourText, n0Text, pctText, roundsText } from '../../casinoStatsText';
 import { Choice } from './fields';
 import { cancelAll, enqueue } from './simRunner';
 import { useActiveProfile, useGameResults, useRunner, type useHere } from './useGameStats';
@@ -118,6 +118,8 @@ export function GamesRanked({ log, go, here: where }: { log: CasinoLog; go: (v: 
 function RankItem({ row, place, sort, running, onOpen }: { row: RankRow; place: number; sort: RankSort; running: boolean; onOpen: () => void }) {
   const f = row.figures;
   const value = !f ? null : sort === 'trip' && row.tripEv !== null ? row.tripEv : f.evHour;
+  // Review S4: the figure rests on conservative guesses for these rules.
+  const assumed = assumedRules(row.input.assumed);
   return (
     <li>
       <button
@@ -170,6 +172,11 @@ function RankItem({ row, place, sort, running, onOpen }: { row: RankRow; place: 
           {kindBadge(row.casino) && (
             <span className="cas-badge" data-tone="info" data-testid="kind-badge">
               {kindBadge(row.casino)}
+            </span>
+          )}
+          {assumed.length > 0 && (
+            <span className="cas-badge" data-tone="warn" data-testid="assumed-badge" title={assumed.map((a) => ASSUMED_TEXT[a]).join('; ')}>
+              {assumedRulesBadge(assumed.length)}
             </span>
           )}
           {sort === 'trip' && f && row.tripEv === null && <span className="cas-badge">No drive time</span>}

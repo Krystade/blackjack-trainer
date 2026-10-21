@@ -3,7 +3,7 @@ import { simRules, type GameResult } from '../../../store/casinoGameStats';
 import { describeMethod, methodBadge } from '../../../engine/betMethods';
 import { gameSummary, kindBadge, labelledSummary, money, shortDate, warnBadges } from '../../casinoFigures';
 import { buildRanking, evTargetMet, exitMinutesOf, gameFigures, roundsPerHourOf, type GameFigures, type RankRow } from '../../casinoRanking';
-import { ASSUMED_TEXT, ciText, edgeText, evHourText, n0Text, roundsText, rorText, sdHourText } from '../../casinoStatsText';
+import { ASSUMED_TEXT, assumedRules, ciText, edgeText, evHourText, n0Text, roundsText, rorText, sdHourText } from '../../casinoStatsText';
 import { enqueue, cancelAll } from './simRunner';
 import { useActiveProfile, useGameResults, useRunner } from './useGameStats';
 import type { CasinoView } from './Casino';
@@ -86,6 +86,17 @@ export function GameStats({ log, casinoId, gameId, go }: { log: CasinoLog; casin
               </span>
             ))}
           </span>
+        )}
+        {assumedRules(row.input.assumed).length > 0 && (
+          <p className="cas-gs-assumed-rules" data-testid="gs-assumed-rules">
+            <span className="cas-badge" data-tone="warn">
+              Assumed
+            </span>{' '}
+            {assumedRules(row.input.assumed)
+              .map((a) => ASSUMED_TEXT[a])
+              .join('; ')}
+            . Not logged, so every figure here uses the conservative choice.
+          </p>
         )}
       </header>
 
