@@ -170,7 +170,7 @@ test('it is its own screen, reached without going near a drill', async ({ page }
   // drill mounted underneath it.
   await expect(page.getByTestId('fieldtest-instruction')).toBeVisible();
   await expect(page.getByTestId('fieldtest-answers').locator('button').first()).toBeVisible();
-  await expect(page.locator('.flashcard, .table-felt')).toHaveCount(0);
+  await expect(page.locator('.drill-screen, .table-screen')).toHaveCount(0);
 });
 
 /**

@@ -80,7 +80,7 @@ for (const drill of DRILLS) {
     await page.goto('/?e2e=1');
     await page.getByRole('button', { name: 'Drills', exact: true }).click();
     await page.getByRole('button', { name: drill, exact: true }).click();
-    await expect(page.locator('.drill-screen, .flashcards-screen').first()).toBeVisible();
+    await expect(page.locator('.drill-screen')).toBeVisible();
     expect(await edgeFlushText(page)).toEqual([]);
   });
 }

@@ -145,7 +145,11 @@ test('a spoken number fills the keypad, and OK submits it', async ({ page }) => 
   await sayOnceListening(page, speakable(index));
   await expect(page.locator('.numpad-display')).toHaveText(padText(index));
   await expect(page.locator('.numpad-placeholder')).toHaveCount(0);
-  await expect(page.getByTestId('index-test-pending')).toHaveCount(0);
+  // No separate "+2?" proposal line: the number lives only in the keypad.
+  // Anchored, so neither the question prompt nor the keypad display matches.
+  await expect(
+    page.locator('.drill-screen').getByText(/^[+−-]?\d+\?$/),
+  ).toHaveCount(0);
   await page.getByRole('button', { name: 'OK', exact: true }).click();
   await expect(page.getByTestId('index-test-result')).toContainText('Correct!');
 });
