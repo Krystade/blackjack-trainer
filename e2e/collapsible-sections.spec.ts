@@ -108,6 +108,8 @@ test('opening a section makes the page taller — the height win is real, not cl
 test('Stats and the Profile editor collapse too', async ({ page }) => {
   await page.goto('/');
   await page.locator('.home-stats-link').click();
+  // Wave O: lazy screens mount a moment after the click.
+  await expect(page.locator('details.stats-section').first()).toBeVisible();
   expect(await pageHeight(page)).toBeLessThan(MINI.height * 2);
   expect(await page.locator('details.stats-section').count()).toBeGreaterThan(5);
 

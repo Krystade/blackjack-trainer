@@ -70,6 +70,8 @@ test('the convention reaches the live table count, not just the profile', async 
     await withProfile(page, { tcRounding });
     await page.goto('/?seed=102&e2e=1');
     await page.getByRole('button', { name: 'Play', exact: true }).click();
+    // Wave O: Play is lazy; wait for the table before reading it.
+    await expect(page.locator('.table-screen')).toBeVisible();
 
     const peek = page.locator('.tc-peek-btn');
     const seen: number[] = [];

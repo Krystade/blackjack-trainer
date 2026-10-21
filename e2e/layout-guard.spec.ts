@@ -280,6 +280,8 @@ test('hit targets are at least 44px', async ({ page }) => {
 
   // Stats tabs and range chips.
   await page.locator('.home-stats-link').click();
+  // Wave O: lazy screens mount a moment after the click.
+  await expect(page.locator('.stats-tab').first()).toBeVisible();
   await tall('.stats-tab', 'Stats tab');
   await tall('.stats-range-btn', 'Stats range chip');
 
@@ -291,6 +293,8 @@ test('hit targets are at least 44px', async ({ page }) => {
   // Table HUD.
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
+  // Wave O: lazy screens mount a moment after the click.
+  await expect(page.locator('.table-screen')).toBeVisible();
   await tall('.tc-peek-btn', 'Peek');
   await tall('.end-btn', 'End');
   await tall('.repeat-btn', 'Repeat');
@@ -383,6 +387,8 @@ for (const theme of THEMES) {
     await run('.charts-order-btn');
     await page.getByRole('button', { name: 'Home', exact: true }).first().click();
     await page.getByRole('button', { name: 'Play', exact: true }).first().click();
+  // Wave O: lazy screens mount a moment after the click.
+    await expect(page.locator('.table-screen')).toBeVisible();
     await run('.table-discard-label');
     await run('.discard-tick-label');
     await run('.repeat-btn');

@@ -397,6 +397,11 @@ test('every drill, a played hand and the counting all work offline', async ({ pa
   // --- Flashcards ---------------------------------------------------------
   await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
   await expect(page.locator('.drill-heading')).toHaveText('Flashcards');
+  // Wave O: the chart intro shows once when no hand has been graded yet,
+  // which is the case when the random Play hand above was a natural.
+  const intro = page.getByTestId('chart-intro');
+  await expect(intro.or(page.locator('.action-bar button.action-btn').first()).first()).toBeVisible();
+  if (await intro.isVisible()) await intro.locator('.chart-intro-start').first().click();
   await outlastBounceGuard();
   await page.locator('.action-bar button.action-btn', { hasText: 'Stand' }).click();
   // B1: the answer goes to the result strip and the next card is dealt at
