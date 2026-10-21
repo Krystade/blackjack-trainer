@@ -492,6 +492,7 @@ test('review S2: a simulator that fails says so on the line, the row and the car
   for (const sel of ['.cas-rank-failed', '[data-testid="rank-failed-line"]']) expect(await worstContrast(page, sel), sel).toBeGreaterThanOrEqual(4.5);
   await rows(page).and(page.locator('[data-game="g-good"]')).click();
   await expect(page.getByTestId('gs-failed')).toContainText('The simulator failed on this game: test failure');
+  await expect(page.getByTestId('gs-waiting')).toHaveCount(0);
 });
 
 test('a casino session running: every game gets its estimate, and the firming up waits for the session', async ({ page }) => {

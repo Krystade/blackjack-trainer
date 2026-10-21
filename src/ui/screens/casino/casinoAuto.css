@@ -57,6 +57,6 @@
 }
 
 /* Review S2: why a row has no figures. */
-.cas-rank-failed {
+.cas-rank-row .cas-rank-meta.cas-rank-failed {
   color: var(--bad);
 }

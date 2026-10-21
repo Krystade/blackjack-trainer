@@ -117,9 +117,12 @@ export function GameStats({ log, casinoId, gameId, go }: { log: CasinoLog; casin
             <p className="cas-gs-auto-note">Worked out on this phone, on its own, while Casino is open; it picks up where it left off.</p>
           </>
         ) : row.state.kind === 'none' ? (
-          <p className="cas-gs-state" data-testid="gs-waiting">
-            Not worked out yet: it starts on its own, one game at a time.
-          </p>
+          // Review S2: a game whose run failed is not about to start (its failure is said below).
+          hold === 'failed' ? null : (
+            <p className="cas-gs-state" data-testid="gs-waiting">
+              Not worked out yet: it starts on its own, one game at a time.
+            </p>
+          )
         ) : row.state.kind === 'stale' ? (
           <p className="cas-gs-state cas-gs-stale" data-testid="stale-note">
             <span className="cas-badge" data-tone="warn">

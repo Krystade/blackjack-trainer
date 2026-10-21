@@ -249,10 +249,10 @@ function RankItem({ row, place, sort, running, failed, onOpen }: { row: RankRow;
             {[`edge ${pctText(f.edge)}${estimate ? ` ±${pctText(f.edgeCi)}` : ''}`, f.best ? `N0 ${n0Text(f.n0Hours)}` : null, row.distance?.text ?? null].filter(Boolean).join(' · ')}
           </span>
         )}
-        {!f && row.distance && <span className="cas-row-meta">{row.distance.text}</span>}
+        {!f && row.distance && <span className="cas-row-meta cas-rank-meta">{row.distance.text}</span>}
         {/* Review S2: why this game has no figures, and will not get them this session. */}
         {failed !== undefined && (
-          <span className="cas-row-meta cas-rank-failed" data-testid="rank-failed">
+          <span className="cas-row-meta cas-rank-meta cas-rank-failed" data-testid="rank-failed">
             The simulator failed: {failed}
           </span>
         )}
