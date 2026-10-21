@@ -184,9 +184,30 @@ export function simInputFor(
     methods,
     ...wm.extras,
   };
-  const text = JSON.stringify({ v: SIM_VERSION, ...spec });
+  // Review S4: a method's label is only its name -- renaming it changes no round -- so it is left out of the key.
+  const text = JSON.stringify({ v: SIM_VERSION, ...spec, methods: spec.methods.map(({ label: _label, ...m }) => m) });
   const h = fnv1a(text);
   return { spec, key: `${SIM_VERSION}:${h.toString(36)}:${text.length.toString(36)}`, seed: h, assumed, cutUsed, methods, commissionPer100: wm.commissionPer100 };
+}
+
+/**
+ * Review S4: a stored result with its methods' names as they are now (by id):
+ * a rename keeps the figures, and they should not show the old name.
+ */
+export function relabel(result: GameResult, methods: readonly BetMethod[]): GameResult {
+  if (!result.methods) return result;
+  const byId = new Map(methods.map((m) => [m.id, m]));
+  let changed = false;
+  const next = result.methods.map((x) => {
+    const live = byId.get(x.method.id);
+    if (!live || live.label === x.method.label) return x;
+    changed = true;
+    const method: BetMethod = { ...x.method };
+    if (live.label === undefined) delete method.label;
+    else method.label = live.label;
+    return { ...x, method };
+  });
+  return changed ? { ...result, methods: next } : result;
 }
 
 /**

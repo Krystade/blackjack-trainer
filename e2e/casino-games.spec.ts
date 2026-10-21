@@ -368,6 +368,40 @@ test('custom methods can be edited, and a duplicate of a default says so', async
   expect(stored[0].exitTc).toBe(-4);
 });
 
+test('review S4: renaming a custom method keeps every figure; the card shows the new name', async ({ page }) => {
+  await seed(page);
+  await page.goto('/?e2e=1');
+  await openCasino(page);
+  await ranked(page).getByRole('button', { name: 'Settings' }).click();
+  const settings = page.getByTestId('casino-settings');
+  await settings.getByRole('group', { name: 'Leave' }).getByRole('button', { name: 'Wong out' }).click();
+  await settings.locator('select[name="exitTc"]').selectOption('-4');
+  await settings.locator('input[name="methodLabel"]').fill('Leave at -4');
+  await settings.getByTestId('add-method').click();
+  await back(page);
+  await expect(rows(page).and(page.locator('[data-state="current"]'))).toHaveCount(3, { timeout: 30_000 });
+  const keys = () => page.evaluate((k) => Object.values(JSON.parse(localStorage.getItem(k)!).results as Record<string, { key: string; computedAt: string }>).map((r) => r.key + r.computedAt).sort(), STATS_KEY);
+  const before = await keys();
+
+  await setHidden(page, true);
+  await ranked(page).getByRole('button', { name: 'Settings' }).click();
+  await settings.getByRole('button', { name: /^Edit / }).click();
+  await settings.locator('input[name="methodLabel"]').fill('My exit');
+  await settings.getByTestId('save-method').click();
+  await expect(settings.getByTestId('method-message')).toHaveText('Saved. Only its name changed, so the figures stand.');
+  await back(page);
+  // Nothing went stale, and nothing is waiting to run.
+  await expect(rows(page).and(page.locator('[data-state="current"]'))).toHaveCount(3);
+  await expect(rows(page).getByTestId('stale-badge')).toHaveCount(0);
+  await expect(ranked(page).getByTestId('rank-auto')).toHaveAttribute('data-phase', 'idle');
+  await setHidden(page, false);
+  await page.waitForTimeout(1000);
+  expect(await keys()).toEqual(before);
+  await rows(page).and(page.locator('[data-game="g-good"]')).click();
+  await expect(page.getByTestId('game-stats')).toContainText('My exit');
+  await expect(page.getByTestId('game-stats')).not.toContainText('Leave at -4');
+});
+
 /** "1.2M rounds" / "850k rounds" / "4,000 rounds" -> a number (to the precision shown). */
 function roundsOf(text: string): number {
   const m = /([\d.,]+)(M|k)? rounds/.exec(text);

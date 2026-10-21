@@ -1,7 +1,7 @@
 import type { Casino, CasinoGame, CasinoLog, GeoPoint } from '../store/casinoLog';
 import { DEFAULT_EXIT_FIND_MINUTES, DEFAULT_EXIT_WAIT_MINUTES, DEFAULT_ROUNDS_PER_HOUR, DEFAULT_SESSION_HOURS } from '../store/casinoLog';
 import type { Profile } from '../store/types';
-import { resultForKey, resultState, simInputFor, type GameResult, type ResultState, type SimInput } from '../store/casinoGameStats';
+import { relabel, resultForKey, resultState, simInputFor, type GameResult, type ResultState, type SimInput } from '../store/casinoGameStats';
 import { EV_REL_TARGET, hourly, houseEdge, summarize, type HourlyStats, type RoundStats } from '../engine/casinoStats';
 import { describeMethod, type BetMethod } from '../engine/betMethods';
 import { evCiText, evHourText } from './casinoStatsText';
@@ -272,7 +272,9 @@ export function buildRanking(
       // Wave L: a variant game is never simulated (it would be scored as standard blackjack).
       const notModelled = game.variant !== undefined;
       // Wave Q: a result for these inputs from anywhere in the cache (a twin game, the archive) counts as current.
-      const state: ResultState = notModelled ? { kind: 'none' } : resultState(results[game.id], input.key, resultForKey(results, archive, game.id, input.key));
+      const found: ResultState = notModelled ? { kind: 'none' } : resultState(results[game.id], input.key, resultForKey(results, archive, game.id, input.key));
+      // Review S4: the methods' names as they are now.
+      const state: ResultState = found.kind === 'none' ? found : { ...found, result: relabel(found.result, input.methods) };
       const figures = state.kind === 'none' ? null : gameFigures(state.result, roundsPerHourOf(game), bankroll, exitMinutesOf(log, game));
       // Wave L merge (review S7): a variant game's side bets are not modelled either, so they add nothing.
       const sideEvHour = notModelled ? 0 : bestSideEvHour(gameSideFigures(game, roundsPerHourOf(game))).evHour;

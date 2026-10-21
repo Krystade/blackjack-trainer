@@ -114,12 +114,17 @@ export function CasinoSettings({ log, commit }: { log: CasinoLog; commit: (next:
     const next = editing ? custom.map((x) => (x.id === editing ? m : x)) : [...custom, m];
     commit(setCasinoSettings(log, { methods: next }, Date.now()));
     const dup = duplicateOf(profile, next, m);
+    // Review S4: a new name alone changes no figure (the name is not in the cache key).
+    const was = editing ? custom.find((x) => x.id === editing) : undefined;
+    const renamedOnly = was !== undefined && JSON.stringify({ ...was, label: undefined }) === JSON.stringify({ ...m, label: undefined });
     setMethodMsg(
       dup
         ? `Saved. It plays exactly like “${describeMethod(dup)}”, so it is worked out once, under that one.`
-        : editing
-          ? 'Saved. Games worked out with the old version are marked stale.'
-          : 'Added. Games already worked out are marked stale until re-run.',
+        : renamedOnly
+          ? 'Saved. Only its name changed, so the figures stand.'
+          : editing
+            ? 'Saved. Games worked out with the old version update on their own.'
+            : 'Added. Every game is worked out again with it, on its own.',
     );
     setEditing(null);
     setForm(BLANK_FORM);

@@ -4,6 +4,8 @@ import {
   GAME_STATS_KEY,
   SIM_VERSION,
   _setGameStatsStorage,
+  fnv1a,
+  relabel,
   gameStatsUnsaved,
   loadGameCache,
   loadGameArchive,
@@ -131,6 +133,30 @@ describe('the cache key: nothing else changes it', () => {
     ['seats and shoe-out', key(GAME, { ...profile, seats: { ...profile.seats }, startShoeOut: true })],
     ['the same ramp, listed in another order', key(GAME, { ...profile, spread: [...profile.spread].reverse() })],
   ];
+
+  it("review S4: a custom method's name is not in the key; its numbers are", () => {
+    const m = { id: 'mine', entryTc: null, exitTc: -4, rampStartTc: null };
+    const named = (label?: string) => key(GAME, profile, [label === undefined ? m : { ...m, label }]);
+    expect(named('Leave at -4')).toBe(named());
+    expect(named('My exit')).toBe(named());
+    expect(named()).not.toBe(base);
+    expect(key(GAME, profile, [{ ...m, exitTc: -3, label: 'Leave at -4' }])).not.toBe(named('Leave at -4'));
+  });
+
+  it('review S4: a setup with no named method keeps the key it had (nothing is worked out again for the change)', () => {
+    const spec = simInputFor(GAME, profile, []).spec;
+    const text = JSON.stringify({ v: SIM_VERSION, ...spec });
+    expect(base).toBe(`${SIM_VERSION}:${fnv1a(text).toString(36)}:${text.length.toString(36)}`);
+  });
+
+  it('review S4: a stored result shows the names as they are now', () => {
+    const m = { id: 'mine', entryTc: null, exitTc: -4, rampStartTc: null, label: 'Old' };
+    const r: GameResult = { ...result('k', 1), methods: [{ method: m, acc: emptyAccum() }] };
+    expect(relabel(r, [{ ...m, label: 'New' }]).methods![0]!.method.label).toBe('New');
+    expect(relabel(r, [{ id: 'mine', entryTc: null, exitTc: -4, rampStartTc: null }]).methods![0]!.method).not.toHaveProperty('label');
+    expect(relabel(r, [m])).toBe(r);
+    expect(relabel(r, [])).toBe(r);
+  });
 
   it('(the default ramp has steps to reorder)', () => {
     expect(profile.spread.length).toBeGreaterThan(1);
