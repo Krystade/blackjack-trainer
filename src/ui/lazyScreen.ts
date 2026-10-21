@@ -22,7 +22,7 @@ export function lazyScreen<P extends object>(
   name: string,
   load: () => Promise<ComponentType<P>>,
 ) {
-  return lazy(async () => {
+  const screen = lazy(async () => {
     try {
       return { default: await load() };
     } catch (error) {
@@ -31,4 +31,42 @@ export function lazyScreen<P extends object>(
       throw error;
     }
   });
+  /**
+   * Wave O (review S2): fetch the chunk ahead of the first open. A failure
+   * here is swallowed: the update path belongs to an actual open, not to a
+   * background fetch on Home (that would reload the app under the user).
+   */
+  const preload = (): void => {
+    load().catch(() => {});
+  };
+  return Object.assign(screen, { preload });
+}
+
+/**
+ * Wave O (review S2): after the first paint, when the main thread is idle,
+ * fetch the chunks of the screens opened most -- Play first -- so a first
+ * open does not wait on the network or the parse.
+ */
+export function preloadWhenIdle(screens: readonly { preload: () => void }[]): () => void {
+  if (typeof window === 'undefined') return () => {};
+  let cancelled = false;
+  let idleId: number | undefined;
+  let timer: number | undefined;
+  const run = () => {
+    if (cancelled) return;
+    for (const s of screens) s.preload();
+  };
+  const schedule = () => {
+    if (cancelled) return;
+    if (typeof window.requestIdleCallback === 'function') idleId = window.requestIdleCallback(run, { timeout: 3000 });
+    else timer = window.setTimeout(run, 500);
+  };
+  if (document.readyState === 'complete') schedule();
+  else window.addEventListener('load', schedule, { once: true });
+  return () => {
+    cancelled = true;
+    window.removeEventListener('load', schedule);
+    if (idleId !== undefined) window.cancelIdleCallback?.(idleId);
+    if (timer !== undefined) window.clearTimeout(timer);
+  };
 }

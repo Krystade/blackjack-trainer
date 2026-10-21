@@ -1,4 +1,4 @@
-import { Fragment, Suspense, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { Fragment, Suspense, startTransition, useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { TabSettingsButton } from '../components/TabSettingsButton';
 import { ChartTest } from './ChartTest';
@@ -25,9 +25,8 @@ import {
   rulesetSummary,
 } from './chartRows';
 import type { ChartHighlight, ChartSection, RowOrder } from './chartRows';
-import { lazyScreen } from '../lazyScreen';
-// Wave O: the variant charts (and their EV tables) load when first shown.
-const VariantCharts = lazyScreen('variantcharts', () => import('./VariantCharts').then((m) => m.VariantCharts));
+import { VariantCharts } from './variantChartsLazy';
+import { preloadWhenIdle } from '../lazyScreen';
 import { loadVariantChoice, saveVariantChoice } from '../../drills/variantChoice';
 import type { VariantChoice } from '../../drills/variantChoice';
 import { DEFAULT_PRESET, PRESETS, VARIANT_LABEL } from '../../engine/variants/rules';
@@ -323,9 +322,13 @@ export function Charts({
   // the trainer graded with.
   const canPickVariant = backPlacement === 'topbar';
   const [variantChoice, setVariantChoice] = useState<VariantChoice>(() => loadVariantChoice());
+  // Wave O: the variant charts' chunk, fetched once this screen is idle.
+  useEffect(() => preloadWhenIdle([VariantCharts]), []);
   const shownVariant: VariantChoice = canPickVariant ? variantChoice : 'standard';
   const chooseVariant = (next: VariantChoice) => {
-    setVariantChoice(next);
+    // Wave O: a transition, so the chart on screen stays while the variant
+    // charts' chunk loads on a first pick.
+    startTransition(() => setVariantChoice(next));
     saveVariantChoice(next);
   };
   const variantOf = (choice: VariantChoice): ChartVariant =>
@@ -374,10 +377,12 @@ export function Charts({
           ))}
         </div>
       )}
+      {/* Wave O: one boundary around both views, mounted with the screen, so a
+          first variant pick (a transition) keeps the standard chart up while
+          the variant charts' chunk loads. */}
+      <Suspense fallback={null}>
       {shownVariant !== 'standard' ? (
-        <Suspense fallback={null}>
-          <VariantCharts preset={shownVariant} order={order} onPreset={chooseVariant} />
-        </Suspense>
+        <VariantCharts preset={shownVariant} order={order} onPreset={chooseVariant} />
       ) : (
       <>
       <p className="charts-ruleset">{rulesetSummary(activeProfile.rules)}</p>
@@ -636,6 +641,7 @@ export function Charts({
       )}
       </>
       )}
+      </Suspense>
     </div>
   );
 }

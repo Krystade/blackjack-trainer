@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, startTransition, useEffect, useState } from 'react';
 import './app.css';
 import './themeCues.css';
 import './formControls.css';
@@ -32,7 +32,7 @@ import { effectiveVolume } from '../audio/volume';
 import { installAudioContextKeepAlive } from '../audio/audioContext';
 import { useActivityLive } from './activityLive';
 import { mayLeave } from './leaveGuard';
-import { lazyScreen } from './lazyScreen';
+import { lazyScreen, preloadWhenIdle } from './lazyScreen';
 
 // F11 (W2-24): rarely opened screens, each its own chunk (see lazyScreen.ts).
 // Everything a drill or the table needs stays in the entry chunk.
@@ -50,6 +50,8 @@ const Stats = lazyScreen('stats', () => import('./screens/Stats').then((m) => m.
 const Table = lazyScreen('table', () => import('./screens/Table').then((m) => m.Table));
 const Progress = lazyScreen('progress', () => import('./screens/Progress').then((m) => m.Progress));
 
+/** The screens above that are their own chunk (navigate opens them in a transition). */
+const LAZY_SCREENS: ReadonlySet<string> = new Set(['fieldtest', 'testkit', 'profiles', 'sidebets', 'casino', 'table', 'stats', 'progress']);
 // Last, so the mute seat (B1) wins the cascade over every sheet above it.
 import './muteSeat.css';
 // Wave I: shell fit at 320 and 375 (tab bar above the home indicator, Home's one-row head).
@@ -193,6 +195,10 @@ function App() {
     startDiagnostics();
   }, []);
 
+  // Wave O (review S2): Play, Stats and Progress are lazy; fetch them once the
+  // first paint is done and the thread is idle, so their first open is instant.
+  useEffect(() => preloadWhenIdle([Table, Stats, Progress]), []);
+
   // Wave N: count every stats save toward the daily goal, and on a first run
   // rebuild the habit record from history (one quiet summary toast).
   // Before the first render, so Home's first paint already has the record.
@@ -317,7 +323,13 @@ function App() {
     // voice vocabulary, the wake lock and the suppression behaviour all differ
     // between the table and a drill.
     diag('nav', 'screen', { from: screen, to: next });
-    setScreen(next);
+    // Wave O (review S2): to a lazy screen, a transition, so while its chunk
+    // is still loading the CURRENT screen stays painted and live until the
+    // new one is ready -- never a blank frame. Input meanwhile goes to the
+    // screen still showing (a wheel press on Home is ignored as Home always
+    // ignores it, and logged). Every other screen switches in the tap, as before.
+    if (LAZY_SCREENS.has(next)) startTransition(() => setScreen(next));
+    else setScreen(next);
   };
 
   /**
@@ -443,14 +455,19 @@ function App() {
           no way to reach it. Keeping the boundary inside the shell means a
           broken screen leaves the tab bar below it alive, so the user can
           simply navigate somewhere else. */}
-      <ErrorBoundary key={screen} onReset={() => navigate('home')}>
-        <TabSettingsContext.Provider value={tabSettings}>
-          {/* A lazy screen's first open waits on its chunk (from the
-              service worker's cache once saved): nothing is shown for those
-              few milliseconds rather than a spinner that only flickers. */}
-          <Suspense fallback={null}>{crashRequested ? <CrashOnDemand /> : body}</Suspense>
-        </TabSettingsContext.Provider>
-      </ErrorBoundary>
+      {/* Wave O (review S2): the Suspense is OUTSIDE the keyed boundary, so it
+          is already revealed when a lazy screen first opens, and `navigate`'s
+          transition keeps the old screen up until the new one's chunk is in.
+          (A boundary mounted with the new screen would show its fallback
+          even inside a transition.) The fallback only shows at launch onto a
+          lazy screen. */}
+      <Suspense fallback={null}>
+        <ErrorBoundary key={screen} onReset={() => navigate('home')}>
+          <TabSettingsContext.Provider value={tabSettings}>
+            {crashRequested ? <CrashOnDemand /> : body}
+          </TabSettingsContext.Provider>
+        </ErrorBoundary>
+      </Suspense>
       {/* Rendered for every screen; app.css stands it down in the
           immersive modes, which own the bottom edge with their own
           ActionBar/ZonePad. */}

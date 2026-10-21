@@ -99,17 +99,26 @@ test('every chunk is precached: FieldTest and the profile editor open offline th
   await context.setOffline(false);
 });
 
-test('Wave O: Play, Stats and the side-bet tables are not fetched at launch', async ({ page }) => {
-  const seen = chunkRequests(page);
+test('Wave O: the heavy chunks are not in the first load; Play and Stats are fetched only once it is done', async ({ page }) => {
+  // The shipped document: nothing heavy is modulepreloaded (review N4).
+  const html = await (await page.request.get('/')).text();
+  const preloaded = [...html.matchAll(/rel="modulepreload"[^>]*href="\.\/assets\/([A-Za-z]+)-/g)].map((m) => m[1]!);
+  expect(preloaded.length).toBeGreaterThan(0);
+  for (const name of ['Table', 'Stats', 'Progress', 'strategy', 'sideBetConfig', 'VariantCharts', 'SideCountDrillView', 'VariantDrillView']) {
+    expect(preloaded, name).not.toContain(name);
+  }
+  // Review S2: Play and Stats are then prefetched when idle -- AFTER the load event.
   await page.goto('/?e2e=1');
   await expect(page.getByTestId('testkit-open')).toBeVisible();
-  await page.waitForLoadState('networkidle');
-  for (const name of ['Table', 'Stats', 'Progress', 'VariantCharts', 'SideCountDrillView', 'VariantDrillView']) {
-    expect(seen, name).not.toContain(name);
-  }
-  const table = page.waitForRequest(CHUNK('Table'));
+  const timing = await page.waitForFunction(() => {
+    const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
+    const res = performance.getEntriesByType('resource').filter((e) => /\/assets\/(Table|Stats)-[^/]+\.js$/.test(e.name));
+    if (!nav || nav.loadEventEnd === 0 || res.length < 2) return null;
+    return { load: nav.loadEventEnd, first: Math.min(...res.map((e) => e.startTime)) };
+  }, undefined, { timeout: 15_000 });
+  const t = (await timing.jsonValue())!;
+  expect(t.first, 'a lazy chunk was fetched before the first load finished').toBeGreaterThanOrEqual(t.load);
   await page.locator('.tab-bar').getByRole('button', { name: 'Play', exact: true }).click();
-  await table;
   await expect(page.getByRole('button', { name: 'Deal', exact: true })).toBeVisible();
 });
 

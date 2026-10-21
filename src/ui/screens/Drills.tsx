@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { startTransition, useEffect, useRef, useState, type ReactNode } from 'react';
 import { takeDrillLaunch, takeFlashHandOver, takeReviewIndexes } from '../drillLaunch';
 import { SpeedDrillView } from './drills/SpeedDrillView';
 import { TabSettingsButton } from '../components/TabSettingsButton';
@@ -42,7 +42,7 @@ import { chartIntroDue, loadChartIntroSeen, saveChartIntroSeen } from '../../dri
 import { FlashcardsView } from './drills/FlashcardsView';
 import { DeviationQuizView } from './drills/DeviationQuizView';
 import { MixedSessionView } from './drills/MixedSessionView';
-import { lazyScreen } from '../lazyScreen';
+import { lazyScreen, preloadWhenIdle } from '../lazyScreen';
 // Wave O: these two carry the generated side-bet and variant-chart tables
 // (~240KB), so they load when first opened (precached for offline).
 const SideCountDrillView = lazyScreen('sidecountdrill', () => import('./drills/SideCountDrillView').then((m) => m.SideCountDrillView));
@@ -87,6 +87,8 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
   const [launch] = useState(() => takeDrillLaunch());
   const [mode, setMode] = useState<'picker' | DrillMode>(() => launch ?? 'picker');
   const [customReturn, setCustomReturn] = useState<'flash' | 'mastery' | null>(null);
+  // Wave O: the two lazy drills' chunks, fetched once the picker is idle.
+  useEffect(() => preloadWhenIdle([SideCountDrillView, VariantDrillView]), []);
   // The custom tiers as they were when Customize opened from a drill, so Back
   // can tell a look from an edit (only an edit switches the deck to Custom).
   const customTiersAtOpen = useRef<string>('');
@@ -381,7 +383,9 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
         className={`drills-nav-btn${gated ? ' drills-nav-btn-advanced' : ''}`}
         aria-label={name}
         aria-describedby={descId}
-        onClick={() => setMode(target)}
+        // Wave O: a transition, so the picker stays up while a lazy drill's
+        // chunk loads instead of the screen going blank.
+        onClick={() => startTransition(() => setMode(target))}
       >
         <span className="drills-nav-name">{name}</span>
         <span className="drills-nav-desc" id={descId}>

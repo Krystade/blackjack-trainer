@@ -37,9 +37,8 @@ import { FloatingBackPill } from '../../components/FloatingBackPill';
 import { NextBar } from './HandDrillParts';
 import { DrillModeControls } from './DrillModeControls';
 import { zoneLabel } from './handDrillShared';
-import { lazyScreen } from '../../lazyScreen';
-// Wave O: the variant charts (and their EV tables) load when first shown.
-const VariantCharts = lazyScreen('variantcharts', () => import('../VariantCharts').then((m) => m.VariantCharts));
+import { VariantCharts } from '../variantChartsLazy';
+import { preloadWhenIdle } from '../../lazyScreen';
 import type { VariantHighlight } from '../variantChartView';
 import '../../components/studyChartOverlay.css';
 import '../charts.css';
@@ -126,6 +125,8 @@ export function VariantDrillView({
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [tally, setTally] = useState<VariantTally>(loadVariantTally);
   const [showChart, setShowChart] = useState(false);
+  // Wave O: the variant charts' chunk, fetched once this screen is idle.
+  useEffect(() => preloadWhenIdle([VariantCharts]), []);
   const [eyesFree, setEyesFree] = useEyesFreeToggle('variant');
   // Voice answers: per page load like Flashcards' (ui/voiceSession.ts), hidden
   // where the browser has no speech API.
