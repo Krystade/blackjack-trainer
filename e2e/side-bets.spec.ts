@@ -339,4 +339,26 @@ test.describe('the casino stats card', () => {
     await expect(card.getByTestId('gs-side-ev')).toHaveCount(0);
     await expect(card.getByTestId('gs-side-edge')).toHaveCount(0);
   });
+
+  test('Wave O: a card room where seated play loses says so plainly', async ({ page }, info) => {
+    const room = { ...game, id: 'g-room', commissionPer100: 4, sideBets: [{ bet: 'over13', payTable: 'ou-even', minBet: 25, maxBet: 100 }] };
+    const log = { ...LOG, casinos: [{ ...LOG.casinos[0]!, name: 'Card Room', kind: 'cardroom', games: [room] }] };
+    await page.addInitScript((l) => {
+      if (!sessionStorage.getItem('seeded')) {
+        localStorage.setItem('bjtrainer.casinoLog.v2', l);
+        sessionStorage.setItem('seeded', '1');
+      }
+    }, JSON.stringify(log));
+    await page.goto('/?e2e=1');
+    await page.locator('.tab-bar').getByRole('button', { name: 'Casino', exact: true }).click();
+    await page.getByTestId('games-ranked').getByTestId('rank-row').first().click();
+    test.setTimeout(240_000);
+    await page.getByRole('button', { name: 'Compute', exact: true }).click();
+    const line = page.getByTestId('gs-side-combined');
+    await expect(line).toContainText('Best with a side bet:', { timeout: 200_000 });
+    await expect(line).toContainText(/Seated play loses here \(−\$\d+\/h\), so Over 13 isn't worth sitting for$/);
+    await expect(line).not.toContainText('Seated with');
+    await line.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: `e2e/screenshots/side-cardroom-line-${info.project.name}.png` });
+  });
 });

@@ -136,7 +136,11 @@ export function sideCombinedText(f: GameFigures, betName: string | null, sideEvH
   const seated = bestSeated(f);
   const leaves = f.best?.method.entryTc != null ? 'back-counts' : 'wongs out';
   const why = `none — the best method ${leaves} (${evHourText(f.evHour)}), so ${betName} is not added to it`;
-  return seated ? `${why}. Seated with ${betName}: ${evHourText(seated.hours.evHour + sideEvHour)}` : why;
+  if (!seated) return why;
+  const seatedTotal = seated.hours.evHour + sideEvHour;
+  // Wave O: "Seated with Over 13: -$18/h" read as a recommendation. A loss is said plainly.
+  if (seatedTotal < 0) return `${why}. Seated play loses here (${evHourText(seatedTotal)}), so ${betName} isn't worth sitting for`;
+  return `${why}. Seated with ${betName}: ${evHourText(seatedTotal)}`;
 }
 
 /** What the game is worth with its best side bet counted, when that beats the game alone. */

@@ -346,6 +346,14 @@ describe('review S1: a side bet rides only on a method that stays seated', () =>
     expect(sideCombinedText(row.figures!, 'Buster', sideAlone)).toMatch(/^none — the best method wongs out \(\+\$240\/h\), so Buster is not added to it\. Seated with Buster: \+\$\d+\/h$/);
   });
 
+  it('Wave O: seated play plus the side bet still loses: said plainly, not as a figure to sit for', () => {
+    // ramp loses $3/round = -$240/h, far more than the side bet wins back.
+    const row = rowFor(result({ 'wong-1': 3, ramp: -3 }, -3));
+    const text = sideCombinedText(row.figures!, 'Buster', sideAlone);
+    expect(text).toMatch(/\. Seated play loses here \(−\$\d+\/h\), so Buster isn't worth sitting for$/);
+    expect(text).not.toContain('Seated with');
+  });
+
   it('best method wongs out but ramp + side beats it: ranked on ramp + side, never wong + side', () => {
     // wong-1 $2.1/round = $168/h; ramp $160/h + side > $168.
     const row = rowFor(result({ 'wong-1': 2.1, ramp: 2 }));
