@@ -166,7 +166,11 @@ function diagPanel(page: Page) {
 
 async function logText(page: Page): Promise<string> {
   const pause = page.getByTestId('fieldtest-pause');
-  if ((await pause.count()) > 0) await pause.click();
+  if ((await pause.count()) > 0) {
+    await pause.click();
+    // Wave O: the Test kit is lazy and opens in a transition; wait for it before going Back.
+    await expect(page.getByTestId('testkit-screen')).toBeVisible();
+  }
   // Pause lands on the Test kit now, not Settings; the Diagnostic log is still
   // a Settings section, so go Back out of the kit and open Settings.
   const back = page.getByRole('button', { name: 'Back' });
