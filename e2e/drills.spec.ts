@@ -1616,6 +1616,9 @@ test('produce the true count: flash then produce a TC, graded within tolerance a
   page,
 }) => {
   await withSettings(page, { drill: { countIntervalMs: 120, countLengthCards: 6, countGroup: 1 } });
+  // A fake clock that runs in real time, so the absence below can be held
+  // past every timer the round could still fire, without sleeping.
+  await page.clock.install();
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Produce the true count', exact: true }).click();
@@ -1635,7 +1638,13 @@ test('produce the true count: flash then produce a TC, graded within tolerance a
   const strip = page.getByTestId('result-strip');
   await expect(strip).toBeVisible();
   await expect(page.getByRole('button', { name: 'Next', exact: true })).toBeVisible();
-  await expect(page.locator('.count-flash-area')).toHaveCount(0);
+  // "No longer start flashing" is a claim about a timer: the eyes-free path
+  // starts the next round after the verdict's pause. Run the page's clock a
+  // full minute on, then look once -- a retrying count(0) taken the moment
+  // the strip appeared passed before any such timer could have fired.
+  await page.clock.runFor(60_000);
+  expect(await page.locator('.count-flash-area').count()).toBe(0);
+  await expect(page.getByRole('button', { name: 'Next', exact: true })).toBeVisible();
 
   const stats = await readStats(page);
   const history = (stats?.produceTc as { history: Record<string, number>[] } | undefined)?.history ?? [];

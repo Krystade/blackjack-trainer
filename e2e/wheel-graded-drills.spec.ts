@@ -21,7 +21,14 @@ const spoken = (page: Page) => page.evaluate(() => window.__speechLog ?? []);
 
 async function open(page: Page, drill: 'Speed' | 'Bet sizing'): Promise<void> {
   await page.setViewportSize(PHONE);
-  await withSettings(page, { audio: { enabled: true }, drill: { wheelMode: 'answer' } });
+  // A verdict auto-advances after answerPauseMs (3s by default). Held for a
+  // minute here, so "forward goes on" can only be forward's doing: with the
+  // default pause, a dead forward was rescued by the drill advancing itself,
+  // and the hidden verdict and the next question both turned up anyway.
+  await withSettings(page, {
+    audio: { enabled: true, answerPauseMs: 60_000 },
+    drill: { wheelMode: 'answer' },
+  });
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: drill, exact: true }).click();

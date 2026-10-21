@@ -251,6 +251,13 @@ test('the wheel (answer mode): back repeats, between rounds and in play, and nev
   await expectIn(page, true);
   let n = (await speech(page)).length;
   expect(await press('back')).toBe(true);
+  // The press arrives off the event loop, not as a click, so whatever it set
+  // renders a moment later -- and before any deal there is nothing to repeat,
+  // so there is no reaction to wait for. Two frames let any flip it caused
+  // land, so "still In" is read after it, not before.
+  await page.evaluate(
+    () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(null)))),
+  );
   await expectIn(page, true);
   await expect(round(page)).toHaveText('Round 0');
   expect((await speech(page)).slice(n)).not.toContain('Out.');
