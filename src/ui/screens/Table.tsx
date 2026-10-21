@@ -68,6 +68,8 @@ import { useViewportWidth } from '../useViewportWidth';
 import { DEAL_WORDS, isDealWord } from '../dealWord';
 import { TOGGLE_BIAS, toggleWordIn } from '../backCountWords';
 import './backCount.css';
+import './peekDockMisses.css';
+import { useShortScreen } from '../useShortScreen';
 import './tableDock.css';
 import './tableCompact.css';
 import { spreadHasTwoHands, startShoeOutOf } from '../../engine/wong';
@@ -568,6 +570,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
   const countStage: 'rc' | 'tc' = game.askRc ? rcStage : 'tc';
   const [pendingRc, setPendingRc] = useState(0);
   const [peeking, setPeeking] = useState(false);
+  const shortScreen = useShortScreen();
   const [showReport, setShowReport] = useState(false);
   // #7: the strategy chart opened over a wrong play, ringed on its cell.
   const [showChart, setShowChart] = useState(false);
@@ -1072,6 +1075,31 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
   const multiHand = game.hands.length > 1;
   // #41: built every render, but only drawn while the peek is held.
   const peek = peekReadout(game.runningCount, game.exactDecksRemaining);
+  // Wave O: on a short screen (320x568) the sticky peek dock covered the
+  // message strip, so the bet and side-bet miss lines -- said as a round
+  // opens -- were hidden under it. There they ride in the dock itself, above
+  // the peek button; on a taller screen they stay in the strip.
+  const missStrips = (
+    <>
+      {/* B2 #13 (R2): a wrong bet or sit decision, said as it is made and
+          kept with its round; it never blocks the hand. */}
+      {betMiss && betMiss.round === game.roundNo && (
+        <ResultStrip id={`bet-${betMiss.round}`} tone="miss">
+          <span className="bet-miss">{betMiss.text}</span>
+        </ResultStrip>
+      )}
+      {/* Wave L: a wrong side-bet call, in the bet-miss style. */}
+      {sideMiss && sideMiss.round === game.roundNo && (
+        <ResultStrip id={`side-${sideMiss.round}`} tone="miss">
+          <span className="bet-miss" data-testid="side-miss">{sideMiss.text}</span>
+        </ResultStrip>
+      )}
+    </>
+  );
+  const hasMiss = betMiss?.round === game.roundNo || sideMiss?.round === game.roundNo;
+  // Only while the round is being played: once it settles, the dealer, the
+  // hands and the result line need the band, and the miss returns to the strip.
+  const missInDock = shortScreen && game.phase !== 'settled' && game.phase !== 'idle';
 
   // Cycle-2 Task 6: bot seats/narration/fast-forward are a strict no-op when
   // the profile has no bots (v1-solo parity — `game.seats` holds just the
@@ -1329,19 +1357,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
             {countVerdictText(countVerdict)}
           </ResultStrip>
         )}
-        {/* B2 #13 (R2): a wrong bet or sit decision, said as it is made and
-            kept with its round; it never blocks the hand. */}
-        {betMiss && betMiss.round === game.roundNo && (
-          <ResultStrip id={`bet-${betMiss.round}`} tone="miss">
-            <span className="bet-miss">{betMiss.text}</span>
-          </ResultStrip>
-        )}
-        {/* Wave L: a wrong side-bet call, in the bet-miss style. */}
-        {sideMiss && sideMiss.round === game.roundNo && (
-          <ResultStrip id={`side-${sideMiss.round}`} tone="miss">
-            <span className="bet-miss" data-testid="side-miss">{sideMiss.text}</span>
-          </ResultStrip>
-        )}
+        {!missInDock && missStrips}
         {(() => {
           const d = game.sideDecisionThisRound;
           const text = game.cfg.sideBet && d && game.phase === 'settled' ? sideResultText(game.cfg.sideBet, d) : null;
@@ -1410,6 +1426,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
       {/* #40: the peek under the left thumb, just above the bar. The skip
           control shares the row, so the dock costs no height when it shows. */}
       <div className="peek-dock">
+        {missInDock && hasMiss && <div className="peek-dock-misses">{missStrips}</div>}
         {/* F9 / B2 #31: no peek while a count check is owed or open -- the
             peeked answer was graded correct. */}
         {!peekBlocked && (

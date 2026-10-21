@@ -1,0 +1,22 @@
+/* Wave O: on a short screen the bet / side-bet miss lines ride in the peek
+   dock, a full-width row above the peek button, so the sticky dock can never
+   cover them (see useShortScreen). */
+.peek-dock > .peek-dock-misses {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 4px;
+}
+
+.peek-dock > .peek-dock-misses ~ * {
+  grid-row: 2;
+}
+
+.peek-dock > .peek-dock-misses .result-strip {
+  margin: 0;
+  min-height: 0;
+  padding: 4px 10px;
+  font-size: var(--fs-sm);
+}
