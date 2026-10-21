@@ -14,6 +14,7 @@ import {
   resultForKey,
   resultState,
   runSeed,
+  SPACED_RUNS,
   saveGameResult,
   simInputFor,
   type GameResult,
@@ -280,5 +281,19 @@ describe('runSeed', () => {
     const seeds = [0, 1, 2, 3].map((n) => runSeed(input, n));
     expect(new Set(seeds).size).toBe(4);
     expect(runSeed(input, 2)).toBe(runSeed(input, 2));
+  });
+
+  it('review N4: runs 1-7 sit 2^29 RNG steps apart from run 0 on the one cycle; later runs never repeat run 0', () => {
+    const input = simInputFor(GAME, profile, []);
+    const STEP = 0x6d2b79f5;
+    // The state after k draws from seed s is s + k*STEP (mod 2^32).
+    const stateAfter = (s: number, k: number) => (s + Math.imul(k, STEP)) >>> 0;
+    for (let n = 1; n < SPACED_RUNS; n++) {
+      expect(runSeed(input, n), `run ${n}`).toBe(stateAfter(input.seed, n * 2 ** 29));
+    }
+    expect(new Set(Array.from({ length: SPACED_RUNS }, (_, n) => runSeed(input, n))).size).toBe(SPACED_RUNS);
+    // Run 8 would be run 0 again on the cycle: it takes a hashed seed instead.
+    expect(stateAfter(input.seed, 8 * 2 ** 29)).toBe(input.seed);
+    for (let n = SPACED_RUNS; n < SPACED_RUNS + 4; n++) expect(runSeed(input, n)).not.toBe(input.seed);
   });
 });

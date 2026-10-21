@@ -214,9 +214,25 @@ export function relabel(result: GameResult, methods: readonly BetMethod[]): Game
  * Wave Q: the seed of a game's `n`th run. Run 0 is the input's own seed, so a
  * game worked out in one go deals exactly the rounds it always did; every
  * later run that continues it (casinoRun.ts `prior`) deals fresh ones.
+ *
+ * Review N4: every mulberry32 seed is a point on one 2^32 cycle (its state
+ * steps by RNG_STEP), so two hashed seeds can land inside each other's draws.
+ * Runs 1-7 are instead placed 2^29 steps apart along the cycle from run 0:
+ * seed + n * 2^29 * RNG_STEP. Each run then has 537M draws of its own -- more
+ * than the round ceilings use -- and the count simulation's seed (the same
+ * seed XORed with a salt in the top bits only differs there too) is spaced
+ * the same way. After eight the cycle comes back round, so later runs take a
+ * hashed seed again.
  */
+const RNG_STEP = 0x6d2b79f5;
+export const SPACED_RUNS = 8;
+/** 2^29 * RNG_STEP mod 2^32: only RNG_STEP mod 8 survives the shift. */
+const RUN_SPACING = Math.imul(1 << 29, RNG_STEP) >>> 0;
+
 export function runSeed(input: Pick<SimInput, 'key' | 'seed'>, n: number): number {
-  return n <= 0 ? input.seed : fnv1a(`${input.key}#${n}`);
+  if (n <= 0) return input.seed;
+  if (n < SPACED_RUNS) return (input.seed + Math.imul(n, RUN_SPACING)) >>> 0;
+  return fnv1a(`${input.key}#${n}`);
 }
 
 // ---------------------------------------------------------------- the cache
