@@ -23,6 +23,7 @@
  */
 
 import { CALIBRATION_INTRO, CALIBRATION_RETRY, calibrationOrderLine } from '../src/diag/testKit';
+import { DC_LINES } from '../src/diag/driveChecks';
 import { correctPlay } from '../src/engine/strategy';
 import { DEFAULT_RULES } from '../src/engine/ruleset';
 import type { RuleSet } from '../src/engine/ruleset';
@@ -54,6 +55,7 @@ import {
   narrateCountAnswer,
 } from '../src/audio/narrate';
 import { hiLoTag } from '../src/engine/count';
+import { VARIANT_OPENERS, narrateVariantCorrection, narrateVariantTotal } from '../src/audio/narrateVariant';
 import { SPEED_QUESTION } from '../src/drills/speedDrill';
 import { COUNT_PAUSED_LINE } from '../src/drills/countPause';
 import {
@@ -319,6 +321,20 @@ export function drillSentences(): string[] {
   add(CALIBRATION_INTRO);
   add(calibrationOrderLine());
   add(CALIBRATION_RETRY);
+  // Wave L: the Variant hands drill -- its openers, and a correction for every
+  // play against every up card (a variant can surrender where the standard
+  // chart never does, e.g. Spanish 21's doubled hands).
+  for (const opener of Object.values(VARIANT_OPENERS)) add(opener);
+  // Three or more cards are said as a total: hard 6-17, soft 13-19.
+  for (let total = 6; total <= 17; total++) add(narrateVariantTotal(total, false));
+  for (let total = 13; total <= 19; total++) add(narrateVariantTotal(total, true));
+  for (const action of ACTIONS) {
+    for (const up of UPS) add(narrateVariantCorrection(false, action, `Basic ${action} vs dealer ${up}`));
+  }
+  // Drive checks (review S2): every fixed line, WHOLE -- each is recorded as
+  // one clip, so splitting it would ask for sentences nobody says alone.
+  // QUEUE_TTS_LINE is left out on purpose: check 4 needs it live.
+  for (const line of Object.values(DC_LINES)) sentences.add(line);
   return [...sentences];
 }
 

@@ -1,0 +1,41 @@
+/* Wave N: habit banners (HabitToasts.tsx). Never takes a tap. */
+.habit-toasts {
+  position: fixed;
+  top: calc(var(--safe-top, 0px) + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(calc(100vw - 32px - var(--mute-disc, 44px)), 420px);
+  margin-left: calc(var(--mute-disc, 44px) / -2);
+  z-index: 65;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.habit-toast {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 0.5rem);
+  padding: var(--space-2, 0.5rem) var(--space-3, 0.75rem);
+  border-radius: var(--radius-md, 0.5rem);
+  background: var(--raised);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--accent);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 30%);
+  animation: habit-toast-in 180ms ease-out;
+}
+.habit-toast.is-goal { border-left-color: var(--good); }
+.habit-toast-icon { flex: none; }
+
+@keyframes habit-toast-in {
+  /* Transform only: an opaque banner at every frame, never a see-through one. */
+  from { transform: translateY(-8px); }
+  to { transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .habit-toast { animation: none; }
+}

@@ -1,5 +1,6 @@
 import type { CasinoGame, DeckCount, MidShoeEntry, UNSURE_FIELDS } from '../../../store/casinoLog';
 import { DEFAULT_ROUNDS_PER_HOUR } from '../../../store/casinoLog';
+import { PRESET_IDS, PRESET_LABEL, isPresetId } from '../../../engine/variants/rules';
 import { Choice, Field, FieldGroup, MoneyInput } from './fields';
 import type { GameText } from './casinoInputs';
 
@@ -80,7 +81,24 @@ export function GameEditor({
       <Field label="Label" hint={'Optional, e.g. "DD pit 3".'}>
         <input className="cas-input" name={n('label')} autoComplete="off" maxLength={60} value={game.label ?? ''} onChange={(e) => onChange({ label: e.target.value })} />
       </Field>
-      <Field label="Variant" hint={'Optional, e.g. "21st Century Blackjack".'}>
+      {/* Wave L: the variant the app has a chart for; Wave M: the house's own name for the game, free text. */}
+      <Field label="Game" hint="A variant gets its house edge from its own chart; counting is not modelled for it.">
+        <select
+          className="cas-input"
+          name={n('variant')}
+          data-testid="game-variant"
+          value={game.variant ?? 'standard'}
+          onChange={(e) => onChange({ variant: isPresetId(e.target.value) ? e.target.value : undefined })}
+        >
+          <option value="standard">Standard blackjack</option>
+          {PRESET_IDS.map((id) => (
+            <option key={id} value={id}>
+              {PRESET_LABEL[id]}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <Field label="Variant name" hint={'Optional, the house\'s name, e.g. "21st Century Blackjack".'}>
         <input className="cas-input" name={n('variantName')} autoComplete="off" maxLength={60} value={game.variantName ?? ''} onChange={(e) => onChange({ variantName: e.target.value })} />
       </Field>
       {game.unsure && game.unsure.length > 0 && (

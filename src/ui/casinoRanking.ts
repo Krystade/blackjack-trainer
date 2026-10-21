@@ -114,10 +114,13 @@ export interface RankRow {
   midShoeUnknown: boolean;
   /** Rounds one exit costs at this game now: rounds/hour x exit minutes / 60. */
   exitRounds: number;
+  /** Wave L: a variant game; the simulator does not model it, so it is never computed. */
+  notModelled?: boolean;
 }
 
 /** A row with no result, a stale one, or a partial one: what "Compute all" runs. */
 export function needsCompute(r: RankRow): boolean {
+  if (r.notModelled) return false;
   return r.state.kind !== 'current' || r.state.result.status !== 'done';
 }
 
@@ -147,7 +150,9 @@ export function buildRanking(
     const distance = distanceOf(casino, here);
     for (const game of casino.games) {
       const input = simInputFor(game, profile, custom, casino.kind);
-      const state = resultState(results[game.id], input.key);
+      // Wave L: a variant game is never simulated (it would be scored as standard blackjack).
+      const notModelled = game.variant !== undefined;
+      const state: ResultState = notModelled ? { kind: 'none' } : resultState(results[game.id], input.key);
       const figures = state.kind === 'none' ? null : gameFigures(state.result, roundsPerHourOf(game), bankroll, exitMinutesOf(log, game));
       rows.push({
         casino,
@@ -161,6 +166,7 @@ export function buildRanking(
         tripEv: figures ? evPerTripHour(figures.evHour, session, tripMinutesOf(casino)) : null,
         midShoeUnknown: game.midShoeEntry === 'unknown' && figures?.best?.method.entryTc != null,
         exitRounds: (roundsPerHourOf(game) * exitMinutesOf(log, game)) / 60,
+        ...(notModelled ? { notModelled } : {}),
       });
     }
   }

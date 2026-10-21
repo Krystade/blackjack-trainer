@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { sayMomentAtPause } from '../../../habits/moment';
 import type { Profile, Settings } from '../../../store/types';
 import { makeTrueCountQuestion, trueCountDrillDepths } from '../../../drills/trueCountDrill';
 import { DEFAULT_TC_ROUNDING } from '../../../engine/count';
@@ -318,7 +319,7 @@ export function TrueCountDrillView({
         if (runIdRef.current !== runId) return;
         start();
       },
-      nextQuestionDelayMs(getLastSpoken() ?? '', settings.audio),
+      nextQuestionDelayMs(getLastSpoken() ?? '', settings.audio) + sayMomentAtPause(settings.audio),
     );
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps

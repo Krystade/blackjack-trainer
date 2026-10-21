@@ -1,4 +1,6 @@
-import { casinoById, type CasinoGame, type CasinoLog } from '../../../store/casinoLog';
+import { casinoById, type Casino, type CasinoGame, type CasinoLog } from '../../../store/casinoLog';
+import { PRESETS, PRESET_LABEL, presetSummary } from '../../../engine/variants/rules';
+import { variantCostFor, variantMismatches } from '../../casinoVariant';
 import { simRules, type GameResult } from '../../../store/casinoGameStats';
 import { describeMethod, methodBadge } from '../../../engine/betMethods';
 import { gameSummary, kindBadge, labelledSummary, money, shortDate, warnBadges } from '../../casinoFigures';
@@ -50,6 +52,7 @@ export function GameStats({ log, casinoId, gameId, go }: { log: CasinoLog; casin
     'ev',
   ).find((r) => r.game.id === gameId);
   if (!row) return null;
+  if (game.variant) return <VariantGameStats casino={casino} game={game} />;
   const rph = roundsPerHourOf(game);
   const bankroll = log.settings.startingBankroll;
   const running = runner.running?.gameId === gameId ? runner.running : null;
@@ -298,6 +301,105 @@ export function GameStats({ log, casinoId, gameId, go }: { log: CasinoLog; casin
             cards slightly for the rounds after, which this ignores (the standard approximation in counting simulators). After an exit the method
             sits down at a fresh shoe once the {exitMinutes} min are up; "Rounds played" is the share of the rounds dealt that it played. *Risk of ruin is the diffusion approximation exp(&minus;2&middot;EV&middot;B/SD&sup2;) at your starting
             bankroll{bankroll === null ? ' (not set, so not shown)' : ` of ${money(bankroll)}`}. N0 is (SD/EV)&sup2;; DI is 1000&middot;EV/SD per round played.
+          </p>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+/**
+ * Wave L: a variant game's card. The simulator plays standard blackjack, so
+ * it would report wrong numbers here; the flat house edge comes from the
+ * variant chart instead (engine/variants, infinite deck), and the count is
+ * said to be not modelled rather than shown.
+ *
+ * Merge with Wave M: the standard game's "Assumed" rules (resplitting and
+ * doubling aces, the split cap, double-on, ...) are not shown here -- the
+ * preset fixes those, and a logged one that differs is under "Rules differ".
+ * A commission is added to the edge (variantCostFor), and a card room's
+ * unlogged one is the only rule this card says it assumed.
+ */
+function VariantGameStats({ casino, game }: { casino: Casino; game: CasinoGame }) {
+  const preset = game.variant!;
+  const { edge, payout, commissionPer100, commissionAssumed, total } = variantCostFor(game, preset, casino.kind);
+  const mismatches = variantMismatches(game, preset);
+  return (
+    <div className="cas-gs" data-testid="game-stats" data-state="variant" data-variant={preset}>
+      <header className="cas-pad cas-gs-head">
+        <p className="cas-gs-casino">
+          {casino.name}
+          {kindBadge(casino) && (
+            <>
+              {' '}
+              <span className="cas-badge" data-testid="kind-badge">
+                {kindBadge(casino)}
+              </span>
+            </>
+          )}
+        </p>
+        <h2 className="cas-gs-title">{labelledSummary(game)}</h2>
+        {mismatches.length > 0 && (
+          <span className="cas-row-badges">
+            <span className="cas-badge" data-tone="warn" data-testid="gs-variant-mismatch-badge">
+              Rules differ
+            </span>
+          </span>
+        )}
+        {commissionAssumed && (
+          <p className="cas-gs-assumed-rules" data-testid="gs-assumed-rules">
+            <span className="cas-badge" data-tone="warn">
+              Assumed
+            </span>{' '}
+            {ASSUMED_TEXT.commission}. Not logged, so the house edge here includes it.
+          </p>
+        )}
+      </header>
+      {mismatches.length > 0 && (
+        <section className="cas-pad-x" data-testid="gs-variant-mismatch">
+          {mismatches.map((m) => (
+            <p className="cas-field-error" key={m}>
+              {m}
+            </p>
+          ))}
+        </section>
+      )}
+      <section className="cas-gs-hero cas-pad" data-testid="gs-hero">
+        <div className="cas-stat">
+          <span className="cas-stat-label">Counting</span>
+          <span className="cas-stat-value" data-testid="gs-not-modelled">
+            Not modelled
+          </span>
+          <span className="cas-gs-sub">for {PRESET_LABEL[preset]}: no EV/hour or betting methods</span>
+        </div>
+        <div className="cas-stat cas-stat-right">
+          <span className="cas-stat-label">House edge</span>
+          <span className="cas-stat-value" data-testid="gs-edge">
+            {total.toFixed(2)}%
+          </span>
+          <span className="cas-gs-sub">
+            flat bet, its own chart, blackjack {payout}
+            {commissionPer100 > 0 ? ', with commission' : ''}
+          </span>
+        </div>
+      </section>
+      <section className="cas-section">
+        <div className="cas-pad-x cas-gs-notes">
+          <p data-testid="gs-variant-rules">
+            <strong>Rules used:</strong> {presetSummary(PRESETS[preset])}. Computed in the app for an infinite deck, playing the{' '}
+            {PRESET_LABEL[preset]} chart on the Charts tab perfectly
+            {payout === '6:5' && PRESETS[preset].bjPays !== 1.2 ? ', with blackjack paying 6:5 as logged' : ''}.
+          </p>
+          {commissionPer100 > 0 && (
+            <p data-testid="gs-commission">
+              <strong>Commission:</strong> {money(commissionPer100)} per $100 wagered, taken from every hand dealt to you, win or lose
+              {commissionAssumed ? ' (assumed: a card room that logged none)' : ''}. The chart&rsquo;s {edge.toFixed(2)}% plus{' '}
+              {commissionPer100.toFixed(2)}% of each bet makes the {total.toFixed(2)}% above.
+            </p>
+          )}
+          <p className="cas-note">
+            The count simulator models standard blackjack only. Counting {PRESET_LABEL[preset]} needs its own indexes and its own
+            simulation, which this app does not have, so no EV, risk or method figures are shown rather than wrong ones.
           </p>
         </div>
       </section>

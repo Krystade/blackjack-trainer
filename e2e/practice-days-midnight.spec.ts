@@ -1,49 +1,56 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withStats } from './helpers';
 
 /**
- * H8 (wave H, story 8): "Practised N of the last 7 days" follows the clock
- * while Home stays open. It was computed at render only, so an app left open
- * across local midnight kept yesterday's seven-day window.
+ * H8 (wave H, story 8), carried over to the Wave N streak card: Home follows
+ * the clock while it stays open. The "Practised N of the last 7 days" line
+ * this spec was written for is gone (the card's week dots replace it); the
+ * rule it pinned -- re-render at local midnight and on return -- now holds
+ * for the card's "today".
  *
- * Practice at 23:30 six days ago and 23:30 today (Los Angeles). At 23:55 both
- * are in the window; at 00:05 the older one has dropped out.
+ * Los Angeles. Today (Oct 18) has its goal met; at 23:55 the card says so, and
+ * once the local day turns, today is a fresh day at 0 minutes.
  */
 
 test.use({ viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true, timezoneId: 'America/Los_Angeles' });
 
-// PDT is UTC-7 in October: 23:30 local on Oct 12 and Oct 18.
-const ROWS = ['2026-10-13T06:30:00.000Z', '2026-10-19T06:30:00.000Z'].map((date) => ({
-  date,
-  cards: 52,
-  intervalMs: 800,
-  correct: true,
-}));
 const BEFORE_MIDNIGHT = new Date('2026-10-19T06:55:00.000Z'); // 23:55 local, Oct 18
 
-const line = (page: Page) => page.getByTestId('practice-days');
+async function withMetToday(page: Page): Promise<void> {
+  const blob = JSON.stringify({
+    version: 1,
+    days: { '2026-10-18': { answers: 60, activeMs: 0, met: true } },
+    answersTotal: 60,
+    drive: { totalMs: 0, runMs: 0, bestRunMs: 0 },
+    earned: {},
+    backfilled: true,
+  });
+  await page.addInitScript((json) => window.localStorage.setItem('bjtrainer.progress.v1', json), blob);
+}
 
-test('the line moves on at local midnight with no reload or navigation', async ({ page }) => {
-  await withStats(page, { countDrill: { history: ROWS } });
+const today = (page: Page) => page.getByTestId('streak-today');
+
+test('the card moves on at local midnight with no reload or navigation', async ({ page }) => {
+  await withMetToday(page);
   await page.clock.install({ time: BEFORE_MIDNIGHT });
   await page.goto('/?e2e=1');
-  await expect(line(page)).toHaveText('Practised 2 of the last 7 days');
+  await expect(today(page)).toHaveText('Goal met');
 
   // Timers only: no visibility or focus event, no navigation.
   await page.clock.runFor(10 * 60 * 1000);
-  await expect(line(page)).toHaveText('Practised 1 of the last 7 days');
+  await expect(today(page)).toContainText('0/10 min');
+  await expect(page.getByTestId('streak-count')).toHaveText('1');
 });
 
 test('coming back to the page after midnight re-reads the clock', async ({ page }) => {
-  await withStats(page, { countDrill: { history: ROWS } });
+  await withMetToday(page);
   await page.clock.install({ time: BEFORE_MIDNIGHT });
   await page.goto('/?e2e=1');
-  await expect(line(page)).toHaveText('Practised 2 of the last 7 days');
+  await expect(today(page)).toHaveText('Goal met');
 
   // The clock jumps without firing timers, as in a frozen background tab.
   await page.clock.setSystemTime(new Date('2026-10-19T07:05:00.000Z'));
   await page.waitForTimeout(100);
-  await expect(line(page)).toHaveText('Practised 2 of the last 7 days');
+  await expect(today(page)).toHaveText('Goal met');
   await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
-  await expect(line(page)).toHaveText('Practised 1 of the last 7 days');
+  await expect(today(page)).toContainText('0/10 min');
 });

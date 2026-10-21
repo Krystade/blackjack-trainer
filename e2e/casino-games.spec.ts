@@ -166,6 +166,44 @@ test('rows and stats cards mark the rules their figures assumed', async ({ page 
   await expect(page.getByTestId('gs-assumed-rules')).toHaveCount(0);
 });
 
+/*
+ * Merge of Wave L and Wave M: a row flags only the assumptions that can move
+ * the edge by 0.05% of action or more; the card still lists every one. A
+ * variant game is never simulated, so its row flags none.
+ */
+test('rows flag only material assumptions; the card lists all; a variant row flags none', async ({ page }) => {
+  // Every rule logged except doubling split aces (0.08%, material where it can happen).
+  const dsaOnly = { ...good, id: 'g-dsa', doubleSplitAces: undefined };
+  // The same with no double after a split logged: split aces can never double, so it is moot.
+  const moot = { ...dsaOnly, id: 'g-moot', das: false };
+  const variant = { id: 'g-var', decks: null, s17: null, das: null, surrender: null, payout: null, cutDecksLeft: null, minBet: 25, maxBet: null, midShoeEntry: 'unknown', csm: false, variant: 'freebet' };
+  const log = { ...LOG, casinos: [{ ...base, id: 'c1', name: 'Pala', games: [dsaOnly, moot, variant] }] };
+  await page.addInitScript(
+    ([k, l]) => {
+      if (!sessionStorage.getItem('seeded')) {
+        localStorage.setItem(k as string, l as string);
+        sessionStorage.setItem('seeded', '1');
+      }
+    },
+    [KEY, JSON.stringify(log)],
+  );
+  await page.goto('/?e2e=1');
+  await openCasino(page);
+  const row = (id: string) => rows(page).and(page.locator(`[data-game="${id}"]`));
+  await expect(row('g-dsa').getByTestId('assumed-badge')).toHaveText('1 rule assumed');
+  await expect(row('g-dsa').getByTestId('assumed-badge')).toHaveAttribute('title', 'no doubling split aces');
+  await expect(row('g-moot').getByTestId('assumed-badge')).toHaveCount(0);
+  await expect(row('g-var').getByTestId('rank-ev')).toHaveText('not modelled');
+  await expect(row('g-var').getByTestId('assumed-badge')).toHaveCount(0);
+
+  await row('g-moot').click();
+  await expect(page.getByTestId('gs-assumed-rules')).toContainText('no doubling split aces');
+  await back(page);
+  await row('g-var').click();
+  await expect(page.getByTestId('game-stats')).toHaveAttribute('data-state', 'variant');
+  await expect(page.getByTestId('gs-assumed-rules')).toHaveCount(0);
+});
+
 test('editing a rule makes the result stale; Re-run makes it current again', async ({ page }) => {
   await seed(page);
   await page.goto('/?e2e=1');

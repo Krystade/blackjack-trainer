@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { sayMomentAtPause } from '../../../habits/moment';
 import type { Profile, Settings } from '../../../store/types';
 import type { Card, Rank } from '../../../engine/cards';
 import { strategyRulesFor } from '../../../store/profiles';
@@ -185,7 +186,7 @@ export function IndexTestView({
       advanceTimerRef.current = null;
       if (runIdRef.current !== runId) return;
       next();
-    }, autoAdvanceDelayMs(settings.audio.answerPauseMs, spokenPauseFor(text, settings.audio.rate)));
+    }, autoAdvanceDelayMs(settings.audio.answerPauseMs, spokenPauseFor(text, settings.audio.rate) + sayMomentAtPause(settings.audio)));
   };
 
   const repeatPrompt = () => say(narrateIndexTestPrompt(item));

@@ -3,7 +3,7 @@ import type { CasinoLog } from '../../../store/casinoLog';
 import { methodBadge } from '../../../engine/betMethods';
 import { kindBadge, labelledSummary } from '../../casinoFigures';
 import { buildRanking, needsCompute, type RankRow, type RankSort } from '../../casinoRanking';
-import { ASSUMED_TEXT, assumedRules, assumedRulesBadge, ciText, evHourText, n0Text, pctText, roundsText } from '../../casinoStatsText';
+import { ASSUMED_TEXT, assumedRulesBadge, ciText, evHourText, materialAssumedRules, n0Text, pctText, roundsText } from '../../casinoStatsText';
 import { Choice } from './fields';
 import { cancelAll, enqueue } from './simRunner';
 import { useActiveProfile, useGameResults, useRunner, type useHere } from './useGameStats';
@@ -118,8 +118,11 @@ export function GamesRanked({ log, go, here: where }: { log: CasinoLog; go: (v: 
 function RankItem({ row, place, sort, running, onOpen }: { row: RankRow; place: number; sort: RankSort; running: boolean; onOpen: () => void }) {
   const f = row.figures;
   const value = !f ? null : sort === 'trip' && row.tripEv !== null ? row.tripEv : f.evHour;
-  // Review S4: the figure rests on conservative guesses for these rules.
-  const assumed = assumedRules(row.input.assumed);
+  // Review S4: the figure rests on conservative guesses for these rules; only
+  // the ones that can move it by 0.05% of action or more (the card lists all).
+  // A variant game is never simulated, so the standard game's guesses are not
+  // behind anything on its row.
+  const assumed = row.notModelled ? [] : materialAssumedRules(row.input.assumed, row.game);
   return (
     <li>
       <button
@@ -137,7 +140,7 @@ function RankItem({ row, place, sort, running, onOpen }: { row: RankRow; place: 
             <span className="cas-row-name">{row.casino.name}</span>
           </span>
           <span className="cas-row-net" data-sign={value === null ? 0 : Math.sign(Math.round(value))} data-testid="rank-ev">
-            {running ? 'running…' : value === null ? 'not computed' : `${evHourText(value)}${sort === 'trip' && row.tripEv !== null ? ' trip' : ''}`}
+            {running ? 'running…' : row.notModelled ? 'not modelled' : value === null ? 'not computed' : `${evHourText(value)}${sort === 'trip' && row.tripEv !== null ? ' trip' : ''}`}
           </span>
         </span>
         <span className="cas-row-game">{labelledSummary(row.game)}</span>

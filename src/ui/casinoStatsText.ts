@@ -1,6 +1,7 @@
 import { MINUS } from '../drills/signed';
 import { money, signedMoney } from './casinoFigures';
 import type { AssumedField } from '../store/casinoGameStats';
+import type { CasinoGame } from '../store/casinoLog';
 
 /**
  * Wave K: how the ranking and the stats card write the simulator's figures.
@@ -81,6 +82,61 @@ export const ASSUMED_TEXT: Record<AssumedField, string> = {
  */
 export function assumedRules(assumed: readonly AssumedField[]): AssumedField[] {
   return assumed.filter((a) => a !== 'cut' && a !== 'minBet');
+}
+
+/**
+ * What each assumed rule can cost, in % of action: the gap between the
+ * conservative choice the simulator plays and the best the house could
+ * really deal. Standard rules (H17, DAS, 3:2, split to 4), infinite deck,
+ * from the app's own engine (engine/variants/ev.ts roundReturn), which gives
+ * the published Wizard of Odds figures for the rules both list (S17 0.22, DAS
+ * 0.14, RSA 0.08, double 10-11 0.18, hitting split aces 0.19).
+ * casinoAssumedEffect.test.ts recomputes every engine figure. Decks: the
+ * Wizard's single-deck figure, the most an unknown shoe can be better than six.
+ * Doubling split aces is 0.08%, not negligible: a soft double against a weak
+ * dealer card on each of two hands, on one round in 169.
+ */
+export const ASSUMED_EFFECT_PCT: Record<AssumedField, number> = {
+  decks: 0.48,
+  s17: 0.22,
+  das: 0.14,
+  surrender: 0.1,
+  payout: 1.35,
+  rsa: 0.08,
+  doubleSplitAces: 0.08,
+  maxSplitHands: 0.06,
+  doubleOn: 0.18,
+  commission: 1,
+  // Conditions of the visit, not rules: never flagged as rules.
+  cut: 0,
+  minBet: 0,
+};
+
+/** An assumption worth flagging on a ranking row moves the house edge by at least this, % of action. */
+export const MATERIAL_ASSUMED_PCT = 0.05;
+
+/**
+ * What this assumption can cost at this game, % of action. A rule that the
+ * game's LOGGED rules make moot costs nothing: split aces cannot double where
+ * doubling after a split is barred or doubling is 9-11 / 10-11 only (a split
+ * ace is soft 12-21), and aces cannot be resplit where the split stops at 2 hands.
+ */
+export function assumedEffect(field: AssumedField, game: Pick<CasinoGame, 'das' | 'doubleOn' | 'maxSplitHands'>): number {
+  if (field === 'doubleSplitAces' && (game.das === false || game.doubleOn === '9-11' || game.doubleOn === '10-11')) return 0;
+  if (field === 'rsa' && game.maxSplitHands === 2) return 0;
+  return ASSUMED_EFFECT_PCT[field];
+}
+
+/**
+ * The assumed rules a ranking row flags: the material ones (merge of Wave L
+ * and Wave M). The stats card still lists every assumed rule.
+ */
+export function materialAssumedRules(
+  assumed: readonly AssumedField[],
+  game: Pick<CasinoGame, 'das' | 'doubleOn' | 'maxSplitHands'>,
+  threshold = MATERIAL_ASSUMED_PCT,
+): AssumedField[] {
+  return assumedRules(assumed).filter((a) => assumedEffect(a, game) >= threshold);
 }
 
 /** "1 rule assumed", "3 rules assumed". */

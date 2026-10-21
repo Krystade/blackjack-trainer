@@ -1,3 +1,4 @@
+import { PRESET_LABEL } from '../engine/variants/rules';
 import { MINUS } from '../drills/signed';
 import type { Casino, CasinoGame, CasinoLog, CasinoSession, GameRules, GeoPoint, HeatLevel } from '../store/casinoLog';
 import { HEAT_LEVELS } from '../store/casinoLog';
@@ -277,13 +278,19 @@ export function casinoWarnBadges(c: Pick<Casino, 'games'>): string[] {
   return per[0]!.filter((w) => per.every((ws) => ws.includes(w)));
 }
 
-/** "DD pit 3: 2D H17 · cut 0.75", or the summary alone without a label. Wave M: a variant name leads. */
+/**
+ * "DD pit 3: 2D H17 · cut 0.75", or the summary alone without a label. Wave M:
+ * a variant name joins the label. Wave L: a variant game's preset leads the
+ * summary ("Free Bet · 6D H17"), unless the name already says it.
+ */
 export function labelledSummary(g: CasinoGame): string {
   // One name when either contains the other ("21st Century" / "21st Century Blackjack").
   const l = g.label ?? '';
   const v = g.variantName ?? '';
   const name = !v ? l : !l ? v : v.toLowerCase().includes(l.toLowerCase()) ? v : l.toLowerCase().includes(v.toLowerCase()) ? l : `${l}, ${v}`;
-  return name ? `${name}: ${gameSummary(g)}` : gameSummary(g);
+  const preset = g.variant ? PRESET_LABEL[g.variant] : null;
+  const summary = preset && !name.toLowerCase().includes(preset.toLowerCase()) ? `${preset} · ${gameSummary(g)}` : gameSummary(g);
+  return name ? `${name}: ${summary}` : summary;
 }
 
 /** Wave M: "Card room" for a California card room, else null. */

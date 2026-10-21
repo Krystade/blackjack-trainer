@@ -1,5 +1,7 @@
 import { reportStorageFailure, shrinkDiagnostics } from './storageHealth';
 import { subscribeToExternalWrites } from './crossTab';
+import { isPresetId } from '../engine/variants/rules';
+import type { PresetId } from '../engine/variants/rules';
 import { normMethod, type BetMethod } from '../engine/betMethods';
 
 /**
@@ -120,6 +122,12 @@ export interface CasinoGame {
   /** Field names the owner marked with "?": shown with a "?", value kept. */
   unsure?: string[];
   // ---- end Wave M
+  /**
+   * Wave L: a blackjack variant (Free Bet, Spanish 21, Switch). Absent =
+   * standard blackjack. The simulator models standard blackjack only, so a
+   * variant game gets its flat house edge from the variant charts instead.
+   */
+  variant?: PresetId;
 }
 
 /** Rounds an hour when a game does not say: a typical shoe game with a few players. */
@@ -350,6 +358,7 @@ export function normGame(x: unknown, fallbackId: string, legacy?: Record<string,
   const notes = notesOf(g.notes);
   if (notes !== '') game.notes = notes;
   Object.assign(game, normWaveMGame(g));
+  if (isPresetId(g.variant)) game.variant = g.variant;
   return game;
 }
 
