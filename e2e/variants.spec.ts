@@ -134,7 +134,12 @@ test('a casino game can be a variant: the card shows its house edge and says cou
         status: 'ok',
         createdAt: AT,
         updatedAt: AT,
-        games: [{ id: 'g1', decks: 6, s17: false, payout: '3:2', minBet: 25, midShoeEntry: 'allowed', csm: false }],
+        games: [
+          { id: 'g1', decks: 6, s17: false, payout: '3:2', minBet: 25, midShoeEntry: 'allowed', csm: false },
+          // A standard game dealt differently, so the auto-sim has something to
+          // do and its finishing is a positive the variant's absence can follow.
+          { id: 'g2', decks: 2, s17: true, payout: '3:2', minBet: 25, midShoeEntry: 'allowed', csm: false },
+        ],
       },
     ],
     sessions: [],
@@ -150,18 +155,26 @@ test('a casino game can be a variant: the card shows its house edge and says cou
   await page.goto('/?e2e=1');
   await tab(page, 'Casino');
   await page.getByTestId('casino-row').filter({ hasText: 'Rio' }).click();
-  await page.getByTestId('game-variant').selectOption('freebet');
+  await page.getByTestId('game-variant').first().selectOption('freebet');
   await page.getByRole('button', { name: 'Save casino' }).click();
 
-  const row = page.getByTestId('games-ranked').getByTestId('rank-row');
+  const ranked = page.getByTestId('games-ranked');
+  const row = ranked.getByTestId('rank-row').and(page.locator('[data-game="g1"]'));
   await expect(row.getByTestId('rank-ev')).toHaveText('not modelled');
   await expect(row).toContainText('Free Bet');
   // A variant game is never simulated: nothing is queued or stored for it.
+  // Read only once every first estimate is in -- the standard game worked out
+  // and the runner past 'estimating' (casinoAutoSim.ts runs every first pass
+  // before any refining). Had the variant been in the plan, its estimate would
+  // be stored by then. An immediate read passed before the runner had stored
+  // anything for anyone.
+  await expect(ranked.getByTestId('rank-row').and(page.locator('[data-game="g2"]'))).toHaveAttribute('data-state', 'current', { timeout: 30_000 });
+  await expect(ranked.getByTestId('rank-auto')).toHaveAttribute('data-phase', /^(refining|idle)$/);
   const simmed = await page.evaluate(() => {
     const raw = localStorage.getItem('bjtrainer.casinoGameStats.v1');
     return raw ? Object.keys(JSON.parse(raw).results ?? JSON.parse(raw)).length : 0;
   });
-  expect(simmed).toBe(0);
+  expect(simmed, 'stored results: the standard game only').toBe(1);
   await row.click();
   const card = page.getByTestId('game-stats');
   await expect(card).toHaveAttribute('data-state', 'variant');
@@ -308,9 +321,14 @@ test('Variant hands by voice: a play the hand does not offer is refused out loud
   const seed = seedWhere((s) => !variantItemLegal(drawVariantItem('s21-h17', s)).includes('split'));
   await openVariantVoice(page, seed);
   const mark = (await speechLog(page)).length;
+  const tally = () => page.evaluate(() => localStorage.getItem('bjtrainer.variantTally.v1'));
+  const before = await tally();
   await sayOnceListening(page, 'split');
   await expect.poll(async () => (await speechLog(page)).slice(mark)).toContain(narrateActionNotAsked('split'));
-  await expect(page.getByTestId('variant-result')).toHaveCount(0);
+  // One look, not a retry the result's own auto-advance could satisfy, and the
+  // tally a grade writes.
+  expect(await page.getByTestId('variant-result').count()).toBe(0);
+  expect(await tally(), 'the refused play reached the tally').toBe(before);
   // A word the hand does offer still grades it.
   const item = drawVariantItem('s21-h17', seed);
   await sayOnceListening(page, item.advice.action);

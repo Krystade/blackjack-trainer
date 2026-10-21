@@ -146,6 +146,8 @@ test('figures appear on their own, the ranking follows them, and the cards say w
 
   // No mid-shoe entry at El Cortez: no back-count method was even worked out.
   await rows(page).and(page.locator('[data-game="g-deep"]')).click();
+  // Its methods are drawn first, so the missing one is missing from a list.
+  await expect(card.getByTestId('gs-method').first()).toBeVisible();
   await expect(card.getByTestId('gs-method').filter({ hasText: /back-count/i })).toHaveCount(0);
 
   // The results survive a reload.
