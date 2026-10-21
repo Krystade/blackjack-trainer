@@ -363,3 +363,26 @@ describe('a casino session running: estimates only', () => {
     expect(runnerState().running).toMatchObject({ gameId: 'gc', work: 'first' });
   });
 });
+
+describe('review N1: a run paused at or past its cap is finished, not an estimate', () => {
+  it('saved as time, and nothing more is scheduled for it', () => {
+    setAutoPlan([A], null);
+    attachAuto();
+    finishFirst();
+    live()[0]!.emit({ type: 'progress', progress: progress({ methods: M }, { basicRounds: 9_000_000, ms: AUTO_CAP_MS + 5 }) });
+    _setHidden(true);
+    expect(loadGameResults().ga).toMatchObject({ status: 'time', basicRounds: 9_000_000 });
+    _setHidden(false);
+    expect(runnerState().running).toBeNull();
+    expect(runnerState().todo).toEqual({ first: 0, refine: 0 });
+  });
+
+  it('a pause short of the cap stays an estimate', () => {
+    setAutoPlan([A], null);
+    attachAuto();
+    finishFirst();
+    live()[0]!.emit({ type: 'progress', progress: progress({ methods: M }, { basicRounds: 900_000, ms: AUTO_CAP_MS - 1 }) });
+    _setHidden(true);
+    expect(loadGameResults().ga).toMatchObject({ status: 'partial', basicRounds: 900_000 });
+  });
+});
