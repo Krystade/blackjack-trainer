@@ -240,9 +240,12 @@ export function rankedEvHour(r: RankRow): number | null {
 
 /**
  * The rows, sorted. Burned casinos are left out until their cool-off is over;
- * Avoid casinos stay in, greyed. Under the EV sorts, games whose run finished
- * come first, then partial runs (review S3: their figure is shakier), then
- * games not yet computed (in log order). Under Distance, every game with a
+ * Avoid casinos stay in, greyed. Under the EV sorts, every game with a figure
+ * by that figure -- whether its run met both targets, stopped at its cap, or
+ * is still an estimate (Wave Q review S3: each is a figure with its interval,
+ * shown on the row; on a slower phone most runs end at the cap, and a tier
+ * would rank a losing game above a winning one) -- then games not yet worked
+ * out (in log order). Under Distance, every game with a
  * distance, nearest first -- live miles and drive minutes on one scale
  * (`distanceMinutes`, review N3) -- then games with neither.
  */
@@ -301,13 +304,13 @@ export function buildRanking(
     if (y === null) return -1;
     return y - x || byIndex(a, b);
   };
-  // Finished runs, then partial ones, then none.
-  const done = (r: RankRow) => (r.figures === null ? 2 : r.figures.partial ? 1 : 0);
+  // Games with a figure, then none (review S3: never by how far the run got).
+  const done = (r: RankRow) => (r.figures === null ? 1 : 0);
   if (sort === 'ev') {
     return rows.sort((a, b) => done(a) - done(b) || desc(rankedEvHour)(a, b));
   }
   if (sort === 'trip') {
-    // Within finished and within partial runs: games with a drive time
+    // Among games with figures: games with a drive time
     // first, by EV per trip hour; then games with no drive time (marked),
     // by EV per hour.
     return rows.sort((a, b) => {

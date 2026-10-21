@@ -190,14 +190,23 @@ describe('review S3 and S4: partial runs and unknown mid-shoe entry', () => {
   const a = game('ga');
   const b = game('gb', { cutDecksLeft: 2 });
 
-  it('a partial run is marked, ranks after finished ones, and is run again on its own', () => {
+  it('a partial run is marked and run again on its own; Wave Q review S3: it ranks by its figure, not by how far it got', () => {
     const log = logOf([casino('c1', [a, b])]);
     const results = { ga: { ...resultFor(a, 3), status: 'cancelled' as const }, gb: resultFor(b, 1) };
     const rows = buildRanking(log, profile, results, NOW, null, 'ev');
-    expect(rows.map((r) => r.game.id)).toEqual(['gb', 'ga']);
-    expect(rows[1]!.figures!.partial).toBe(true);
-    expect(rows[1]!.state.kind).toBe('current');
-    expect(rows.map((r) => workFor(r.state.kind === 'current' ? r.state.result : undefined))).toEqual([null, 'refine']);
+    expect(rows.map((r) => r.game.id)).toEqual(['ga', 'gb']);
+    expect(rows[0]!.figures!.partial).toBe(true);
+    expect(rows[0]!.state.kind).toBe('current');
+    expect(rows.map((r) => workFor(r.state.kind === 'current' ? r.state.result : undefined))).toEqual(['refine', null]);
+    // Every status, either way round: the figure decides.
+    for (const status of ['partial', 'cancelled', 'time', 'budget', 'done'] as const) {
+      for (const sort of ['ev', 'trip'] as const) {
+        const hi = buildRanking(log, profile, { ga: { ...resultFor(a, 3), status }, gb: resultFor(b, 1) }, NOW, null, sort);
+        expect(hi.map((r) => r.game.id), `${status} ${sort} above`).toEqual(['ga', 'gb']);
+        const lo = buildRanking(log, profile, { ga: { ...resultFor(a, -3), status }, gb: { ...resultFor(b, 1), status: 'time' } }, NOW, null, sort);
+        expect(lo.map((r) => r.game.id), `${status} ${sort} below`).toEqual(['gb', 'ga']);
+      }
+    }
     for (const status of ['time', 'budget'] as const) {
       const r = buildRanking(log, profile, { ga: { ...resultFor(a, 3), status } }, NOW, null, 'ev');
       expect(r.find((x) => x.game.id === 'ga')!.figures!.partial, status).toBe(true);
