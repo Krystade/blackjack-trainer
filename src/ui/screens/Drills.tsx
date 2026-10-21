@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { takeDrillLaunch, takeFlashHandOver, takeReviewIndexes } from '../drillLaunch';
 import { SpeedDrillView } from './drills/SpeedDrillView';
 import { TabSettingsButton } from '../components/TabSettingsButton';
@@ -30,6 +30,7 @@ import { DeckEstimationView } from './drills/DeckEstimationView';
 import { MasteryChallengeView } from './drills/MasteryChallengeView';
 import { HandDeckGate } from './drills/HandDeckGate';
 import { settingsForCustomStart } from '../../drills/deckSource';
+import { defaultSelection } from '../../drills/cellSelection';
 import { CustomDrillEditor } from '../components/CustomDrillEditor';
 import { useVoiceToggle, isVoiceOn } from '../voiceSession';
 import { useEyesFreeToggle, isEyesFreeOn } from '../eyesFreeSession';
@@ -68,11 +69,20 @@ type DrillMode =
   | 'custom'
   | 'speed';
 
+/** The painted tiers, order-free, with an unsaved selection read as the editor shows it. */
+function tiersKey(settings: Settings): string {
+  const tiers = settings.drill.custom?.tiers ?? defaultSelection().tiers;
+  return JSON.stringify(Object.entries(tiers).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+}
+
 export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }: DrillsProps) {
   // #28: Home's Next step can hand over the drill to open.
   const [launch] = useState(() => takeDrillLaunch());
   const [mode, setMode] = useState<'picker' | DrillMode>(() => launch ?? 'picker');
   const [customReturn, setCustomReturn] = useState<'flash' | 'mastery' | null>(null);
+  // The custom tiers as they were when Customize opened from a drill, so Back
+  // can tell a look from an edit (only an edit switches the deck to Custom).
+  const customTiersAtOpen = useRef<string>('');
   // C-R3: Home's Drive tap starts the drill it opens; taken once, on mount.
   const [driveStart] = useState(() => takeDriveAutoStart());
   const autoStartFor = (m: DrillMode) => driveStart && launch === m;
@@ -159,10 +169,14 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
   // B2: the hand drills mount only on a deck with something in it.
   /**
    * Wave M: the Custom editor opened FROM a drill's Deck picker returns to
-   * that drill, on the Custom deck (Back or Start alike), instead of the
-   * picker. Null when it was opened from the picker or Home.
+   * that drill instead of the picker. Start, or Back after painting, lands on
+   * the Custom deck; Back after only looking leaves the deck and scopes he
+   * had (a Missed / Soft-only session must not be silently replaced, and the
+   * scopes are shared with Speed and Mastery). Null when opened from the
+   * picker or Home.
    */
   const openCustomize = (from: 'flash' | 'mastery') => {
+    customTiersAtOpen.current = tiersKey(settings);
     setCustomReturn(from);
     setMode('custom');
   };
@@ -298,9 +312,11 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
         backLabel={customReturn ? (customReturn === 'flash' ? 'Flashcards' : 'Mastery') : undefined}
         onBack={() => {
           if (!customReturn) return setMode('picker');
-          const next = settingsForCustomStart(settings);
-          saveSettings(next);
-          onSettingsChange(next);
+          if (tiersKey(settings) !== customTiersAtOpen.current) {
+            const next = settingsForCustomStart(settings);
+            saveSettings(next);
+            onSettingsChange(next);
+          }
           setCustomReturn(null);
           setMode(customReturn);
         }}

@@ -144,9 +144,8 @@ export function CustomDrillEditor({
           type="button"
           className="drill-back-btn"
           onClick={onBack}
-          aria-label={backLabel ? `Back to ${backLabel}` : undefined}
         >
-          Back
+          {backLabel ? `Back to ${backLabel}` : 'Back'}
         </button>
         <div className="drill-heading">Custom drill</div>
       </div>
