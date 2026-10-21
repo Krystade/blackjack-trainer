@@ -20,8 +20,10 @@ export function HandDeckGate({
   activeProfile,
   onSettingsChange,
   onBack,
+  onCustomize,
   children,
 }: {
+  onCustomize?: () => void;
   title: string;
   settings: Settings;
   activeProfile: Profile;
@@ -40,7 +42,7 @@ export function HandDeckGate({
         <div className="drill-heading">{title}</div>
       </div>
       <div className="drill-inline-controls">
-        <HandDeckControls settings={settings} onChange={onSettingsChange} />
+        <HandDeckControls settings={settings} onChange={onSettingsChange} onCustomize={onCustomize} />
       </div>
       <p className="empty-deck" role="status" data-testid="empty-deck">
         {emptyDeckMessage(deck)}

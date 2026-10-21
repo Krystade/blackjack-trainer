@@ -72,6 +72,7 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
   // #28: Home's Next step can hand over the drill to open.
   const [launch] = useState(() => takeDrillLaunch());
   const [mode, setMode] = useState<'picker' | DrillMode>(() => launch ?? 'picker');
+  const [customReturn, setCustomReturn] = useState<'flash' | 'mastery' | null>(null);
   // C-R3: Home's Drive tap starts the drill it opens; taken once, on mount.
   const [driveStart] = useState(() => takeDriveAutoStart());
   const autoStartFor = (m: DrillMode) => driveStart && launch === m;
@@ -156,13 +157,23 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
     );
   }
   // B2: the hand drills mount only on a deck with something in it.
-  const gate = (title: string, view: ReactNode) => (
+  /**
+   * Wave M: the Custom editor opened FROM a drill's Deck picker returns to
+   * that drill, on the Custom deck (Back or Start alike), instead of the
+   * picker. Null when it was opened from the picker or Home.
+   */
+  const openCustomize = (from: 'flash' | 'mastery') => {
+    setCustomReturn(from);
+    setMode('custom');
+  };
+  const gate = (title: string, view: ReactNode, from?: 'flash' | 'mastery') => (
     <HandDeckGate
       title={title}
       settings={settings}
       activeProfile={activeProfile}
       onSettingsChange={onSettingsChange}
       onBack={() => setMode('picker')}
+      onCustomize={from ? () => openCustomize(from) : undefined}
     >
       {view}
     </HandDeckGate>
@@ -193,7 +204,9 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
             activeProfile={activeProfile}
             onBack={() => setMode('picker')}
             onSettingsChange={onSettingsChange}
+            onCustomize={() => openCustomize('flash')}
           />,
+          'flash',
         )}
       />
     );
@@ -252,7 +265,9 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
         activeProfile={activeProfile}
         onSettingsChange={onSettingsChange}
         onBack={() => setMode('picker')}
+        onCustomize={() => openCustomize('mastery')}
       />,
+      'mastery',
     );
   }
   if (mode === 'speed') {
@@ -277,9 +292,18 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
           const next = settingsForCustomStart(settings);
           saveSettings(next);
           onSettingsChange(next);
+          setCustomReturn(null);
           setMode(drill === 'flashcards' ? 'flash' : drill);
         }}
-        onBack={() => setMode('picker')}
+        backLabel={customReturn ? (customReturn === 'flash' ? 'Flashcards' : 'Mastery') : undefined}
+        onBack={() => {
+          if (!customReturn) return setMode('picker');
+          const next = settingsForCustomStart(settings);
+          saveSettings(next);
+          onSettingsChange(next);
+          setCustomReturn(null);
+          setMode(customReturn);
+        }}
       />
     );
   }

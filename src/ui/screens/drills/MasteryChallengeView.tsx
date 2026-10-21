@@ -75,11 +75,14 @@ export function MasteryChallengeView({
   activeProfile,
   onSettingsChange,
   onBack,
+  onCustomize,
 }: {
   settings: Settings;
   activeProfile: Profile;
   onSettingsChange: (next: Settings) => void;
   onBack: () => void;
+  /** Wave M: open the Custom editor and come back here. */
+  onCustomize?: () => void;
 }) {
   const deck = useMemo(() => handDeckFor(settings.drill, activeProfile), [settings.drill, activeProfile]);
   const universe = deck.ids;
@@ -269,7 +272,7 @@ export function MasteryChallengeView({
       </div>
 
       <div className="drill-inline-controls">
-        <HandDeckControls settings={settings} onChange={changeScopes} />
+        <HandDeckControls settings={settings} onChange={changeScopes} onCustomize={onCustomize} />
         <DealToggles settings={settings} onChange={onSettingsChange} />
         {/* "Check progress" (operator ask): always-visible, live count. */}
         <div className="mastery-progress" data-testid="mastery-progress">
