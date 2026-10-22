@@ -16,6 +16,7 @@ import {
   methodsFor,
   normMethod,
   RAMP_START_RANGE,
+  sameButLabel,
   type BetMethod,
 } from '../../../engine/betMethods';
 import { Choice, Field, FieldGroup } from './fields';
@@ -116,7 +117,7 @@ export function CasinoSettings({ log, commit }: { log: CasinoLog; commit: (next:
     const dup = duplicateOf(profile, next, m);
     // Review S4: a new name alone changes no figure (the name is not in the cache key).
     const was = editing ? custom.find((x) => x.id === editing) : undefined;
-    const renamedOnly = was !== undefined && JSON.stringify({ ...was, label: undefined }) === JSON.stringify({ ...m, label: undefined });
+    const renamedOnly = was !== undefined && sameButLabel(was, m);
     setMethodMsg(
       dup
         ? `Saved. It plays exactly like “${describeMethod(dup)}”, so it is worked out once, under that one.`

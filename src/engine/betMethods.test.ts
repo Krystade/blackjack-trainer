@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { defaultMethods, describeMethod, duplicateOf, methodBadge, methodBet, methodSpread, methodsFor, normMethod, type BetMethod } from './betMethods';
+import { defaultMethods, describeMethod, duplicateOf, methodBadge, methodBet, methodSpread, methodsFor, normMethod, sameButLabel, type BetMethod } from './betMethods';
 import { DEFAULT_SPREAD } from './game';
 
 const m = (over: Partial<BetMethod>): BetMethod => ({ id: 'x', entryTc: null, exitTc: null, rampStartTc: null, ...over });
@@ -124,5 +124,30 @@ describe('names', () => {
     expect(methodBadge(m({ exitTc: -1 }))).toBe('Wong out');
     expect(methodBadge(m({ flat: true }))).toBe('Flat');
     expect(methodBadge(m({}))).toBe('Play all');
+  });
+});
+
+describe('re-review R5: sameButLabel', () => {
+  it('a new name alone is the same method; any other field changed is not', () => {
+    const a = m({ id: 'c1', label: 'Mine', entryTc: 2, exitTc: -1, rampStartTc: 3 });
+    expect(sameButLabel(a, { ...a, label: 'Renamed' })).toBe(true);
+    expect(sameButLabel(a, { ...a, label: undefined })).toBe(true);
+    for (const [field, v] of [
+      ['id', 'c2'],
+      ['entryTc', 3],
+      ['entryTc', null],
+      ['exitTc', -2],
+      ['rampStartTc', 1],
+      ['flat', true],
+    ] as const) {
+      expect(sameButLabel(a, { ...a, [field]: v }), field).toBe(false);
+    }
+  });
+
+  it('compares fields, not text: key order and an absent flat do not matter', () => {
+    const a: BetMethod = { id: 'c1', entryTc: null, exitTc: -1, rampStartTc: null };
+    const reordered: BetMethod = { rampStartTc: null, exitTc: -1, id: 'c1', entryTc: null, flat: false };
+    expect(sameButLabel(a, reordered)).toBe(true);
+    expect(sameButLabel({ ...a, flat: true }, { ...reordered, flat: true, label: 'x' })).toBe(true);
   });
 });

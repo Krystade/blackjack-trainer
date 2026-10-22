@@ -30,6 +30,18 @@ export interface BetMethod {
   rampStartTc: number | null;
 }
 
+/** Every field of a method but its name (a Record, so a field added to BetMethod has to be listed here). */
+const PLAY_FIELDS: Record<Exclude<keyof BetMethod, 'label'>, true> = { id: true, flat: true, entryTc: true, exitTc: true, rampStartTc: true };
+
+/**
+ * Wave Q re-review R5: whether two methods differ in nothing but their name,
+ * compared field by field (`flat` absent and false alike) -- so no figure of
+ * theirs changes: the name is not in the cache key.
+ */
+export function sameButLabel(a: BetMethod, b: BetMethod): boolean {
+  return (Object.keys(PLAY_FIELDS) as (keyof typeof PLAY_FIELDS)[]).every((k) => (k === 'flat' ? (a.flat === true) === (b.flat === true) : a[k] === b[k]));
+}
+
 /** The ranges the custom-method editor offers, and what a stored method is clamped to. */
 export const ENTRY_RANGE = [-2, 8] as const;
 export const EXIT_RANGE = [-6, 3] as const;
