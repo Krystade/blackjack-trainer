@@ -12,6 +12,8 @@ import type { SimSpec } from '../../../engine/casinoSim';
 export interface SimRequest {
   spec: SimSpec;
   seed: number;
+  /** The counted simulation's seed (casinoRun.ts `RunOptions.countSeed`). */
+  countSeed?: number;
   /** The cap on the total time, the prior run's included. */
   timeCapMs: number;
   maxRounds?: number;
@@ -31,9 +33,9 @@ const ctx = self as unknown as {
 };
 
 ctx.onmessage = (e: MessageEvent<SimRequest>) => {
-  const { spec, seed, timeCapMs, maxRounds, exitRounds, prior } = e.data;
+  const { spec, seed, countSeed, timeCapMs, maxRounds, exitRounds, prior } = e.data;
   try {
-    const run = runGame(spec, { seed, timeCapMs, maxRounds, exitRounds, prior, now: () => performance.now() });
+    const run = runGame(spec, { seed, countSeed, timeCapMs, maxRounds, exitRounds, prior, now: () => performance.now() });
     for (;;) {
       const step = run.next();
       ctx.postMessage({ type: step.done ? 'done' : 'progress', progress: step.value } satisfies SimMessage);

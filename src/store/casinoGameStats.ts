@@ -6,6 +6,7 @@ import { methodsFor, type BetMethod } from '../engine/betMethods';
 import type { Accum, SimSpec } from '../engine/casinoSim';
 import type { RunStatus } from '../engine/casinoRun';
 import { CUT_MIN_DECKS } from '../engine/cut';
+import { MULBERRY32_STEP } from '../engine/cards';
 import type { RuleSet } from '../engine/ruleset';
 
 /**
@@ -211,28 +212,36 @@ export function relabel(result: GameResult, methods: readonly BetMethod[]): Game
 }
 
 /**
- * Wave Q: the seed of a game's `n`th run. Run 0 is the input's own seed, so a
- * game worked out in one go deals exactly the rounds it always did; every
- * later run that continues it (casinoRun.ts `prior`) deals fresh ones.
+ * Wave Q: the seed of a game's `n`th run, for a result saved before the
+ * continuation seeds (`GameResult.nextSeeds`) -- every later run is seeded
+ * from those instead, and so deals exactly the draws after the last run's,
+ * none of them twice. Run 0 is the input's own seed, so a game worked out in
+ * one go deals exactly the rounds it always did.
  *
  * Review N4: every mulberry32 seed is a point on one 2^32 cycle (its state
- * steps by RNG_STEP), so two hashed seeds can land inside each other's draws.
- * Runs 1-7 are instead placed 2^29 steps apart along the cycle from run 0:
- * seed + n * 2^29 * RNG_STEP. Each run then has 537M draws of its own -- more
- * than the round ceilings use -- and the count simulation's seed (the same
- * seed XORed with a salt in the top bits only differs there too) is spaced
- * the same way. After eight the cycle comes back round, so later runs take a
- * hashed seed again.
+ * steps by MULBERRY32_STEP), so two hashed seeds can land inside each
+ * other's draws. Runs 1-7 here are placed 2^29 steps apart along the cycle
+ * from run 0 (the count simulation's salted seed comes out spaced the same
+ * way). Re-review R1: that stretch is NOT more than a run can use -- a two-
+ * deck game at the round ceilings needs about 2.2 of them, a deep shoe cut
+ * shallow more than the whole cycle, so no fixed slicing of it holds every
+ * game -- which is why later runs carry on from where the last one stopped.
+ * Past eight the stretches come back round; run n then starts in the second
+ * half of stretch n mod 8, in one of sixteen 2^24-step slots: the half most
+ * runs of the builds that used these seeds (short, time-capped) never got
+ * past.
  */
-const RNG_STEP = 0x6d2b79f5;
+const RNG_STEP = MULBERRY32_STEP;
 export const SPACED_RUNS = 8;
-/** 2^29 * RNG_STEP mod 2^32: only RNG_STEP mod 8 survives the shift. */
-const RUN_SPACING = Math.imul(1 << 29, RNG_STEP) >>> 0;
+const STRETCH = 2 ** 29;
+
+/** The seed `steps` draws along the cycle from `seed`. */
+const along = (seed: number, steps: number) => (seed + Math.imul(steps, RNG_STEP)) >>> 0;
 
 export function runSeed(input: Pick<SimInput, 'key' | 'seed'>, n: number): number {
   if (n <= 0) return input.seed;
-  if (n < SPACED_RUNS) return (input.seed + Math.imul(n, RUN_SPACING)) >>> 0;
-  return fnv1a(`${input.key}#${n}`);
+  if (n < SPACED_RUNS) return along(input.seed, n * STRETCH);
+  return along(input.seed, (n % SPACED_RUNS) * STRETCH + STRETCH / 2 + ((n >> 3) % 16) * 2 ** 24);
 }
 
 // ---------------------------------------------------------------- the cache
@@ -259,8 +268,14 @@ export interface GameResult {
   unit: number;
   basic: Accum;
   methods: { method: BetMethod; acc: Accum }[] | null;
-  /** Wave Q: runs merged into this result (absent = 1). The next run's seed is `runSeed(input, runs)`. */
+  /** Wave Q: runs merged into this result (absent = 1). */
   runs?: number;
+  /**
+   * Wave Q re-review R1: the seeds the next run continues each stream from
+   * (casinoRun.ts `RunProgress.seeds`). Absent on a result saved before
+   * them; that one's next run takes `runSeed(input, runs)`.
+   */
+  nextSeeds?: { basic: number; count: number };
   /** Wave Q: the total time this result is allowed (absent = the automatic cap); "Run another minute" raises it. */
   capMs?: number;
 }

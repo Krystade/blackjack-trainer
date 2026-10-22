@@ -43,10 +43,20 @@ export interface RunProgress {
   ms: number;
   /** 0..1, for a progress bar: the slower of the two targets (or the clock). */
   fraction: number;
+  /**
+   * Wave Q re-review R1: the seeds that carry on each simulation's stream
+   * exactly where this run has dealt it to (CasinoSim `nextSeed`; the count
+   * one is passed through untouched for a shuffler, which deals none). A run
+   * that continues this one is seeded with them, so it deals no draw this
+   * one dealt.
+   */
+  seeds: { basic: number; count: number };
 }
 
 export interface RunOptions {
   seed: number;
+  /** The counted simulation's seed; absent = `seed` salted (a game's first run). */
+  countSeed?: number;
   /** The phone-scale time cap, on the total time (the prior run's included). */
   timeCapMs: number;
   /** A round budget per simulation, on the total rounds (tests, the e2e hook, the quick first pass); absent = none. */
@@ -103,7 +113,8 @@ export function wouldContinue(
 export function* runGame(spec: SimSpec, opts: RunOptions): Generator<RunProgress, RunProgress> {
   const start = opts.now();
   const basic = new CasinoSim(spec, 'basic', opts.seed >>> 0);
-  const count = spec.csm ? null : new CasinoSim(spec, 'count', (opts.seed ^ SALT_COUNT) >>> 0);
+  const countSeed = (opts.countSeed ?? opts.seed ^ SALT_COUNT) >>> 0;
+  const count = spec.csm ? null : new CasinoSim(spec, 'count', countSeed);
   const prior = priorFor(spec, opts.prior);
   const budget = opts.maxRounds;
   const minRounds = budget !== undefined ? Math.min(MIN_ROUNDS, budget) : MIN_ROUNDS;
@@ -151,6 +162,7 @@ export function* runGame(spec: SimSpec, opts: RunOptions): Generator<RunProgress
       countRounds: countRounds(),
       ms,
       fraction: status === 'running' ? Math.min(0.99, Math.max(Math.min(bFrac, cFrac), clock)) : 1,
+      seeds: { basic: basic.nextSeed(), count: count ? count.nextSeed() : countSeed },
     };
   };
 

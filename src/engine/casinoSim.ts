@@ -1,4 +1,4 @@
-import { RANKS, fisherYatesShuffle, mulberry32, snapDecksRemaining } from './cards';
+import { MULBERRY32_STEP, RANKS, fisherYatesShuffle, mulberry32, snapDecksRemaining } from './cards';
 import type { Card, Rank } from './cards';
 import { hiLoTag, trueCount } from './count';
 import type { TcRounding } from './count';
@@ -294,6 +294,14 @@ export class CasinoSim {
   private csmLeft = 0;
   private readonly csmRng: () => number;
   /**
+   * Wave Q re-review R1: the seed, and the draws each generator seeded with
+   * it has taken (see `nextSeed`): the shoe's shuffles, a shuffler's draw per
+   * card. Both start at the seed, so the stream used is the longer of the two.
+   */
+  private readonly seed: number;
+  private shoeDraws = 0;
+  private csmDraws = 0;
+  /**
    * Wave L (side bets): the cards left in the shoe, per card type
    * (sideBets/comp.ts), kept only after `trackComposition()`. A side bet's
    * odds are a function of exactly this, so its simulation reads it before
@@ -320,7 +328,12 @@ export class CasinoSim {
     const cutSpec = { penetration: 0.75, cutDecks: spec.cutDecks, cutVary: false, rules: { decks: this.decks } };
     this.cutCards = () => cutCardsFor(cutSpec, cutRng);
     for (let d = 0; d < this.decks; d++) for (const suit of SUITS) for (const rank of RANKS) this.base.push({ rank, suit });
-    this.shoeRng = mulberry32(seed);
+    this.seed = seed >>> 0;
+    const shoeRng = mulberry32(seed);
+    this.shoeRng = () => {
+      this.shoeDraws++;
+      return shoeRng();
+    };
     this.shuffleShoe();
     this.methods =
       mode === 'count'
@@ -352,8 +365,28 @@ export class CasinoSim {
     for (let i = 0; i <= 2 * TC_CLAMP; i++) {
       this.handsAt.push(this.methodHandsAt.some((h) => h[i] === 2) ? 2 : 1);
     }
-    this.csmRng = mulberry32(seed);
+    const csmRng = mulberry32(seed);
+    this.csmRng = () => {
+      this.csmDraws++;
+      return csmRng();
+    };
     if (spec.csm) this.csmCards.push(...this.base);
+  }
+
+  /** Draws taken from the seed's stream so far. */
+  get draws(): number {
+    return Math.max(this.shoeDraws, this.csmDraws);
+  }
+
+  /**
+   * Wave Q re-review R1: the seed that carries on this sim's dealing stream
+   * from where it stands (MULBERRY32_STEP): a sim seeded with it deals the
+   * very draws this one would take next, and none it has taken. The seed's
+   * stream is all the dealing there is: the cut has its own, and never
+   * varies here.
+   */
+  nextSeed(): number {
+    return (this.seed + Math.imul(this.draws, MULBERRY32_STEP)) >>> 0;
   }
 
   /** Each method's sums, in the order of `spec.methods`. */

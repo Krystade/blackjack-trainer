@@ -174,6 +174,7 @@ function save(run: Running, p: RunProgress, status: ResultStatus): void {
     basic: p.basic,
     methods: p.methods,
     runs: run.runs,
+    nextSeeds: p.seeds,
     ...(capMs !== undefined ? { capMs } : {}),
   };
   // A paused or checkpointed run that has used its time is finished.
@@ -240,12 +241,14 @@ function start(job: AutoJob): void {
   }
   const prior = job.prior;
   const n = prior ? (prior.runs ?? 1) : 0;
+  // Re-review R1: a run carries on each stream where the last one left it, so it deals none of the draws before.
   const req: SimRequest = {
     spec: job.cand.input.spec,
-    seed: runSeed(job.cand.input, n),
+    seed: prior?.nextSeeds?.basic ?? runSeed(job.cand.input, n),
     timeCapMs: prior ? capOf(prior) : AUTO_CAP_MS,
     exitRounds: job.cand.exitRounds,
   };
+  if (prior?.nextSeeds) req.countSeed = prior.nextSeeds.count;
   if (prior) req.prior = toPrior(prior);
   const b = budget();
   if (job.work === 'first') req.maxRounds = Math.min(QUICK_ROUNDS, b ?? QUICK_ROUNDS);

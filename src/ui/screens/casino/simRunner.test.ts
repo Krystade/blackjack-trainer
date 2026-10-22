@@ -11,7 +11,7 @@ import {
   setAutoPlan,
 } from './simRunner';
 import { AUTO_CAP_MS, EXTEND_MS, QUICK_ROUNDS, type AutoCandidate } from '../../casinoAutoSim';
-import { _setGameStatsStorage, loadGameResults, runSeed, simInputFor } from '../../../store/casinoGameStats';
+import { _setGameStatsStorage, loadGameResults, runSeed, saveGameResult, simInputFor } from '../../../store/casinoGameStats';
 import { blankGame, type CasinoGame } from '../../../store/casinoLog';
 import { makeDefaultProfile } from '../../../store/profiles';
 import { emptyAccum, type Accum } from '../../../engine/casinoSim';
@@ -65,6 +65,7 @@ function progress(job: { methods: number }, over: Partial<RunProgress> = {}): Ru
     countRounds: QUICK_ROUNDS,
     ms: 120,
     fraction: 0.5,
+    seeds: { basic: 0x1234, count: 0x5678 },
     ...over,
   };
 }
@@ -103,23 +104,24 @@ describe('the automatic runner', () => {
     // A first pass: the input's own seed, the quick round count, no prior.
     let req = lastReq();
     expect(req.seed).toBe(A.input.seed);
+    expect(req.countSeed).toBeUndefined();
     expect(req.maxRounds).toBe(QUICK_ROUNDS);
     expect(req.prior).toBeUndefined();
     expect(runnerState().running).toMatchObject({ gameId: 'ga', work: 'first' });
     expect(runnerState().todo).toEqual({ first: 2, refine: 0 });
     finishFirst();
     // Stored as an estimate (more to come), and the next game's first pass starts on the same worker.
-    expect(loadGameResults().ga).toMatchObject({ key: A.input.key, status: 'partial', runs: 1, basicRounds: QUICK_ROUNDS });
+    expect(loadGameResults().ga).toMatchObject({ key: A.input.key, status: 'partial', runs: 1, basicRounds: QUICK_ROUNDS, nextSeeds: { basic: 0x1234, count: 0x5678 } });
     expect(workers).toHaveLength(1);
     req = lastReq();
     expect(req.seed).toBe(B.input.seed);
     expect(req.maxRounds).toBe(QUICK_ROUNDS);
     finishFirst();
-    // Then A again, continuing its estimate: fresh rounds, its sums as the prior, the minute cap, no round budget.
+    // Then A again, continuing its estimate: each stream carried on where the first pass left it (re-review R1),
+    // its sums as the prior, the minute cap, no round budget.
     req = lastReq();
     expect(req.spec).toEqual(A.input.spec);
-    expect(req.seed).toBe(runSeed(A.input, 1));
-    expect(req.seed).not.toBe(A.input.seed);
+    expect([req.seed, req.countSeed]).toEqual([0x1234, 0x5678]);
     expect(req.prior).toMatchObject({ basicRounds: QUICK_ROUNDS, ms: 120 });
     expect(req.timeCapMs).toBe(AUTO_CAP_MS);
     expect(req.maxRounds).toBeUndefined();
@@ -140,7 +142,7 @@ describe('the automatic runner', () => {
     attachAuto();
     finishFirst();
     const w = live()[0]!;
-    w.emit({ type: 'progress', progress: progress({ methods: M }, { basicRounds: 900_000, countRounds: 700_000, ms: 4000 }) });
+    w.emit({ type: 'progress', progress: progress({ methods: M }, { basicRounds: 900_000, countRounds: 700_000, ms: 4000, seeds: { basic: 0xabc, count: 0xdef } }) });
     _setHidden(true);
     expect(w.terminated).toBe(true);
     expect(live()).toHaveLength(0);
@@ -151,8 +153,18 @@ describe('the automatic runner', () => {
     const req = lastReq();
     expect(workers).toHaveLength(2);
     expect(req.prior).toMatchObject({ basicRounds: 900_000, ms: 4000 });
-    expect(req.seed).toBe(runSeed(A.input, 2));
-    expect(new Set([A.input.seed, runSeed(A.input, 1), req.seed]).size).toBe(3);
+    expect([req.seed, req.countSeed]).toEqual([0xabc, 0xdef]);
+  });
+
+  it('re-review R1: a result saved before the continuation seeds is continued from runSeed', () => {
+    const p = progress({ methods: M });
+    saveGameResult('ga', { key: A.input.key, computedAt: '2026-01-01T00:00:00.000Z', profileName: profile.name, status: 'partial', ms: p.ms, basicRounds: p.basicRounds, countRounds: p.countRounds, unit: A.input.spec.unit, basic: p.basic, methods: p.methods, runs: 3 });
+    setAutoPlan([A], null);
+    attachAuto();
+    const req = lastReq();
+    expect(req.prior).toMatchObject({ basicRounds: QUICK_ROUNDS });
+    expect(req.seed).toBe(runSeed(A.input, 3));
+    expect(req.countSeed).toBeUndefined();
   });
 
   it('a first pass stopped short of the floor keeps nothing (review S3), and starts again', () => {

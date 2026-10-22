@@ -292,17 +292,24 @@ describe('runSeed', () => {
     expect(runSeed(input, 2)).toBe(runSeed(input, 2));
   });
 
-  it('review N4: runs 1-7 sit 2^29 RNG steps apart from run 0 on the one cycle; later runs never repeat run 0', () => {
+  it('review N4 / re-review R1: legacy runs 1-7 sit 2^29 steps apart on the one cycle; 8 on land in the unreached half of a stretch', () => {
     const input = simInputFor(GAME, profile, []);
     const STEP = 0x6d2b79f5;
-    // The state after k draws from seed s is s + k*STEP (mod 2^32).
-    const stateAfter = (s: number, k: number) => (s + Math.imul(k, STEP)) >>> 0;
-    for (let n = 1; n < SPACED_RUNS; n++) {
-      expect(runSeed(input, n), `run ${n}`).toBe(stateAfter(input.seed, n * 2 ** 29));
+    // The state after k draws from seed s is s + k*STEP (mod 2^32); back again with STEP's inverse (it is odd).
+    let inv = STEP;
+    for (let i = 0; i < 5; i++) inv = Math.imul(inv, 2 - Math.imul(STEP, inv));
+    expect(Math.imul(inv, STEP)).toBe(1);
+    const steps = (state: number) => Math.imul((state - input.seed) >>> 0, inv) >>> 0;
+    const STRETCH = 2 ** 29;
+    for (let n = 0; n < SPACED_RUNS; n++) expect(steps(runSeed(input, n)), `run ${n}`).toBe(n * STRETCH);
+    const seen = new Set<number>();
+    for (let n = SPACED_RUNS; n < SPACED_RUNS * 17; n++) {
+      const at = steps(runSeed(input, n));
+      expect(Math.floor(at / STRETCH), `run ${n}`).toBe(n % SPACED_RUNS);
+      expect(at % STRETCH, `run ${n}`).toBeGreaterThanOrEqual(STRETCH / 2);
+      seen.add(at);
     }
-    expect(new Set(Array.from({ length: SPACED_RUNS }, (_, n) => runSeed(input, n))).size).toBe(SPACED_RUNS);
-    // Run 8 would be run 0 again on the cycle: it takes a hashed seed instead.
-    expect(stateAfter(input.seed, 8 * 2 ** 29)).toBe(input.seed);
-    for (let n = SPACED_RUNS; n < SPACED_RUNS + 4; n++) expect(runSeed(input, n)).not.toBe(input.seed);
+    // 128 runs past the eighth, no two alike.
+    expect(seen.size).toBe(SPACED_RUNS * 16);
   });
 });
