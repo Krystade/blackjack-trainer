@@ -288,8 +288,8 @@ function kick(): void {
     return;
   }
   if (running && !cands.some((c) => c.input.key === running!.job.cand.input.key)) abort();
-  // A session started mid-refine: stop it, keeping what it has.
-  if (running && holdRefines && running.job.work === 'refine') pause();
+  // A session started mid-refine: stop it, keeping what it has (unless it is the open card's game).
+  if (running && holdRefines && running.job.work === 'refine' && running.job.cand.gameId !== visible) pause();
   const pick = pickJob(cands, lookupFn(), visible, skipped(), !holdRefines);
   if (running) {
     const r = running.job;
@@ -311,7 +311,8 @@ function kick(): void {
 /**
  * The Casino screen's plan: every game it could work out, in order, the game
  * whose card is open, and whether a casino session is running (then only
- * first estimates are made: the firming up waits for the session's end).
+ * first estimates are made, and the open card's game is firmed up: the rest
+ * waits for the session's end).
  */
 export function setAutoPlan(next: AutoCandidate[], openGame: string | null, opts: { sessionRunning?: boolean } = {}): void {
   cands = next;

@@ -342,13 +342,31 @@ describe('a casino session running: estimates only', () => {
     expect(runnerState().running).toBeNull();
     expect(runnerState()).toMatchObject({ holdRefines: true, todo: { first: 0, refine: 2 } });
     expect(workers.flatMap((w) => w.posted)).toHaveLength(2);
-    // Even the open card's game waits.
+    // Re-review ruling: the open card's game is firmed up all the same, from its estimate.
     setAutoPlan([A, B], 'gb', { sessionRunning: true });
-    expect(runnerState().running).toBeNull();
-    // The session ends: the open card's game is firmed up from its estimate.
-    setAutoPlan([A, B], 'gb', { sessionRunning: false });
     expect(runnerState().running).toMatchObject({ gameId: 'gb', work: 'refine' });
     expect(lastReq().prior).toMatchObject({ basicRounds: QUICK_ROUNDS });
+    // Its card closed: it stops, keeping its rounds, and nothing else runs.
+    live()[0]!.emit({ type: 'progress', progress: progress({ methods: M }, { basicRounds: 700_000, ms: 900 }) });
+    setAutoPlan([A, B], null, { sessionRunning: true });
+    expect(runnerState().running).toBeNull();
+    expect(live()).toHaveLength(0);
+    expect(loadGameResults().gb).toMatchObject({ status: 'partial', basicRounds: 700_000 });
+    // The session ends: the rest is firmed up.
+    setAutoPlan([A, B], null, { sessionRunning: false });
+    expect(runnerState().running).toMatchObject({ work: 'refine' });
+  });
+
+  it("a session started while the open card's game is firming up leaves that run alone", () => {
+    setAutoPlan([A], 'ga');
+    attachAuto();
+    finishFirst();
+    expect(runnerState().running).toMatchObject({ gameId: 'ga', work: 'refine' });
+    const posted = workers.flatMap((w) => w.posted).length;
+    setAutoPlan([A], 'ga', { sessionRunning: true });
+    expect(runnerState().running).toMatchObject({ gameId: 'ga', work: 'refine' });
+    expect(live()).toHaveLength(1);
+    expect(workers.flatMap((w) => w.posted)).toHaveLength(posted);
   });
 
   it('a session started mid-refine stops it, keeping its rounds; a game with no estimate still gets one', () => {

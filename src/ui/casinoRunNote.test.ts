@@ -23,7 +23,6 @@ const r = (over: Partial<GameResult> = {}): GameResult => ({
 describe('statusNote', () => {
   it('an estimate with time left firms up on its own -- unless something holds it', () => {
     expect(statusNote(r(), 'none')).toBe('An estimate from 400k rounds; it firms up on its own while Casino is open.');
-    expect(statusNote(r(), 'session')).toBe('An estimate from 400k rounds; it firms up after this session.');
     expect(statusNote(r(), 'unsaved')).toBe('An estimate from 400k rounds; it could not be saved, so it is not firmed up until there is room.');
     expect(statusNote(r(), 'failed')).toBe('An estimate from 400k rounds.');
   });

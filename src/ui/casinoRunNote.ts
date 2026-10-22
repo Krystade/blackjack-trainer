@@ -12,10 +12,11 @@ function capText(ms: number): string {
 
 /**
  * What the run's state means. Review N2: "it firms up on its own" only when
- * it will: an estimate with time left, its key neither failed nor unsaved,
- * and no session holding the firming up.
+ * it will: an estimate with time left, its key neither failed nor unsaved.
+ * (A casino session holds no card: the open card's game is firmed up during
+ * one, re-review ruling.)
  */
-export type Hold = 'none' | 'session' | 'unsaved' | 'failed';
+export type Hold = 'none' | 'unsaved' | 'failed';
 export function statusNote(r: GameResult, hold: Hold): string {
   switch (r.status) {
     case 'done':
@@ -30,7 +31,6 @@ export function statusNote(r: GameResult, hold: Hold): string {
       const est = `An estimate from ${roundsText(r.basicRounds + r.countRounds)} rounds`;
       if (hold === 'failed') return `${est}.`;
       if (hold === 'unsaved') return `${est}; it could not be saved, so it is not firmed up until there is room.`;
-      if (hold === 'session') return `${est}; it firms up after this session.`;
       return `${est}; it firms up on its own while Casino is open.`;
     }
   }

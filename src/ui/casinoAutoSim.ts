@@ -85,7 +85,8 @@ export function workFor(r: GameResult | undefined): AutoWork | null {
  * candidates' order (`orderCandidates`). Keys in `skip` (a run that failed,
  * or one that could not be saved) are passed over. With `refines` false (a
  * casino session is running: the phone is on at the table, and its battery
- * matters), only first estimates are made.
+ * matters), only first estimates are made, and the open card's game is still
+ * firmed up: he opened it at the table to decide on it (re-review ruling).
  */
 export function pickJob(
   cands: readonly AutoCandidate[],
@@ -99,7 +100,7 @@ export function pickJob(
     if (skip.has(cand.input.key)) continue;
     const prior = lookup(cand);
     const work = workFor(prior);
-    if (work === 'refine' && !refines) continue;
+    if (work === 'refine' && !refines && cand.gameId !== visible) continue;
     if (work) jobs.push({ cand, work, prior: work === 'refine' ? prior : undefined });
   }
   return jobs.find((j) => j.cand.gameId === visible) ?? jobs.find((j) => j.work === 'first') ?? jobs[0] ?? null;

@@ -495,7 +495,7 @@ test('review S2: a simulator that fails says so on the line, the row and the car
   await expect(page.getByTestId('gs-waiting')).toHaveCount(0);
 });
 
-test('a casino session running: every game gets its estimate, and the firming up waits for the session', async ({ page }) => {
+test('a casino session running: every game gets its estimate, the open card firms up, and the rest waits for the session', async ({ page }) => {
   const started = new Date(Date.now() - 30 * 60_000).toISOString();
   const session = { id: 's1', casinoId: 'c1', start: started, end: null, buyIns: [500], cashOut: null, avgBet: null, maxBet: null, maxTc: null, heat: 'none', notes: '', createdAt: started, updatedAt: started };
   // A budget big enough that a refine would show in the stored rounds.
@@ -510,13 +510,24 @@ test('a casino session running: every game gets its estimate, and the firming up
   for (const meta of await rows(page).locator('.cas-rank-meta').allTextContents()) expect(meta).toMatch(/^edge −?\d+\.\d\d% ±\d+\.\d\d%/);
   await expect(ranked(page).getByTestId('rank-auto')).toHaveAttribute('data-phase', 'held');
   await expect(ranked(page).getByTestId('rank-held')).toHaveText('3 estimates firm up after this session');
-  const at = (await stored(page, 'g-good'))!;
-  expect(at.basicRounds).toBe(200_000);
-  // Held for longer than a refine's first chunks and its first paint: no rounds added, nothing running, even with its card open.
-  await rows(page).and(page.locator('[data-game="g-good"]')).click();
+  const games = ['g-good', 'g-csm', 'g-deep'];
+  const rounds = async () => Promise.all(games.map(async (g) => (await stored(page, g))!.basicRounds));
+  const at = await rounds();
+  expect(at[0]).toBe(200_000);
+  // Held for longer than a refine's first chunks and its first paint: no rounds added to any game.
   await page.waitForTimeout(2000);
-  await expect(page.getByTestId('game-stats')).not.toHaveAttribute('data-state', 'running');
-  expect((await stored(page, 'g-good'))!.basicRounds).toBe(200_000);
+  expect(await rounds()).toEqual(at);
+  // Re-review ruling: the game he opens at the table is firmed up all the same.
+  await rows(page).and(page.locator('[data-game="g-good"]')).click();
+  const card = page.getByTestId('game-stats');
+  await expect(card).toHaveAttribute('data-state', 'running');
+  await expect(card.getByTestId('sim-running')).toContainText(/^Firming up… .* rounds$/, { timeout: 10_000 });
+  await expect(card).not.toContainText('after this session');
+  // Closed, it stops keeping what it dealt; the others were never touched.
+  await back(page);
+  await expect.poll(async () => (await stored(page, 'g-good'))!.basicRounds).toBeGreaterThan(200_000);
+  expect((await rounds()).slice(1)).toEqual(at.slice(1));
+  await expect(ranked(page).getByTestId('rank-auto')).toHaveAttribute('data-phase', 'held');
 });
 
 test('an import: every game gets its figures on its own, and two games dealt alike are worked out once', async ({ page }) => {

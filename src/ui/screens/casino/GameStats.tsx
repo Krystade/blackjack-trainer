@@ -66,7 +66,7 @@ export function GameStats({ log, casinoId, gameId, go }: { log: CasinoLog; casin
   const { rules } = simRules(game);
   const current = row.state.kind === 'current' ? row.state.result : null;
   const hold: Hold =
-    runner.failed[row.input.key] !== undefined ? 'failed' : runner.unsaved.includes(row.input.key) ? 'unsaved' : runner.holdRefines ? 'session' : 'none';
+    runner.failed[row.input.key] !== undefined ? 'failed' : runner.unsaved.includes(row.input.key) ? 'unsaved' : 'none';
   // Review S1: only when another minute would deal rounds.
   const canLonger = current !== null && canRunLonger(current, row.input.spec, row.exitRounds);
 
