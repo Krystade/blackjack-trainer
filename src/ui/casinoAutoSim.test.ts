@@ -5,6 +5,8 @@ import {
   noteKeys,
   orderCandidates,
   pickJob,
+  SESSION_HOLD_MS,
+  sessionHolds,
   shouldPreempt,
   workCounts,
   workFor,
@@ -155,5 +157,45 @@ describe('orderCandidates and noteKeys', () => {
     noteKeys(t, [...both, { id: 'new', key: 'n' }]);
     expect(t.editedAt.get('new')).toBeGreaterThan(t.editedAt.get('g2')!);
     expect(t.editedAt.get('g2')).toBeGreaterThan(t.editedAt.get('g4')!);
+  });
+});
+
+describe('re-review R4: sessionHolds', () => {
+  const NOW = Date.parse('2026-10-21T12:00:00Z');
+  const at = (msAgo: number) => new Date(NOW - msAgo).toISOString();
+  const session = (over: { start?: string; end?: string | null; createdAt?: string; updatedAt?: string } = {}) => ({
+    id: 's',
+    casinoId: 'c',
+    start: at(30 * 60_000),
+    end: null,
+    buyIns: [500],
+    cashOut: null,
+    heat: 'none' as const,
+    notes: '',
+    createdAt: at(30 * 60_000),
+    updatedAt: at(30 * 60_000),
+    ...over,
+  });
+  const H = 60 * 60_000;
+
+  it('a running session holds; none, or an ended one, does not', () => {
+    expect(sessionHolds({ sessions: [] }, NOW)).toBe(false);
+    expect(sessionHolds({ sessions: [session()] }, NOW)).toBe(true);
+    expect(sessionHolds({ sessions: [session({ end: at(10 * 60_000) })] }, NOW)).toBe(false);
+  });
+
+  it('one with nothing logged to it for 12 h holds no more; a change since keeps it holding', () => {
+    expect(SESSION_HOLD_MS).toBe(12 * H);
+    const old = { start: at(12 * H + 1000), createdAt: at(12 * H + 1000), updatedAt: at(12 * H + 1000) };
+    expect(sessionHolds({ sessions: [session(old)] }, NOW)).toBe(false);
+    expect(sessionHolds({ sessions: [session({ ...old, updatedAt: at(12 * H - 1000) })] }, NOW)).toBe(true);
+    // A session logged afterwards with an earlier start (entered later) counts from when it was made.
+    expect(sessionHolds({ sessions: [session({ ...old, createdAt: at(H) })] }, NOW)).toBe(true);
+    // Any running session that is live holds, whichever is listed first.
+    expect(sessionHolds({ sessions: [session(old), session()] }, NOW)).toBe(true);
+  });
+
+  it('unreadable times are taken as live: holding is the safe side', () => {
+    expect(sessionHolds({ sessions: [session({ start: 'x', createdAt: 'x', updatedAt: 'x' })] }, NOW)).toBe(true);
   });
 });

@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from 'react';
-import { runningSession, type CasinoLog } from '../../../store/casinoLog';
+import type { CasinoLog } from '../../../store/casinoLog';
 import { buildRanking } from '../../casinoRanking';
-import { newEditTracker, noteKeys, orderCandidates } from '../../casinoAutoSim';
+import { newEditTracker, noteKeys, orderCandidates, sessionHolds } from '../../casinoAutoSim';
 import { attachAuto, setAutoPlan } from './simRunner';
 import { requestSideRow } from './sideRunner';
 import { sideRowFor, sideRowSpec } from '../../../store/casinoSideRows';
@@ -26,8 +26,9 @@ const tracker = newEditTracker();
 export function AutoSim({ log, openGame }: { log: CasinoLog; openGame: string | null }) {
   const profile = useActiveProfile();
   const { results, archive } = useGameCache(log);
-  // At the table the phone is on and its battery matters: estimates only until the session ends.
-  const sessionRunning = runningSession(log) !== null;
+  // At the table the phone is on and its battery matters: estimates only until the session ends
+  // (or has gone 12 h with nothing logged to it: re-review R4).
+  const sessionRunning = sessionHolds(log, Date.now());
   const rows = useMemo(() => buildRanking(log, profile, results, Date.now(), null, 'ev', archive), [log, profile, results, archive]);
 
   // The plan first, so attaching never starts a run from a previous visit's plan.

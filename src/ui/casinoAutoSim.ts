@@ -1,5 +1,6 @@
 import { MIN_ROUNDS } from '../engine/casinoRun';
 import type { GameResult, SimInput } from '../store/casinoGameStats';
+import type { CasinoLog } from '../store/casinoLog';
 import type { RankRow } from './casinoRanking';
 
 /**
@@ -104,6 +105,23 @@ export function pickJob(
     if (work) jobs.push({ cand, work, prior: work === 'refine' ? prior : undefined });
   }
   return jobs.find((j) => j.cand.gameId === visible) ?? jobs.find((j) => j.work === 'first') ?? jobs[0] ?? null;
+}
+
+/** Re-review R4: how long a running session holds the firming up with nothing logged to it. */
+export const SESSION_HOLD_MS = 12 * 60 * 60_000;
+
+/**
+ * Whether a casino session holds the firming up (simRunner.ts `setAutoPlan`):
+ * one is running, and was started or changed within SESSION_HOLD_MS. Past
+ * that it is one left open by mistake, not a phone on at the table, and
+ * holding everything until it is ended would be for nothing.
+ */
+export function sessionHolds(log: Pick<CasinoLog, 'sessions'>, now: number): boolean {
+  return log.sessions.some((s) => {
+    if (s.end !== null) return false;
+    const times = [s.start, s.createdAt, s.updatedAt].map(Date.parse).filter(Number.isFinite);
+    return times.length === 0 || now - Math.max(...times) < SESSION_HOLD_MS;
+  });
 }
 
 /**

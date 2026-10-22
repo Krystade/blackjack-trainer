@@ -530,6 +530,18 @@ test('a casino session running: every game gets its estimate, the open card firm
   await expect(ranked(page).getByTestId('rank-auto')).toHaveAttribute('data-phase', 'held');
 });
 
+test('re-review R4: a session left open with nothing logged for 12 h holds nothing', async ({ page }) => {
+  const started = new Date(Date.now() - 13 * 3600_000).toISOString();
+  const session = { id: 's1', casinoId: 'c1', start: started, end: null, buyIns: [500], cashOut: null, avgBet: null, maxBet: null, maxTc: null, heat: 'none', notes: '', createdAt: started, updatedAt: started };
+  await seed(page, 30_000_000, { ...LOG, sessions: [session] });
+  await page.goto('/?e2e=1');
+  await openCasino(page);
+  await expect(page.getByTestId('casino-live')).toBeVisible();
+  await expect(rows(page).and(page.locator('[data-state="current"]'))).toHaveCount(3, { timeout: 30_000 });
+  await expect(ranked(page).getByTestId('rank-auto')).toHaveAttribute('data-phase', 'refining');
+  await expect(ranked(page).getByTestId('rank-held')).toHaveCount(0);
+});
+
 test('an import: every game gets its figures on its own, and two games dealt alike are worked out once', async ({ page }) => {
   await page.addInitScript((b) => {
     (window as unknown as { __bjCasinoSimBudget: number }).__bjCasinoSimBudget = b;
