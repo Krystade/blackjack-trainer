@@ -68,7 +68,9 @@ export function recentWindow(entry: IndexRecent | undefined, size: number, nowMs
   const n = Math.min(entry.recent.length, entry.days.length);
   const bits = entry.recent.slice(entry.recent.length - n);
   const days = entry.days.slice(entry.days.length - n);
+  // From the newest back, stopping at `size`: the same as filtering every
+  // answer and keeping the last `size`, without reading the rest.
   let out = '';
-  for (let i = 0; i < n; i += 1) if (isRecent(days[i], nowMs, maxAgeDays)) out += bits[i];
-  return out.length >= size ? out.slice(-size) : null;
+  for (let i = n - 1; i >= 0 && out.length < size; i -= 1) if (isRecent(days[i], nowMs, maxAgeDays)) out = bits[i] + out;
+  return out.length >= size ? out : null;
 }

@@ -141,15 +141,45 @@ function daysMet(p: ProgressState): number {
   return Object.values(p.days).filter((d) => d.met).length;
 }
 
+/**
+ * The tiers of one ladder read the same window three times; it is worked out
+ * once per context. Every stats save evaluates every achievement, so this
+ * keeps a save's cost to one pass per window rather than three.
+ */
+const perContext = new WeakMap<AchievementContext, Map<string, unknown>>();
+function once<T>(ctx: AchievementContext, key: string, make: () => T): T {
+  let memo = perContext.get(ctx);
+  if (!memo) {
+    memo = new Map();
+    perContext.set(ctx, memo);
+  }
+  if (!memo.has(key)) memo.set(key, make());
+  return memo.get(key) as T;
+}
+
+/** A hand type's last ACCURACY_WINDOW timed, graded answers from the last RECENT_DAYS days. */
+function handWindow(ctx: AchievementContext, category: string): { right: number; n: number } {
+  return once(ctx, `hand:${category}`, () => {
+    const rows = Array.isArray(ctx.stats.latencyHistory) ? ctx.stats.latencyHistory : [];
+    // From the newest back, stopping at the window: the same rows as filtering
+    // the whole history and keeping its last ACCURACY_WINDOW.
+    let right = 0;
+    let n = 0;
+    for (let i = rows.length - 1; i >= 0 && n < ACCURACY_WINDOW; i -= 1) {
+      const r = rows[i];
+      if (!r || r.category !== category || typeof r.correct !== 'boolean' || !isRecent(r.date, ctx.nowMs, RECENT_DAYS)) continue;
+      n += 1;
+      if (r.correct) right += 1;
+    }
+    return { right, n };
+  });
+}
+
 function accuracyTier(ctx: AchievementContext, category: string, pct: number): Measure {
-  const rows = (ctx.stats.latencyHistory ?? []).filter(
-    (r) => r.category === category && typeof r.correct === 'boolean' && isRecent(r.date, ctx.nowMs, RECENT_DAYS),
-  );
-  const last = rows.slice(-ACCURACY_WINDOW);
-  const right = last.filter((r) => r.correct).length;
-  const acc = last.length ? right / last.length : 0;
-  const note = last.length ? `${Math.floor(acc * 100)}% over the last ${last.length}` : `no answers in the last ${RECENT_DAYS} days`;
-  if (last.length < ACCURACY_WINDOW) return m(last.length * 0.99, ACCURACY_WINDOW, note);
+  const { right, n } = handWindow(ctx, category);
+  const acc = n ? right / n : 0;
+  const note = n ? `${Math.floor(acc * 100)}% over the last ${n}` : `no answers in the last ${RECENT_DAYS} days`;
+  if (n < ACCURACY_WINDOW) return m(n * 0.99, ACCURACY_WINDOW, note);
   return atLeast(right, ACCURACY_WINDOW, pct)
     ? m(ACCURACY_WINDOW, ACCURACY_WINDOW, note)
     : m(ACCURACY_WINDOW * 0.99 * (acc / (pct / 100)), ACCURACY_WINDOW, note);
@@ -157,13 +187,16 @@ function accuracyTier(ctx: AchievementContext, category: string, pct: number): M
 
 /** How many of `ids` are at `pct`% over their last `window` recent answers. */
 function indexSetTier(ctx: AchievementContext, ids: readonly string[], window: number, pct: number): Measure {
-  const store: unknown = ctx.stats.indexRecent;
-  const per = (typeof store === 'object' && store !== null ? store : {}) as Record<string, IndexRecentEntry | undefined>;
-  let done = 0;
-  for (const id of ids) {
-    const w = recentWindow(per[id], window, ctx.nowMs, RECENT_DAYS);
-    if (w !== null && atLeast(countBits(w).right, window, pct)) done += 1;
-  }
+  // Each index's right answers in its window, or -1 with too few recent answers.
+  const rights = once(ctx, `index:${window}:${ids.join(',')}`, () => {
+    const store: unknown = ctx.stats.indexRecent;
+    const per = (typeof store === 'object' && store !== null ? store : {}) as Record<string, IndexRecentEntry | undefined>;
+    return ids.map((id) => {
+      const w = recentWindow(per[id], window, ctx.nowMs, RECENT_DAYS);
+      return w === null ? -1 : countBits(w).right;
+    });
+  });
+  const done = rights.filter((r) => r >= 0 && atLeast(r, window, pct)).length;
   return m(done, ids.length, `${done}/${ids.length} indices at ${neededRight(window, pct)}/${window}`);
 }
 

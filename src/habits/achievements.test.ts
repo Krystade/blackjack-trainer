@@ -244,6 +244,17 @@ describe('achievements', () => {
     expect(earned({ recent: '1'.repeat(20), days: Array(19).fill(TODAY) })).toBe(false);
   });
 
+  it('each window is read once per context, not once per tier', () => {
+    const c = ctx({ stats: { indexRecent: i18At(19), latencyHistory: latency('hard', 200, 0) } });
+    const parse = vi.spyOn(Date, 'parse');
+    evaluateAchievements(c);
+    const first = parse.mock.calls.length;
+    parse.mockRestore();
+    // One pass: the 17 windows of 20 (I18), at most 200 hand rows per type, the Fab 4 (empty).
+    expect(first).toBeLessThanOrEqual(i18.length * I18_WINDOW + ACCURACY_WINDOW * 3);
+    expect(first).toBeGreaterThanOrEqual(i18.length * I18_WINDOW + ACCURACY_WINDOW);
+  });
+
   it('a corrupt index store reads as none, never a throw', () => {
     for (const indexRecent of [null, 'junk', 7, { [i18[0]!]: null }, { [i18[0]!]: { recent: 5, days: null } }, { [i18[0]!]: { recent: '1'.repeat(20), days: 'x' } }]) {
       const s = statusOf(ctx({ stats: { indexRecent: { ...recentFor(i18.slice(1), 20, 0), ...(indexRecent as object) } as Stats['indexRecent'] } }), 'index-i18-90');
@@ -316,7 +327,8 @@ describe('achievements', () => {
     expect(first).not.toContain('index-i18-99');
     vi.useFakeTimers();
     vi.setSystemTime(NOW + 365 * DAY);
-    expect(newlyEarned(c)).toEqual(first);
+    // A copy, so nothing worked out for `c` is reused.
+    expect(newlyEarned({ ...c })).toEqual(first);
     vi.useRealTimers();
     // A year on BY THE CONTEXT, none of those answers is recent any more.
     expect(newlyEarned({ ...c, nowMs: NOW + 365 * DAY }).filter((id) => /^(index|accuracy)-/.test(id))).toEqual([]);
