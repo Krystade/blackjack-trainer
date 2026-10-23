@@ -572,6 +572,16 @@ export interface TallyRW {
 }
 
 /**
+ * Wave T: one index's recent answers (store/indexRecent.ts): `recent` '1'
+ * right / '0' wrong, oldest first; `days` each answer's UTC day
+ * ('YYYY-MM-DD', '' when undated), in the same order.
+ */
+export interface IndexRecentEntry {
+  recent: string;
+  days: string[];
+}
+
+/**
  * E7 (W2-16): which way an index was missed.
  *
  * `late` is a missed deviation (the count reached the index and the chart play
@@ -982,6 +992,14 @@ export interface Stats {
   // Home's "Learn basic strategy" gate is judged on this window so mistakes
   // made while learning age out. Absent = none recorded since it shipped.
   handRecent?: { hard?: string; soft?: string; pair?: string };
+  /**
+   * Wave T: each index's last answers with the day of each (store/indexRecent.ts),
+   * for the mastery tiers. Written beside `perIndex` for every event naming the
+   * index, from any source; undone by Wrong tap. OPTIONAL: absent on blobs
+   * written before it shipped, and never rebuilt from `perIndex`, which holds
+   * no dates -- inventing them would be inventing data.
+   */
+  indexRecent?: Partial<Record<DeviationId, IndexRecentEntry>>;
   /**
    * F5 (W2-17): Play decision times, one row per timed table action event --
    * kept apart from `latencyHistory` so the drills' latency figures and the

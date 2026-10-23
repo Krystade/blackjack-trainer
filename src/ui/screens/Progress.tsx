@@ -3,9 +3,10 @@ import type { Settings } from '../../store/types';
 import { loadStats } from '../../store/persist';
 import { loadProgress, contextFor, habitNow } from '../../habits/progressStore';
 import { goalFor, heatmap } from '../../habits/progress';
-import { evaluateAchievements } from '../../habits/achievements';
+import { evaluateAchievements, type AchievementStatus, type Ladder, type Tier } from '../../habits/achievements';
 import { localDayKey } from '../../store/practiceDays';
 import './progress.css';
+import './progressLadder.css';
 
 const GROUPS = ['Habit', 'Drills', 'Counting', 'Drive', 'Play', 'Casino'] as const;
 
@@ -13,6 +14,61 @@ function fmtDate(iso: string): string {
   if (iso === '') return 'from history';
   const t = /^\d{4}-\d{2}-\d{2}$/.test(iso) ? new Date(`${iso}T12:00:00`) : new Date(iso);
   return Number.isNaN(t.getTime()) ? '' : t.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+const TIER_NAME: Record<Tier, string> = { bronze: 'Bronze', silver: 'Silver', gold: 'Gold' };
+
+/**
+ * Wave T: one mastery achievement and its three tiers. Earned tiers keep
+ * their date; the bar and its note are for the next tier up.
+ */
+function LadderTile({ ladder, tiers }: { ladder: Ladder; tiers: AchievementStatus[] }) {
+  const earned = tiers.filter((t) => t.earned);
+  const top = earned[earned.length - 1];
+  const next = tiers.find((t) => !t.earned);
+  const pct = next ? Math.round(next.fraction * 100) : 100;
+  return (
+    <li
+      className={`ach is-ladder tier-${top?.def.tier ?? 'bronze'}${top ? ' is-earned' : ''}`}
+      data-testid={`ach-${ladder.id}`}
+      data-tier={top?.def.tier ?? 'none'}
+    >
+      <span className="ach-medal" aria-hidden="true" />
+      <span className="ach-body">
+        <span className="ach-title">{ladder.title}</span>
+        <span className="ach-how">{ladder.how}</span>
+        <ol className="ach-tiers">
+          {tiers.map((t) => {
+            const when = t.earned ? (t.earnedAt === undefined ? 'Earned' : t.earnedAt === '' ? 'From history' : fmtDate(t.earnedAt)) : '';
+            return (
+              <li
+                key={t.def.id}
+                className={`ach-tier tier-${t.def.tier}${t.earned ? ' is-earned' : ''}`}
+                data-testid={`ach-${t.def.id}`}
+                data-earned={t.earned ? '1' : '0'}
+                aria-label={`${TIER_NAME[t.def.tier]}, ${t.def.pct}%: ${t.earned ? `earned${when === 'Earned' ? '' : ` ${when}`}` : 'not yet'}`}
+              >
+                <span className="ach-tier-medal" aria-hidden="true" />
+                <span className="ach-tier-name">{TIER_NAME[t.def.tier]}</span>
+                <span className="ach-tier-pct">{t.def.pct}%</span>
+                <span className="ach-tier-when">{when}</span>
+              </li>
+            );
+          })}
+        </ol>
+        {next && (
+          <>
+            <span className="ach-bar" role="progressbar" aria-label={`${TIER_NAME[next.def.tier]} progress`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
+              <span className="ach-bar-fill" style={{ width: `${pct}%` }} />
+            </span>
+            <span className="ach-note" data-testid={`ach-${ladder.id}-next`}>
+              {TIER_NAME[next.def.tier]}: {next.note ?? `${Math.floor(next.value).toLocaleString()} / ${next.target.toLocaleString()}`}
+            </span>
+          </>
+        )}
+      </span>
+    </li>
+  );
 }
 
 function fmtMinutes(ms: number): string {
@@ -100,6 +156,12 @@ export function Progress({ settings, onNavigate }: { settings: Settings; onNavig
               <h3 className="ach-group-title">{g}</h3>
               <ul className="ach-grid">
                 {items.map((s) => {
+                  // Wave T: a mastery ladder is one tile, drawn at its first tier.
+                  if (s.def.ladder) {
+                    const ladder = s.def.ladder;
+                    if (items.find((x) => x.def.ladder?.id === ladder.id) !== s) return null;
+                    return <LadderTile key={ladder.id} ladder={ladder} tiers={items.filter((x) => x.def.ladder?.id === ladder.id)} />;
+                  }
                   const hidden = s.def.secret && !s.earned;
                   return (
                     <li

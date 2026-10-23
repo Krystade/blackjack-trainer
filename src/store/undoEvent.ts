@@ -2,6 +2,7 @@ import type { GradedEvent } from '../engine/grade';
 import type { IndexDirection, Stats, TallyRW } from './types';
 import type { CellTally } from './cellStats';
 import { cellUndone, handRecentUndone } from './cellStats';
+import { indexRecentUndone } from './indexRecent';
 import { countsInCategory, indexDirectionFor, tallyCellIdFor } from './stats';
 import type { DirectedMiss } from './stats';
 
@@ -45,6 +46,16 @@ export function undoGradedEvent(stats: Stats, event: GradedEvent, cellBefore?: C
     if (isZero(tally)) delete perIndex[event.deviationId];
     else perIndex[event.deviationId] = tally;
     result.perIndex = perIndex;
+    // Wave T: the index's dated window loses the same answer; an emptied
+    // entry, then an emptied map, is removed (applyEvents created them).
+    if (stats.indexRecent?.[event.deviationId]) {
+      const indexRecent = { ...stats.indexRecent };
+      const entry = indexRecentUndone(indexRecent[event.deviationId]);
+      if (entry === undefined) delete indexRecent[event.deviationId];
+      else indexRecent[event.deviationId] = entry;
+      if (Object.keys(indexRecent).length === 0) delete result.indexRecent;
+      else result.indexRecent = indexRecent;
+    }
   }
 
   if (event.source && stats.bySource?.[event.source]) {

@@ -1,8 +1,10 @@
-import type { Stats } from '../store/types';
+import type { IndexRecentEntry, Stats } from '../store/types';
 import type { ProgressState, StreakInfo } from './progress';
 import { weeksWithAtLeast, WEEK_TARGET } from './progress';
 import { ILLUSTRIOUS_18, FAB_4_H17, FAB_4_S17 } from '../engine/deviations';
 import { classifySpeed } from '../drills/countSpeed';
+import { countBits } from '../store/cellStats';
+import { isRecent, recentWindow } from '../store/indexRecent';
 
 /**
  * Wave N: achievements, every one computed from data the app already keeps
@@ -18,6 +20,13 @@ export interface AchievementContext {
   streak: StreakInfo;
   /** Finished sessions in the real-play casino log. */
   casinoSessions: number;
+  /**
+   * The time the achievements are judged at (epoch ms), for the mastery
+   * tiers' 180-day window. Supplied by the caller (progressStore contextFor,
+   * from the habit clock) -- nothing here reads a clock, so the same context
+   * always earns the same achievements, backfill included.
+   */
+  nowMs: number;
 }
 
 export interface Measure {
@@ -25,6 +34,17 @@ export interface Measure {
   target: number;
   /** Optional extra text for the progress line ("93% now"). */
   note?: string;
+}
+
+/**
+ * Wave T: the tiers of one mastery achievement, shown as one tile on the
+ * Progress screen (its earned tiers dated, its bar on the next tier). Each
+ * tier is still its own achievement, stored and toasted by its own id.
+ */
+export interface Ladder {
+  id: string;
+  title: string;
+  how: string;
 }
 
 export interface Achievement {
@@ -37,14 +57,74 @@ export interface Achievement {
   /** Grouping on the Progress screen. */
   group: 'Habit' | 'Drills' | 'Counting' | 'Drive' | 'Play' | 'Casino';
   measure: (ctx: AchievementContext) => Measure;
+  /** Wave T: the mastery ladder this tier belongs to, and the tier's bar in %. */
+  ladder?: Ladder;
+  pct?: number;
 }
 
-/** Window for the accuracy achievements, and the bar. */
+/**
+ * WAVE T: MASTERY TIERS -- bronze 90%, silver 95%, gold 99% -- judged on a
+ * rolling window of recent answers that are also recent in time: the last N
+ * answers, every one from the last RECENT_DAYS days, and at least N of them.
+ * An index (or hand type) not practised for six months stops counting as
+ * mastered now; a tier once earned stays earned, with its date.
+ *
+ * HOW BIG N IS, and why the two index sets differ. A set tier is passed when
+ * EVERY index in it is at the bar at the same moment, so the evidence is the
+ * whole set's windows together, not one index's. Simulated (players of a
+ * fixed true accuracy answering the set's indices at random, about 200
+ * answers per index; the share who ever reach the tier):
+ *
+ *   Illustrious 18 (17 indices), N = 20:
+ *     bronze 18/20   18% of true-90% players, 87% at 93%, all at 95%
+ *     silver 19/20   none at 93%, 30% at 95%, 95% at 97%
+ *     gold   20/20   none at 98%, 58% at 99%, all at 99.5%
+ *   With N = 50 instead, gold (50/50 on all 17 at once) is out of reach:
+ *   none at 99%, 17% at 99.5%. So 20 is enough here -- 17 x 20 = 340
+ *   answers at once is what makes 20 of 20 mean 99%, not merely a good run.
+ *
+ *   Fab 4 (4 indices), N = 20 would be far too easy -- gold reached by 92%
+ *   of true-97% players -- so it is judged on N = 50 (200 answers at once):
+ *     bronze 45/50   4% at 85%, 85% at 90%
+ *     silver 48/50   14% at 93%, 68% at 95%
+ *     gold   50/50   17% at 98%, 72% at 99%
+ *
+ * The hand types are one stream each (no "all at once"), and a window of 200
+ * already lets 99% mean something (198 of 200, two misses), so it stays 200.
+ * A tier needs `pct`% exactly, in integers: 18 of 20 is 90%, 47 of 50 is not 95%.
+ */
+export const MASTERY_TIERS: readonly (readonly [Tier, number])[] = [
+  ['bronze', 90],
+  ['silver', 95],
+  ['gold', 99],
+];
+/** An answer counts toward a mastery window for this many days (today is day 0). */
+export const RECENT_DAYS = 180;
+/** Answers per index an Illustrious 18 tier is judged on. */
+export const I18_WINDOW = 20;
+/** Answers per index a Fab 4 tier is judged on. */
+export const FAB4_WINDOW = 50;
+/** Answers per hand type a hand-accuracy tier is judged on. */
 export const ACCURACY_WINDOW = 200;
-export const ACCURACY_TARGET = 0.95;
-/** An index counts as mastered at this many answers and this accuracy. */
-export const INDEX_MASTERY_ANSWERS = 10;
-export const INDEX_MASTERY_ACCURACY = 0.9;
+
+/** The fewest right of `n` that make `pct`%. */
+export const neededRight = (n: number, pct: number): number => Math.ceil((pct * n) / 100);
+const atLeast = (right: number, n: number, pct: number): boolean => right * 100 >= pct * n;
+
+/**
+ * Ids a tier was stored under before it was a tier, so an earn carries over:
+ * the old "Illustrious 18" and "Fab 4" (10+ answers at 90% on every index,
+ * lifetime) are the 90% tiers now, the old "sharp" achievements (95% over the
+ * last 200) the 95% ones.
+ */
+export const LEGACY_IDS: Readonly<Record<string, string>> = {
+  'index-i18-90': 'index-i18',
+  'index-fab4-90': 'index-fab4',
+  'accuracy-hard-95': 'accuracy-hard',
+  'accuracy-soft-95': 'accuracy-soft',
+  'accuracy-pairs-95': 'accuracy-pairs',
+};
+
 /** A shoe for the clean-shoe achievements: at least this many rounds. */
 export const SHOE_MIN_ROUNDS = 20;
 /** A full shoe of cards for the count achievement (six decks). */
@@ -61,26 +141,30 @@ function daysMet(p: ProgressState): number {
   return Object.values(p.days).filter((d) => d.met).length;
 }
 
-function accuracyWindow(stats: Stats, category: string): Measure {
-  const rows = (stats.latencyHistory ?? []).filter((r) => r.category === category && typeof r.correct === 'boolean');
+function accuracyTier(ctx: AchievementContext, category: string, pct: number): Measure {
+  const rows = (ctx.stats.latencyHistory ?? []).filter(
+    (r) => r.category === category && typeof r.correct === 'boolean' && isRecent(r.date, ctx.nowMs, RECENT_DAYS),
+  );
   const last = rows.slice(-ACCURACY_WINDOW);
   const right = last.filter((r) => r.correct).length;
   const acc = last.length ? right / last.length : 0;
-  const note = last.length ? `${Math.floor(acc * 100)}% over the last ${last.length}` : undefined;
+  const note = last.length ? `${Math.floor(acc * 100)}% over the last ${last.length}` : `no answers in the last ${RECENT_DAYS} days`;
   if (last.length < ACCURACY_WINDOW) return m(last.length * 0.99, ACCURACY_WINDOW, note);
-  return acc >= ACCURACY_TARGET ? m(ACCURACY_WINDOW, ACCURACY_WINDOW, note) : m(ACCURACY_WINDOW * 0.99 * (acc / ACCURACY_TARGET), ACCURACY_WINDOW, note);
+  return atLeast(right, ACCURACY_WINDOW, pct)
+    ? m(ACCURACY_WINDOW, ACCURACY_WINDOW, note)
+    : m(ACCURACY_WINDOW * 0.99 * (acc / (pct / 100)), ACCURACY_WINDOW, note);
 }
 
-function indexSetMastery(stats: Stats, ids: readonly string[]): Measure {
-  const per = stats.perIndex as Record<string, { right: number; wrong: number } | undefined>;
+/** How many of `ids` are at `pct`% over their last `window` recent answers. */
+function indexSetTier(ctx: AchievementContext, ids: readonly string[], window: number, pct: number): Measure {
+  const store: unknown = ctx.stats.indexRecent;
+  const per = (typeof store === 'object' && store !== null ? store : {}) as Record<string, IndexRecentEntry | undefined>;
   let done = 0;
   for (const id of ids) {
-    const t = per[id];
-    if (!t) continue;
-    const n = t.right + t.wrong;
-    if (n >= INDEX_MASTERY_ANSWERS && t.right / n >= INDEX_MASTERY_ACCURACY) done += 1;
+    const w = recentWindow(per[id], window, ctx.nowMs, RECENT_DAYS);
+    if (w !== null && atLeast(countBits(w).right, window, pct)) done += 1;
   }
-  return m(done, ids.length, `${done} of ${ids.length} indices`);
+  return m(done, ids.length, `${done}/${ids.length} indices at ${neededRight(window, pct)}/${window}`);
 }
 
 function longestRun<T>(rows: readonly T[], ok: (r: T) => boolean): number {
@@ -94,11 +178,35 @@ function longestRun<T>(rows: readonly T[], ok: (r: T) => boolean): number {
 }
 
 const I18_IDS = ILLUSTRIOUS_18.filter((d) => d.active).map((d) => d.id);
-const fab4 = (stats: Stats): Measure => {
-  const h = indexSetMastery(stats, FAB_4_H17.map((d) => d.id));
-  const s = indexSetMastery(stats, FAB_4_S17.map((d) => d.id));
+const FAB4_H17_IDS = FAB_4_H17.map((d) => d.id);
+const FAB4_S17_IDS = FAB_4_S17.map((d) => d.id);
+/** The Fab 4 under whichever rule (H17 or S17) is further along. */
+const fab4 = (ctx: AchievementContext, pct: number): Measure => {
+  const h = indexSetTier(ctx, FAB4_H17_IDS, FAB4_WINDOW, pct);
+  const s = indexSetTier(ctx, FAB4_S17_IDS, FAB4_WINDOW, pct);
   return h.value / h.target >= s.value / s.target ? h : s;
 };
+
+/** One mastery ladder: a tier per MASTERY_TIERS, ids `<ladder>-<pct>`. */
+const mastery = (
+  group: Achievement['group'],
+  ladder: Ladder,
+  how: (pct: number) => string,
+  measure: (ctx: AchievementContext, pct: number) => Measure,
+): Achievement[] =>
+  MASTERY_TIERS.map(([tier, pct]) => ({
+    id: `${ladder.id}-${pct}`,
+    title: `${ladder.title} (${tier})`,
+    how: how(pct),
+    tier,
+    group,
+    ladder,
+    pct,
+    measure: (ctx: AchievementContext) => measure(ctx, pct),
+  }));
+
+const HAND_WORD = { hard: 'hard', soft: 'soft', pairs: 'pair' } as const;
+const HAND_TITLE = { hard: 'Hard hands', soft: 'Soft hands', pairs: 'Pairs' } as const;
 
 /** Play sessions long enough to be called a shoe (SHOE_MIN_ROUNDS rounds). */
 const playSessions = (s: Stats) => (s.sessions ?? []).filter((r) => (r.rounds ?? 0) >= SHOE_MIN_ROUNDS);
@@ -175,14 +283,18 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
     secret: true,
     measure: (c) => m(c.streak.maxFreezesHeld, 2),
   },
-  ...(['hard', 'soft', 'pairs'] as const).map<Achievement>((cat) => ({
-    id: `accuracy-${cat}`,
-    title: `${cat === 'pairs' ? 'Pairs' : cat === 'hard' ? 'Hard hands' : 'Soft hands'} sharp`,
-    how: `${Math.round(ACCURACY_TARGET * 100)}% right over your last ${ACCURACY_WINDOW} timed ${cat === 'pairs' ? 'pair' : cat} hand answers in the drills.`,
-    tier: 'silver',
-    group: 'Drills',
-    measure: (c) => accuracyWindow(c.stats, cat),
-  })),
+  ...(['hard', 'soft', 'pairs'] as const).flatMap((cat) =>
+    mastery(
+      'Drills',
+      {
+        id: `accuracy-${cat}`,
+        title: `${HAND_TITLE[cat]} sharp`,
+        how: `Your last ${ACCURACY_WINDOW} timed ${HAND_WORD[cat]} hand answers in the drills, all from the last ${RECENT_DAYS} days.`,
+      },
+      (pct) => `${pct}% right over your last ${ACCURACY_WINDOW} timed ${HAND_WORD[cat]} hand answers in the drills, all from the last ${RECENT_DAYS} days.`,
+      (ctx, pct) => accuracyTier(ctx, cat, pct),
+    ),
+  ),
   {
     id: 'chart-sweep',
     title: 'Clean sweep',
@@ -191,22 +303,26 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
     group: 'Drills',
     measure: (c) => m(Math.min(1, c.stats.masterySweepsCompleted ?? 0), 1),
   },
-  {
-    id: 'index-i18',
-    title: 'Illustrious 18',
-    how: `Get every Illustrious 18 index to ${INDEX_MASTERY_ANSWERS}+ answers at ${Math.round(INDEX_MASTERY_ACCURACY * 100)}%.`,
-    tier: 'gold',
-    group: 'Drills',
-    measure: (c) => indexSetMastery(c.stats, I18_IDS),
-  },
-  {
-    id: 'index-fab4',
-    title: 'Fab 4',
-    how: `Get every Fab 4 surrender index to ${INDEX_MASTERY_ANSWERS}+ answers at ${Math.round(INDEX_MASTERY_ACCURACY * 100)}%.`,
-    tier: 'silver',
-    group: 'Drills',
-    measure: (c) => fab4(c.stats),
-  },
+  ...mastery(
+    'Drills',
+    {
+      id: 'index-i18',
+      title: 'Illustrious 18',
+      how: `Every Illustrious 18 index at once, on its last ${I18_WINDOW} answers, all from the last ${RECENT_DAYS} days.`,
+    },
+    (pct) => `Every Illustrious 18 index right on ${neededRight(I18_WINDOW, pct)} of its last ${I18_WINDOW} answers (${pct}%), all from the last ${RECENT_DAYS} days.`,
+    (ctx, pct) => indexSetTier(ctx, I18_IDS, I18_WINDOW, pct),
+  ),
+  ...mastery(
+    'Drills',
+    {
+      id: 'index-fab4',
+      title: 'Fab 4',
+      how: `Every Fab 4 surrender index at once, on its last ${FAB4_WINDOW} answers, all from the last ${RECENT_DAYS} days.`,
+    },
+    (pct) => `Every Fab 4 surrender index right on ${neededRight(FAB4_WINDOW, pct)} of its last ${FAB4_WINDOW} answers (${pct}%), all from the last ${RECENT_DAYS} days.`,
+    fab4,
+  ),
   ...tiered({ group: 'Counting' }, 'count-clean', [
     ['bronze', 10, 'Counter', 'Finish 10 count-drill runs with the right count.'],
     ['silver', 50, 'Steady count', 'Finish 50 count-drill runs with the right count.'],
@@ -306,6 +422,34 @@ export interface AchievementStatus {
   earnedAt?: string;
 }
 
+const TIER_RANK: Record<Tier, number> = { bronze: 0, silver: 1, gold: 2 };
+
+/** The date stored for `id`, under its own id or the one it had before it was a tier. */
+function storedDate(earned: Readonly<Record<string, string>>, id: string): string | undefined {
+  if (Object.prototype.hasOwnProperty.call(earned, id)) return earned[id];
+  const legacy = LEGACY_IDS[id];
+  return legacy !== undefined && Object.prototype.hasOwnProperty.call(earned, legacy) ? earned[legacy] : undefined;
+}
+
+/**
+ * The stored date of a tier, or of the nearest tier above it in its ladder:
+ * a higher tier was earned through this one (the bars only rise), so a stored
+ * gold or silver carries this tier with it -- an old 95% "sharp" earn, now
+ * silver, carries bronze.
+ */
+function storedOrImplied(earned: Readonly<Record<string, string>>, def: Achievement): string | undefined {
+  const own = storedDate(earned, def.id);
+  if (own !== undefined || !def.ladder) return own;
+  const above = ACHIEVEMENTS.filter((a) => a.ladder?.id === def.ladder!.id && TIER_RANK[a.tier] > TIER_RANK[def.tier]).sort(
+    (a, b) => TIER_RANK[a.tier] - TIER_RANK[b.tier],
+  );
+  for (const a of above) {
+    const d = storedDate(earned, a.id);
+    if (d !== undefined) return d;
+  }
+  return undefined;
+}
+
 export function evaluateAchievements(ctx: AchievementContext): AchievementStatus[] {
   return ACHIEVEMENTS.map((def) => {
     let ms: Measure;
@@ -314,7 +458,7 @@ export function evaluateAchievements(ctx: AchievementContext): AchievementStatus
     } catch {
       ms = m(0, 1);
     }
-    const stored = ctx.progress.earned[def.id];
+    const stored = storedOrImplied(ctx.progress.earned, def);
     const earned = stored !== undefined || ms.value >= ms.target;
     return {
       def,
@@ -328,10 +472,10 @@ export function evaluateAchievements(ctx: AchievementContext): AchievementStatus
   });
 }
 
-/** Ids earned by `ctx` that `ctx.progress.earned` does not yet hold. */
+/** Ids earned by `ctx` that `ctx.progress.earned` does not yet hold, nor imply. */
 export function newlyEarned(ctx: AchievementContext): string[] {
   return evaluateAchievements(ctx)
-    .filter((s) => s.earned && ctx.progress.earned[s.def.id] === undefined)
+    .filter((s) => s.earned && s.earnedAt === undefined)
     .map((s) => s.def.id);
 }
 

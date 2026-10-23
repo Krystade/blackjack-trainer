@@ -1,0 +1,34 @@
+/* Wave T: a mastery ladder on the Progress screen -- one achievement, three tiers (Progress.tsx LadderTile). */
+.ach.is-ladder { grid-column: 1 / -1; }
+.ach-tiers {
+  list-style: none;
+  margin: 4px 0 2px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: var(--fs-xs);
+}
+/* Medal, name, bar, date: fixed columns, so the three rows line up. */
+.ach-tier {
+  display: grid;
+  grid-template-columns: 12px 4.2em 2.8em 1fr;
+  align-items: center;
+  column-gap: var(--space-2, 0.5rem);
+  color: var(--ink-soft);
+}
+.ach-tier.is-earned { color: var(--ink); }
+.ach-tier-medal {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1.5px dashed var(--ink-faint);
+  box-sizing: border-box;
+}
+.ach-tier-name { font-weight: 600; }
+.ach-tier-pct { font-variant-numeric: tabular-nums; }
+.ach-tier-when { justify-self: end; color: var(--good); font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* Opaque medal colours, the same three as the big medals (progress.css). */
+.ach-tier.is-earned.tier-bronze .ach-tier-medal { border: 1.5px solid #8a5a2b; background: #c98b4f; }
+.ach-tier.is-earned.tier-silver .ach-tier-medal { border: 1.5px solid #7d8790; background: #c9d0d6; }
+.ach-tier.is-earned.tier-gold .ach-tier-medal { border: 1.5px solid #a37a12; background: #e8bf3a; }

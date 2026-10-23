@@ -1,5 +1,8 @@
 import { test, expect, type Page } from '@playwright/test';
 import { withSettings, withProfile, withStats, playRoundByAdvice, openCountOptions } from './helpers';
+import { ILLUSTRIOUS_18 } from '../src/engine/deviations';
+
+const I18_IDS = ILLUSTRIOUS_18.filter((d) => d.active).map((d) => d.id);
 
 /**
  * Wave N: daily goal, streak, freezes and achievements. The clock is fixed
@@ -166,6 +169,53 @@ test('the Progress screen: streaks, heatmap and the achievements grid', async ({
   await shot(page, 'progress-top');
   await page.locator('.ach-group').first().scrollIntoViewIfNeeded();
   await shot(page, 'progress-achievements');
+});
+
+test('Wave T: the mastery tiers are one tile per achievement, earned tiers dated, the bar on the next tier', async ({ page }) => {
+  await page.clock.setFixedTime(at(10));
+  const today = key(new Date(2026, 9, 21, 12));
+  const entry = (right: number, n: number) => ({ recent: '0'.repeat(n - right) + '1'.repeat(right), days: Array(n).fill(today) });
+  // Ten Illustrious 18 indices at 19 of their last 20 (silver's bar), the rest at 18.
+  await withStats(page, {
+    indexRecent: Object.fromEntries(I18_IDS.map((id, i) => [id, entry(i < 10 ? 19 : 18, 20)])),
+    latencyHistory: Array.from({ length: 150 }, () => ({ category: 'pairs', elapsedMs: 900, correct: true, date: at(9).toISOString() })),
+  });
+  await withProgress(page, {
+    earned: {
+      // Stored under the ids from before the tiers: Illustrious 18 is bronze
+      // now, "Hard hands sharp" (95% over 200) silver, with bronze implied.
+      'index-i18': '2026-09-01T10:00:00.000Z',
+      'accuracy-hard': '2026-08-15T10:00:00.000Z',
+      'accuracy-soft-99': '2026-10-19T10:00:00.000Z',
+      'index-fab4-90': '',
+    },
+  });
+  await page.goto('/?e2e=1');
+  await page.getByTestId('streak-card').click();
+  await expect(page.getByTestId('progress-screen')).toBeVisible();
+  const i18 = page.getByTestId('ach-index-i18');
+  await expect(i18).toHaveAttribute('data-tier', 'bronze');
+  await expect(i18).toContainText('Illustrious 18');
+  await expect(page.getByTestId('ach-index-i18-90')).toHaveAttribute('data-earned', '1');
+  await expect(page.getByTestId('ach-index-i18-90')).toContainText('2026');
+  await expect(page.getByTestId('ach-index-i18-95')).toHaveAttribute('data-earned', '0');
+  await expect(page.getByTestId('ach-index-i18-next')).toHaveText(`Silver: 10/${I18_IDS.length} indices at 19/20`);
+  await expect(page.getByTestId('ach-accuracy-hard')).toHaveAttribute('data-tier', 'silver');
+  await expect(page.getByTestId('ach-accuracy-hard-90')).toHaveAttribute('data-earned', '1');
+  await expect(page.getByTestId('ach-accuracy-hard-next')).toHaveText('Gold: no answers in the last 180 days');
+  await expect(page.getByTestId('ach-accuracy-soft')).toHaveAttribute('data-tier', 'gold');
+  await expect(page.getByTestId('ach-accuracy-soft-next')).toHaveCount(0);
+  await expect(page.getByTestId('ach-index-fab4-90')).toContainText('From history');
+  await expect(page.getByTestId('ach-accuracy-pairs-next')).toHaveText('Bronze: 100% over the last 150');
+  await expect(page.getByTestId('ach-accuracy-pairs')).toHaveAttribute('data-tier', 'none');
+  // Five ladders, one tile each; the count is of tiers.
+  await expect(page.locator('.ach.is-ladder')).toHaveCount(5);
+  await expect(page.locator('.ach-grid > li')).toHaveCount(41);
+  await expect(page.getByTestId('achievements-count')).toHaveText('7/51');
+  await page.getByTestId('ach-accuracy-hard').scrollIntoViewIfNeeded();
+  await shot(page, 'progress-tiers');
+  await page.getByTestId('ach-index-i18').evaluate((el) => el.scrollIntoView({ block: 'center' }));
+  await shot(page, 'progress-tiers-index');
 });
 
 test('Settings: the daily goal changes what Home asks for', async ({ page }) => {

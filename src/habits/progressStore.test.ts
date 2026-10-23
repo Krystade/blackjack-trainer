@@ -24,6 +24,7 @@ import {
 import { _resetMomentForTest, pendingMoment, sayMomentAtPause, momentLine, MOMENT_TTL_MS } from './moment';
 import { _resetEyesFreeForTest, isEyesFreeOn, setEyesFreeOn } from '../ui/eyesFreeSession';
 import { HISTORY_CAP } from '../store/retention';
+import { ILLUSTRIOUS_18 } from '../engine/deviations';
 
 const ev = (correct = true): GradedEvent => ({
   kind: 'action',
@@ -252,6 +253,47 @@ describe('backfill', () => {
     // The history's answers are a baseline, not today's answers.
     answer(1);
     expect(loadProgress().days['2026-10-21'].answers).toBe(1);
+  });
+
+  it('Wave T: earns the mastery tiers from the dated windows, by the habit clock, the same every time', () => {
+    const ids = ILLUSTRIOUS_18.filter((d) => d.active).map((d) => d.id);
+    const day = '2026-10-20';
+    map.set(
+      'bjtrainer.stats.v1',
+      JSON.stringify({ ...history(), indexRecent: Object.fromEntries(ids.map((id) => [id, { recent: '0' + '1'.repeat(19), days: Array(20).fill(day) }])) }),
+    );
+    const a = ensureBackfilled();
+    expect(['index-i18-90', 'index-i18-95', 'index-i18-99'].map((id) => a.earned[id])).toEqual(['', '', undefined]);
+    map.delete(PROGRESS_KEY);
+    expect(ensureBackfilled()).toEqual(a);
+    // Half a year on by the habit clock, the same history earns no tier.
+    map.delete(PROGRESS_KEY);
+    now += 180 * 86_400_000;
+    const later = ensureBackfilled();
+    expect(Object.keys(later.earned).filter((id) => id.startsWith('index-'))).toEqual([]);
+  });
+
+  it('Wave T: an earn stored under an old id survives the update -- no un-earning, no second unlock', () => {
+    // Today's answers hold every index at 18/20 (bronze) and hard hands at
+    // 200/200 (gold): only gold is new, the rest were earned before.
+    const ids = ILLUSTRIOUS_18.filter((d) => d.active).map((d) => d.id);
+    const at = new Date(now).toISOString();
+    map.set(
+      'bjtrainer.stats.v1',
+      JSON.stringify({
+        ...history(),
+        indexRecent: Object.fromEntries(ids.map((id) => [id, { recent: '00' + '1'.repeat(18), days: Array(20).fill(at.slice(0, 10)) }])),
+        latencyHistory: Array.from({ length: 200 }, () => ({ category: 'hard', elapsedMs: 900, correct: true, date: at })),
+      }),
+    );
+    map.set(
+      PROGRESS_KEY,
+      JSON.stringify({ ...loadProgress(), backfilled: true, earned: { 'index-i18': '2026-09-01T00:00:00.000Z', 'accuracy-hard': '2026-08-01T00:00:00.000Z' } }),
+    );
+    answer(3);
+    const unlocked = events.flatMap((e) => (e.kind === 'unlock' ? e.ids : []));
+    expect(unlocked.filter((id) => /^(index-i18|accuracy-hard)/.test(id))).toEqual(['accuracy-hard-99']);
+    expect(loadProgress().earned).toMatchObject({ 'index-i18': '2026-09-01T00:00:00.000Z', 'accuracy-hard': '2026-08-01T00:00:00.000Z' });
   });
 
   it('rides in the backup and comes back on restore without counting as answers', () => {

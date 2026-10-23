@@ -106,7 +106,7 @@ function casinoSessions(): number {
 }
 
 export function contextFor(stats: Stats, progress: ProgressState, nowMs = clock()): AchievementContext {
-  return { stats, progress, streak: computeStreak(progress.days, localDayKey(new Date(nowMs))), casinoSessions: casinoSessions() };
+  return { stats, progress, streak: computeStreak(progress.days, localDayKey(new Date(nowMs))), casinoSessions: casinoSessions(), nowMs };
 }
 
 /**

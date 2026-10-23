@@ -2,6 +2,7 @@ import type { Category, GradedEvent } from '../engine/grade';
 import type { DeviationId } from '../engine/deviations';
 import type { CategoryTallies, IndexDirection, Stats, TallyRW } from './types';
 import { cellAfter, cellIdForEvent, handRecentAfter } from './cellStats';
+import { indexRecentAfter } from './indexRecent';
 
 /**
  * Wave A F4: the chart cell an event is tallied under in `cellStats`, or null.
@@ -117,6 +118,7 @@ export function applyEvents(stats: Stats, events: GradedEvent[], fallbackAt?: st
   // perIndex and latencyHistory are only copied if an event actually needs
   // them; an untimed, non-deviation event should touch neither.
   let perIndexCopied = false;
+  let indexRecentCopied = false;
   let latencyCopied = false;
   let bySourceCopied = false;
   let evCostCopied = false;
@@ -156,6 +158,14 @@ export function applyEvents(stats: Stats, events: GradedEvent[], fallbackAt?: st
         deviationTally.wrong += 1;
       }
       result.perIndex[deviationId] = deviationTally;
+      // Wave T: the same answer in the index's dated recent window, for the
+      // mastery tiers. Dated as cellStats is: the event's own time, else the
+      // caller's.
+      if (!indexRecentCopied) {
+        result.indexRecent = { ...stats.indexRecent };
+        indexRecentCopied = true;
+      }
+      result.indexRecent![deviationId] = indexRecentAfter(result.indexRecent![deviationId], event.correct, event.at ?? fallbackAt);
     }
 
     // Per-source split, so "how am I doing at flashcards" is answerable at
