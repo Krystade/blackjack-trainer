@@ -11,6 +11,7 @@ import {
   MATERIAL_ASSUMED_PCT,
   SPLIT_CAP_EFFECT_PCT,
   assumedDirectionText,
+  assumedLead,
   assumedEffect,
   assumedLabel,
   assumedRules,
@@ -95,10 +96,20 @@ describe('the cost of each assumed rule', () => {
     expect(assumedLabel('das')).toBe('no double after split');
   });
 
-  it('the card says which way the assumptions can be wrong', () => {
-    expect(assumedDirectionText(['das', 'rsa'])).toBe('Not logged, so every figure here uses the conservative choice.');
-    expect(assumedDirectionText(['maxSplitHands', 'doubleOn'])).toMatch(/best case: if the real rule is worse, it flatters every figure here/);
-    expect(assumedDirectionText(['das', 'doubleOn'])).toMatch(/conservative choice except where marked best case: .*flatters every figure here/);
+  it('the card says which way the assumptions can be wrong, plainly (Wave T)', () => {
+    expect(assumedDirectionText(['das'])).toBe('Not logged, so guessed at the worse choice: if the real rule is better, every figure here is too low.');
+    expect(assumedDirectionText(['das', 'rsa'])).toBe('Not logged, so guessed at the worse choice: if any real rule is better, every figure here is too low.');
+    expect(assumedDirectionText(['doubleOn'])).toBe('Not logged, so guessed as the best case: if the real rule is worse, every figure here is too high.');
+    expect(assumedDirectionText(['maxSplitHands', 'doubleOn'])).toBe(
+      'Not logged, so guessed as the best case: if either real rule is worse, every figure here is too high.',
+    );
+    expect(assumedDirectionText(['das', 'doubleOn'])).toBe(
+      'Not logged, so guessed at the worse choice except where marked best case: a wrong best-case guess makes every figure here too high.',
+    );
+    // "Flatters" read clearly but was not the plain word; nothing says it now.
+    for (const a of [['das'], ['doubleOn'], ['das', 'doubleOn']] as const) expect(assumedDirectionText(a)).not.toMatch(/flatter|conservative/);
+    expect(assumedLead(['das', 'cut'])).toBe('not logged, so guessed at the worse choice');
+    expect(assumedLead(['das', 'maxSplitHands'])).toBe('not logged, so guessed at the worse choice except where marked best case');
   });
 
   /*

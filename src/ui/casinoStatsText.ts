@@ -78,7 +78,7 @@ export const ASSUMED_TEXT: Record<AssumedField, string> = {
   commission: 'commission $1 per $100 (card room)',
 };
 
-/** Wave P: an assumption simulated at the best case (split to 4, double any two): it can only flatter the figures. */
+/** Wave P: an assumption simulated at the best case (split to 4, double any two): it can only make the figures too high. */
 export function isBestCase(field: AssumedField): boolean {
   return BEST_CASE_ASSUMED.includes(field);
 }
@@ -89,16 +89,31 @@ export function assumedLabel(field: AssumedField): string {
 }
 
 /**
+ * Wave T: how an unlogged rule was filled in, as the stats card's bottom line
+ * leads its full list of assumptions: "not logged, so guessed at the worse
+ * choice except where marked best case".
+ */
+export function assumedLead(assumed: readonly AssumedField[]): string {
+  return assumed.some(isBestCase) ? 'not logged, so guessed at the worse choice except where marked best case' : 'not logged, so guessed at the worse choice';
+}
+
+/**
  * Wave P: what the stats card says after its list of assumed rules, honest
- * about direction. A conservative guess can only make a figure too poor; a
- * best-case guess (the split cap, double-on) can only make it too good.
+ * about direction. A conservative guess (the worse choice) can only make a
+ * figure too low; a best-case guess (the split cap, double-on) can only make
+ * it too high. Wave T, owner's ruling: said plainly ("flatters" read clearly
+ * but was not the plain word).
  */
 export function assumedDirectionText(assumed: readonly AssumedField[]): string {
-  const best = assumed.some(isBestCase);
-  const worst = assumed.some((a) => !isBestCase(a));
-  if (!best) return 'Not logged, so every figure here uses the conservative choice.';
-  if (!worst) return 'Not logged, so the best case: if the real rule is worse, it flatters every figure here.';
-  return 'Not logged, so the conservative choice except where marked best case: if one of those is wrong, it flatters every figure here.';
+  const best = assumed.filter(isBestCase).length;
+  const worse = assumed.length - best;
+  if (best === 0) {
+    return `Not logged, so guessed at the worse choice: if ${worse === 1 ? 'the real rule is' : 'any real rule is'} better, every figure here is too low.`;
+  }
+  if (worse === 0) {
+    return `Not logged, so guessed as the best case: if ${best === 1 ? 'the real rule is' : 'either real rule is'} worse, every figure here is too high.`;
+  }
+  return 'Not logged, so guessed at the worse choice except where marked best case: a wrong best-case guess makes every figure here too high.';
 }
 
 /**

@@ -5,7 +5,7 @@ import { simRules, type GameResult } from '../../../store/casinoGameStats';
 import { describeMethod, methodBadge } from '../../../engine/betMethods';
 import { gameSummary, kindBadge, labelledSummary, money, shortDate, warnBadges } from '../../casinoFigures';
 import { buildRanking, evTargetMet, exitMinutesOf, gameFigures, roundsPerHourOf, type GameFigures, type RankRow } from '../../casinoRanking';
-import { ASSUMED_TEXT, assumedDirectionText, assumedLabel, assumedRules, ciText, edgeText, evHourText, isBestCase, n0Text, roundsText, rorText, sdHourText } from '../../casinoStatsText';
+import { ASSUMED_TEXT, assumedDirectionText, assumedLabel, assumedLead, assumedRules, ciText, edgeText, evHourText, n0Text, roundsText, rorText, sdHourText } from '../../casinoStatsText';
 import { canRunLonger, runAnotherMinute } from './simRunner';
 import { workFor } from '../../casinoAutoSim';
 import { statusNote, type Hold } from '../../casinoRunNote';
@@ -291,7 +291,7 @@ export function GameStats({ log, casinoId, gameId, go }: { log: CasinoLog; casin
           )}
           {row.input.assumed.length > 0 && (
             <p data-testid="gs-assumed">
-              <strong>Assumed</strong> (not logged, so {row.input.assumed.some(isBestCase) ? 'the conservative choice except where marked best case' : 'the conservative choice'}):{' '}
+              <strong>Assumed</strong> ({assumedLead(row.input.assumed)}):{' '}
               {row.input.assumed.map(assumedLabel).join('; ')}.
             </p>
           )}

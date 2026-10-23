@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Locator, type Page } from '@playwright/test';
 import { withSettings } from './helpers';
 import { worstContrast } from './contrast';
 
@@ -59,6 +59,41 @@ async function seed(page: Page, budget = 4000, log: unknown = LOG): Promise<void
 const openCasino = (page: Page) => page.locator('.tab-bar').getByRole('button', { name: 'Casino', exact: true }).click();
 const back = (page: Page) => page.getByRole('button', { name: /Back$/ }).click();
 const ranked = (page: Page) => page.getByTestId('games-ranked');
+
+/**
+ * Wave T: screenshots for the owner's read of the wording, only with
+ * CAS_SHOTS set: 375 x 812 with the notch insets and 320 x 568, dark
+ * (midnight-felt) and light (bone-ink), at each element in `at`.
+ */
+const SHOTS = process.env.CAS_SHOTS;
+type At = [string, (page: Page) => Locator];
+const CARD_SPOTS: At[] = [
+  ['header', (p) => p.getByTestId('gs-assumed-rules')],
+  ['bottom', (p) => p.getByTestId('gs-assumed')],
+];
+async function shotCard(page: Page, name: string, at: At[] = CARD_SPOTS): Promise<void> {
+  if (!SHOTS) return;
+  for (const [w, h] of [[375, 812], [320, 568]] as const) {
+    await page.setViewportSize({ width: w, height: h });
+    await page.evaluate((inset) => {
+      let el = document.getElementById('shot-inset');
+      if (!el) {
+        el = document.createElement('style');
+        el.id = 'shot-inset';
+        document.head.appendChild(el);
+      }
+      el.textContent = inset ? ':root { --safe-top: 47px; --safe-bottom: 34px; }' : '';
+    }, w === 375);
+    for (const theme of ['midnight-felt', 'bone-ink']) {
+      await page.evaluate((t) => document.documentElement.setAttribute('data-theme', t), theme);
+      for (const [spot, find] of at) {
+        await find(page).first().evaluate((el) => el.scrollIntoView({ block: 'center' }));
+        await page.screenshot({ path: `${SHOTS}/${w}-${theme}-${name}-${spot}.png` });
+      }
+    }
+  }
+  await page.setViewportSize({ width: 375, height: 812 });
+}
 const rows = (page: Page) => ranked(page).getByTestId('rank-row');
 
 /** Wave Q: no button anywhere asks for a run. */
@@ -164,12 +199,24 @@ test('figures appear on their own, the ranking follows them, and the cards say w
   await expect(rows(page).and(page.locator('[data-state="current"]'))).toHaveCount(3);
 });
 
+test('Wave T: the editor says which way an unlogged split cap or double-on leans', async ({ page }) => {
+  await seed(page);
+  await page.goto('/?e2e=1');
+  await openCasino(page);
+  await page.getByTestId('casino-row').filter({ hasText: 'El Cortez' }).click();
+  const editor = page.getByTestId('game-editor').first();
+  await expect(editor).toContainText('? = 4, the best case: the figures may be too high.');
+  await expect(editor).toContainText('? = any two, the best case: the figures may be too high.');
+  await editor.getByRole('group', { name: 'Split to, hands' }).waitFor();
+  await shotCard(page, 'editor', [['split-cap', (p) => p.getByTestId('game-editor').first().getByRole('group', { name: 'Split to, hands' })]]);
+});
+
 /*
  * Wave M review S4: games logged before the split / double rules existed are
  * simulated at assumed rules, which can decide their place in the ranking, so
  * the row and the card say a rule was assumed, and which. Wave P: the split
  * cap and double-on are assumed at the best case (split to 4, double any two),
- * and the card says that can flatter the figures.
+ * and the card says that can make the figures too high (Wave T: said plainly).
  */
 test('rows and stats cards mark the rules their figures assumed', async ({ page }) => {
   await seed(page);
@@ -178,6 +225,11 @@ test('rows and stats cards mark the rules their figures assumed', async ({ page 
   const goodRow = rows(page).and(page.locator('[data-game="g-good"]'));
   const deepRow = rows(page).and(page.locator('[data-game="g-deep"]'));
   await expect(deepRow.getByTestId('assumed-badge')).toHaveText('4 rules assumed');
+  // The badge's tooltip names them, the best-case ones marked.
+  await expect(deepRow.getByTestId('assumed-badge')).toHaveAttribute(
+    'title',
+    'no resplitting aces; no doubling split aces; split to 4 hands (best case); double on any two cards (best case)',
+  );
   await expect(goodRow.getByTestId('assumed-badge')).toHaveCount(0);
   // The shuffler's unknown cut is assumed too, but it is not a rule: still 4.
   await expect(rows(page).and(page.locator('[data-game="g-csm"]')).getByTestId('assumed-badge')).toHaveText('4 rules assumed');
@@ -186,8 +238,9 @@ test('rows and stats cards mark the rules their figures assumed', async ({ page 
   const head = page.getByTestId('gs-assumed-rules');
   await expect(head).toBeVisible();
   for (const t of ['no resplitting aces', 'no doubling split aces', 'split to 4 hands (best case)', 'double on any two cards (best case)']) await expect(head).toContainText(t);
-  await expect(head).toContainText('the conservative choice except where marked best case: if one of those is wrong, it flatters every figure here.');
-  await expect(page.getByTestId('gs-assumed')).toContainText('(not logged, so the conservative choice except where marked best case): no resplitting aces; no doubling split aces; split to 4 hands (best case)');
+  await expect(head).toContainText('Not logged, so guessed at the worse choice except where marked best case: a wrong best-case guess makes every figure here too high.');
+  await expect(page.getByTestId('gs-assumed')).toContainText('(not logged, so guessed at the worse choice except where marked best case): no resplitting aces; no doubling split aces; split to 4 hands (best case)');
+  await shotCard(page, 'stats-card-assumed');
   // The cut is logged here and the min bet is never a rule: neither is in the marker.
   await expect(head).not.toContainText('cut');
   await expect(head).not.toContainText('min bet');
