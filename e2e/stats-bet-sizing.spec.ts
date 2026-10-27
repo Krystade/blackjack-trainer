@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { statsTab, withStats } from './helpers';
+import { statsTab, withStats, openStats } from './helpers';
 
 test.use({ viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true });
 
@@ -7,7 +7,7 @@ const row = (date: string, ok: boolean) => ({ date, rc: 6, decksRemaining: 3, tc
 
 async function openBetOrSit(page: Page) {
   await page.goto('/?e2e=1');
-  await page.locator('.tab-bar').getByRole('button', { name: 'Stats', exact: true }).click();
+  await openStats(page);
   // D-R2: a drill's answers are on the Drills tab, not Play.
   await statsTab(page, 'Drills');
   return page.locator('.stats-section', { hasText: 'Bet sizing drill' }).first();

@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withProfile, withStats, statsTab, shot } from './helpers';
+import { withProfile, withStats, statsTab, shot, openStats as openStatsTab } from './helpers';
 import { activeIndices } from '../src/ui/screens/readiness';
 import type { RuleSet } from '../src/engine/ruleset';
 
@@ -54,8 +54,8 @@ async function openStats(page: Page): Promise<void> {
   await withStats(page, { perIndex: POOLED, tablePerIndex: TABLE, indexDirection: POOLED_DIR, tableIndexDirection: TABLE_DIR });
   await page.goto('/?e2e=1');
   await page.addStyleTag({ content: INSET });
-  await page.locator('.tab-bar').getByRole('button', { name: 'Stats', exact: true }).click();
-  await expect(page.locator('.stats-heading')).toHaveText('Stats');
+  await openStatsTab(page);
+  await expect(page.getByTestId('you-seg-stats')).toHaveAttribute('aria-selected', 'true');
 }
 
 async function readRows(page: Page, testId: string) {
@@ -154,7 +154,7 @@ test('E7: Drills > Deviation quiz uses the same table; an Index-test miss is wro
 test('E7: with no table answers Play > Indexes is the one not-seen line', async ({ page }) => {
   await withProfile(page);
   await page.goto('/?e2e=1');
-  await page.locator('.tab-bar').getByRole('button', { name: 'Stats', exact: true }).click();
+  await openStatsTab(page);
   const table = page.getByTestId('play-index-table');
   // Stats is lazy: the not-seen line proves the card rendered first.
   await expect(table.getByTestId('index-unseen')).toHaveText(`${ASKED.length} not seen yet`);

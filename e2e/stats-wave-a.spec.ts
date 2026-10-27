@@ -11,7 +11,7 @@ const DAY = 24 * 60 * 60 * 1000;
 async function openStats(page: Page, url = '/?e2e=1') {
   await page.goto(url);
   await page.locator('.home-stats-link').click();
-  await expect(page.locator('.stats-heading')).toHaveText('Stats');
+  await expect(page.getByTestId('you-seg-stats')).toHaveAttribute('aria-selected', 'true');
 }
 
 const section = (page: Page, title: string) =>

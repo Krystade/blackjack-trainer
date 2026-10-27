@@ -54,7 +54,7 @@ async function openStatsProgressTab(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Home', exact: true }).click();
   await page.getByRole('button', { name: 'All stats', exact: true }).click();
   // Stats' OWN tablist -- not the bottom nav, which would leave the screen.
-  await page.locator('.stats-tabs [role="tab"]', { hasText: 'Progress' }).click();
+  await page.locator('.stats-tabs [role="tab"]', { hasText: 'Over time' }).click();
 }
 
 function flashSection(page: Page) {

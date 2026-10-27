@@ -19,7 +19,7 @@ test('home renders and navigates to the table', async ({ page }) => {
   await expect(page.locator('.home-title')).toHaveText('Blackjack Trainer');
   // Navigation is the persistent tab bar since C4; since #32 Stats has a tab
   // and Settings hangs off Home instead.
-  for (const label of ['Home', 'Play', 'Drills', 'Charts', 'Stats']) {
+  for (const label of ['Home', 'Play', 'Drills', 'Charts', 'You']) {
     await expect(page.locator('.tab-bar').getByRole('button', { name: label, exact: true })).toBeVisible();
   }
   await expect(page.locator('.tab-bar').getByRole('button', { name: 'Settings' })).toHaveCount(0);

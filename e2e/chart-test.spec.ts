@@ -161,7 +161,7 @@ test('F12: paint Soft from memory with two misses; Check rings exactly those two
   // a missed flashcard -- so the schedule itself is where a fresh miss shows.)
   await page.locator('.tab-bar').getByRole('button', { name: 'Home', exact: true }).click();
   await page.getByRole('button', { name: 'All stats', exact: true }).click();
-  await page.locator('.stats-tabs [role="tab"]', { hasText: 'Progress' }).click();
+  await page.locator('.stats-tabs [role="tab"]', { hasText: 'Over time' }).click();
   const sr = page.locator('.stats-section', { hasText: 'Spaced repetition — Flashcards' }).first();
   await expect(sr.locator('.mistake-row', { hasText: 'Due now' })).toHaveText(/Due now\s*2$/);
   const box0 = sr.locator('.sr-bar-col', { has: page.locator('.sr-bar-label', { hasText: 'Box 0' }) });

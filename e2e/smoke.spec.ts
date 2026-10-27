@@ -42,7 +42,7 @@ test('full journey: Home -> Profiles -> Settings -> Charts -> Table -> all ten D
   // Navigation moved to the persistent tab bar (C4); Home is a dashboard now,
   // so it carries the readiness figures and one primary action instead of a
   // menu. Since #32 Stats has a tab, and Settings hangs off Home.
-  for (const label of ['Home', 'Play', 'Drills', 'Charts', 'Stats']) {
+  for (const label of ['Home', 'Play', 'Drills', 'Charts', 'You']) {
     await expect(page.locator('.tab-bar').getByRole('button', { name: label, exact: true })).toBeVisible();
   }
   await expect(page.getByRole('button', { name: 'Settings', exact: true })).toBeVisible();
@@ -270,7 +270,7 @@ test('full journey: Home -> Profiles -> Settings -> Charts -> Table -> all ten D
   //     section rendered on screen
   // ---------------------------------------------------------------
   await page.locator('.home-stats-link').click();
-  await expect(page.locator('.stats-heading')).toHaveText('Stats');
+  await expect(page.getByTestId('you-seg-stats')).toHaveAttribute('aria-selected', 'true');
   await expect(page.locator('.session-row')).not.toHaveCount(0);
   // Count-drill history lives on the Drills tab of Stats (C5).
   await statsTab(page, 'Drills');

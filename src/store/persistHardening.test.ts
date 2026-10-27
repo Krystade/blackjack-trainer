@@ -392,6 +392,7 @@ const NOT_BACKED_UP: Record<string, string> = {
   'bjtrainer.casinoUseLocation.v1': 'a per-device yes/no for "Use my location" in the casino ranking',
   'bjtrainer.casinoRankSort.v1': 'which order the casino ranking was last sorted in, on this device',
   'bjtrainer.variant.v1': 'wave L: which variant chart was last picked, on this device -- a bare id, one tap to choose again',
+  'bjtrainer.youView.v1': 'wave W: which half of the You tab (Progress or Stats) was open last, on this device -- one tap to choose again',
   'bjtrainer.stats.v1.corrupt':
     'written by the reader, not the app, and already carried verbatim by exportAll when present',
 };

@@ -288,7 +288,7 @@ test('profile editor CVCX: score/EV/ROR/simNote entered + saved + surfaced on th
   await page.getByRole('button', { name: 'Back to Home', exact: true }).click();
   await expect(page.locator('.home-title')).toBeVisible();
   await page.locator('.home-stats-link').click();
-  await expect(page.locator('.stats-heading')).toBeVisible();
+  await expect(page.getByTestId('you-seg-stats')).toHaveAttribute('aria-selected', 'true');
   await expect(page.locator('.mistake-row', { hasText: 'CVCX score' })).toContainText('55');
   await expect(page.locator('.mistake-row', { hasText: 'CVCX EV per hour' })).toContainText('+12');
   await expect(page.locator('.mistake-row', { hasText: 'CVCX risk of ruin' })).toContainText('5%');

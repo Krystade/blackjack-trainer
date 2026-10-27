@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { playLabel } from '../playLabel';
 import { CollapsibleSection } from '../components/CollapsibleSection';
+import { YouHeader } from '../components/YouHeader';
 import { SideBetStatsSection } from '../components/SideBetStatsSection';
 import type { ChangeEvent } from 'react';
 import type { Screen } from '../App';
@@ -392,10 +393,12 @@ function HandGoalRow({ row, latencyText, rangeText }: { row: HandCategoryProgres
  */
 type StatsTab = 'play' | 'drills' | 'progress';
 
+// Wave W: the third reads "Over time", not "Progress" -- the You tab's
+// switch above it says Progress for the streaks and achievements screen.
 const TAB_LABEL: Record<StatsTab, string> = {
   play: 'Play',
   drills: 'Drills',
-  progress: 'Progress' };
+  progress: 'Over time' };
 
 /** Which tab each section title belongs to. */
 const SECTION_TAB: Record<string, StatsTab> = {
@@ -422,7 +425,7 @@ const SECTION_TAB: Record<string, StatsTab> = {
   'Fatigue': 'progress',
   'Table sessions': 'progress' };
 
-export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps) {
+export function Stats({ activeProfile, settings, onSettingsChange, onNavigate }: StatsProps) {
   const [stats, setStats] = useState<StatsData>(() => loadStats());
   const [message, setMessage] = useState<string | null>(null);
 
@@ -843,9 +846,9 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
 
   return (
     <div className="stats-screen" data-active-tab={tab}>
-      <div className="stats-topbar">
-        <div className="stats-heading">Stats</div>
-      </div>
+      {/* Wave W: Stats is half of the You tab now; the bar switches to Progress. */}
+      <YouHeader current="stats" onNavigate={onNavigate} />
+      <h1 className="u-sr-only">Stats</h1>
 
       <div className="stats-tabs" role="tablist" aria-label="Stats view">
         {(['play', 'drills', 'progress'] as StatsTab[]).map((id) => (

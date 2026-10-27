@@ -91,8 +91,12 @@ test('every chunk is precached: FieldTest and the profile editor open offline th
 
   // Wave O: Play and Stats are lazy too, and open offline though never opened online.
   await page.reload();
-  await page.locator('.tab-bar').getByRole('button', { name: 'Stats', exact: true }).click({ timeout: 20_000 });
-  await expect(page.locator('.tab-bar [aria-current="page"]')).toContainText('Stats');
+  // Wave W: Stats is the second half of the You tab, which opens on Progress.
+  await page.locator('.tab-bar').getByRole('button', { name: 'You', exact: true }).click({ timeout: 20_000 });
+  await expect(page.locator('.tab-bar [aria-current="page"]')).toContainText('You');
+  await expect(page.getByTestId('progress-screen')).toBeVisible({ timeout: 20_000 });
+  await page.getByTestId('you-seg-stats').click({ timeout: 20_000 });
+  await expect(page.locator('.stats-screen')).toBeVisible({ timeout: 20_000 });
   await page.locator('.tab-bar').getByRole('button', { name: 'Play', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Deal', exact: true })).toBeVisible({ timeout: 20_000 });
   await expect(page.getByText('Something broke on this screen.')).toHaveCount(0);

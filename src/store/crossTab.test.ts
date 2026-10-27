@@ -197,6 +197,9 @@ describe('OWNED_KEYS', () => {
     // and that drill's right/wrong tally, a scoreboard on one screen.
     'bjtrainer.variant.v1': 'view preference, read when Charts or the variant drill opens',
     'bjtrainer.variantTally.v1': 'one drill screen scoreboard, last writer wins a count',
+    // Wave W: which half of the You tab (Progress | Stats) opens next, read
+    // on the tap. Another tab's choice would only change where the next tap lands.
+    'bjtrainer.youView.v1': 'per-device view preference, read on the tab tap',
   };
 
   /**

@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings, resolveInsurance, playRoundByAdvice, readStats } from './helpers';
+import { withSettings, resolveInsurance, playRoundByAdvice, readStats, openStats } from './helpers';
 
 /**
  * F1 (Wave A): a Play session's graded decisions are committed to Stats as each
@@ -94,8 +94,8 @@ test('R1: a shoe left without End is a session in Stats, and agrees with the ban
   expect(rows[0]).toMatchObject({ rounds: 4, provisional: true });
   expect(100 + rows[0]!.bankrollDelta).toBe(bankroll);
 
-  await page.locator('.tab-bar').getByRole('button', { name: 'Stats', exact: true }).click();
-  await page.locator('.stats-tabs').getByRole('tab', { name: 'Progress', exact: true }).click();
+  await openStats(page);
+  await page.locator('.stats-tabs').getByRole('tab', { name: 'Over time', exact: true }).click();
   await expect(page.locator('.session-row')).toHaveCount(1);
   await expect(page.locator('.session-row')).toContainText('4 rounds');
   await expect(page.getByText('No table sessions yet.')).toHaveCount(0);

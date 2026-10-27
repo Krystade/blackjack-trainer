@@ -165,13 +165,29 @@ export async function readStats(page: Page): Promise<Record<string, unknown> | n
   });
 }
 
+/**
+ * Wave W: Stats is one half of the You tab (Progress | Stats). The tab opens
+ * whichever half was open last -- Progress the first time -- so a spec that
+ * wants Stats opens You and then picks Stats.
+ */
+export async function openStats(page: Page): Promise<void> {
+  await page.locator('.tab-bar').getByRole('button', { name: 'You', exact: true }).click();
+  await page.getByTestId('you-seg-stats').click();
+  await expect(page.locator('.stats-screen')).toBeVisible();
+}
+
 /** Navigate home, then click the named Home nav button ("Play" | "Drills" | "Stats" | "Settings"). */
 export async function goHomeAndNavigate(page: Page, url: string, button: 'Play' | 'Drills' | 'Stats' | 'Settings'): Promise<void> {
   await page.goto(url);
   // Navigation lives in the persistent tab bar since C4. Since #32 Stats has
-  // a tab and Settings does not: Settings is reached from Home.
+  // a tab and Settings does not: Settings is reached from Home. Wave W: the
+  // tab is You, and Stats its second half.
   if (button === 'Settings') {
     await page.locator('.home-settings-btn').click();
+    return;
+  }
+  if (button === 'Stats') {
+    await openStats(page);
     return;
   }
   await page.locator('.tab-bar').getByRole('button', { name: button, exact: true }).click();
@@ -219,9 +235,10 @@ export async function playRoundByAdvice(page: Page): Promise<void> {
 /**
  * Select a Stats tab (C5). The fifteen sections are split by how the data is
  * earned — at the table, in the drills, or over time — so a spec asserting on
- * a section must first open the tab that owns it.
+ * a section must first open the tab that owns it. Wave W: the third was
+ * "Progress" until the You tab's switch took that name.
  */
-export async function statsTab(page: Page, tab: 'Play' | 'Drills' | 'Progress'): Promise<void> {
+export async function statsTab(page: Page, tab: 'Play' | 'Drills' | 'Over time'): Promise<void> {
   await page.locator('.stats-tabs').getByRole('tab', { name: tab, exact: true }).click();
 }
 

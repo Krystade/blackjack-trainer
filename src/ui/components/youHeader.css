@@ -1,0 +1,66 @@
+/* Wave W: the You tab's Progress | Stats switch (YouHeader.tsx).
+   The bar itself is a `.stats-topbar` (app.css, muteSeat.css): sticky below
+   the status bar, opaque, the mute disc's seat kept free on the right. */
+
+/* Progress joins the 0.6rem bar family, so the disc sits on the bar's line. */
+body[data-screen='progress'] {
+  --mute-top: calc(0.6rem + (48px - var(--mute-disc, 44px)) / 2);
+}
+
+.you-bar {
+  justify-content: flex-start;
+}
+
+.you-seg {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  flex: 1 1 auto;
+  max-width: 20rem;
+  min-width: 0;
+  padding: 3px;
+  gap: 3px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+}
+
+.you-seg-btn {
+  min-height: 42px;
+  min-width: 0;
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-dim);
+  font: inherit;
+  font-size: var(--fs-md);
+  font-weight: 650;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* Selected is more than a colour (themeCues.css s09): a solid fill and bold. */
+.you-seg-btn-active {
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 750;
+}
+
+.you-seg-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Progress: the bar runs edge to edge like Stats', the cards keep their gutter. */
+.progress-screen.you-screen {
+  padding: 0 0 calc(var(--safe-bottom, 0px) + 96px);
+  gap: 0;
+  max-width: 480px;
+}
+
+.you-screen .progress-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 0.75rem);
+  padding: var(--space-3, 0.75rem) var(--space-4, 1rem) 0;
+}

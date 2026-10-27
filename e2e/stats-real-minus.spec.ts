@@ -10,7 +10,7 @@ test('Pace drift that speeds up reads with a real minus', async ({ page }) => {
   await withStats(page, { latencyHistory: [row(0, 3000), row(1, 3000), row(2, 3000), row(3, 1000), row(4, 1000), row(5, 1000)] });
   await page.goto('/?e2e=1');
   await page.locator('.home-stats-link').click();
-  await statsTab(page, 'Progress');
+  await statsTab(page, 'Over time');
   await expect(fatigue(page).locator('.mistake-row', { hasText: 'Pace drift' })).toContainText('−2.0s');
 });
 
@@ -20,7 +20,7 @@ test('accuracy Drift that falls reads with a real minus', async ({ page }) => {
   await withStats(page, { countDrill: { history } });
   await page.goto('/?e2e=1');
   await page.locator('.home-stats-link').click();
-  await statsTab(page, 'Progress');
+  await statsTab(page, 'Over time');
   const drift = fatigue(page).locator('.mistake-row').filter({ hasText: /^Drift/ });
   await expect(drift).toContainText('−100%');
   await expect(drift).not.toContainText('-100%');

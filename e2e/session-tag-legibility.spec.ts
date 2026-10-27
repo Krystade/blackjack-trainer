@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { statsTab, withProfile, withSettings, withStats } from './helpers';
+import { statsTab, withProfile, withSettings, withStats, openStats } from './helpers';
 import { worstContrast } from './contrast';
 
 /**
@@ -20,8 +20,8 @@ for (const theme of ['midnight-felt', 'bone-ink', 'amoled-night', 'slate-copper'
       ],
     });
     await page.goto('/?e2e=1');
-    await page.locator('.tab-bar').getByRole('button', { name: 'Stats', exact: true }).click();
-    await statsTab(page, 'Progress');
+    await openStats(page);
+    await statsTab(page, 'Over time');
     const tag = page.locator('.session-row .session-tag', { hasText: 'not ended' });
     await expect(tag).toHaveText(' · not ended');
     const px = await tag.evaluate((el) => parseFloat(getComputedStyle(el).fontSize));

@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings, withProfile, playRoundByAdvice, statsTab, sayOnceListening, resolveInsurance } from './helpers';
+import { withSettings, withProfile, playRoundByAdvice, statsTab, sayOnceListening, resolveInsurance, openStats } from './helpers';
 
 /**
  * Wave J toggle rework: back-counting is the table's In/Out toggle. It sits
@@ -135,7 +135,7 @@ test('getting in short of the entry point is early: the strip, the spoken line, 
   await expect(page.locator('.report-bets li')).toHaveText(['TC +0 · you got in · you enter at +1']);
   await page.getByRole('button', { name: 'Back to Home', exact: true }).click();
 
-  await page.getByRole('button', { name: 'Stats', exact: true }).click();
+  await openStats(page);
   await statsTab(page, 'Play');
   await expect(page.getByTestId('bsl-table-wong-in')).toContainText('At the table: stay out or get in');
   await expect(page.getByTestId('bsl-table-wong-in')).toContainText('0/1');

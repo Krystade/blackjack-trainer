@@ -75,7 +75,8 @@ for (const size of SIZES) {
       await insets(page);
       await page.goto('/?e2e=1');
       // Wave J: six tabs now (Casino after Stats), each a sixth of the bar.
-      for (const name of ['Home', 'Drills', 'Charts', 'Stats', 'Casino'] as const) {
+      // Wave W: Stats is You (Progress | Stats), still six.
+      for (const name of ['Home', 'Drills', 'Charts', 'You', 'Casino'] as const) {
         await tab(page, name);
         await expect(page.locator('.tab-bar [aria-current="page"]')).toContainText(name);
         const labels = await page.locator('.tab-label').evaluateAll((els) =>
@@ -84,7 +85,7 @@ for (const size of SIZES) {
             return { text: el.textContent, top: r.top, bottom: r.bottom, over: el.scrollWidth - el.clientWidth };
           }),
         );
-        expect(labels.map((l) => l.text)).toEqual(['Home', 'Play', 'Drills', 'Charts', 'Stats', 'Casino']);
+        expect(labels.map((l) => l.text)).toEqual(['Home', 'Play', 'Drills', 'Charts', 'You', 'Casino']);
         for (const l of labels) {
           expect(l.bottom, `${name}: "${l.text}" runs into the home indicator`).toBeLessThanOrEqual(size.height - BOTTOM);
           expect(l.over, `${name}: "${l.text}" is clipped`).toBeLessThanOrEqual(0);

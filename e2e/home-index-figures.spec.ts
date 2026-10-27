@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { statsTab, withProfile, withStats } from './helpers';
+import { statsTab, withProfile, withStats, openStats } from './helpers';
 
 test.use({ viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true });
 
@@ -33,7 +33,7 @@ for (const [name, profile] of PROFILES) {
     await withProfile(page, profile);
     await page.goto('/?e2e=1');
     const home = await homeIndexFigure(page);
-    await page.locator('.tab-bar').getByRole('button', { name: 'Stats', exact: true }).click();
+    await openStats(page);
     // E7 (deliberate change): an index table lists the indexes answered and
     // folds the rest into "N not seen yet", so its total is rows + N. These
     // answers are drill answers (no table slice), so Play's Indexes is all

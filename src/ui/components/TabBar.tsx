@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Screen } from '../App';
 import { loadCasinoLog, runningSession, subscribeCasinoLog } from '../../store/casinoLog';
+import { isYouScreen, lastYouView } from '../youView';
 import './tabLive.css';
 
 /**
@@ -18,6 +19,10 @@ import './tabLive.css';
  * to (TabSettingsButton), so the global Settings screen is reached from Home
  * and from each gear sheet's "All settings".
  *
+ * Wave W: Stats became You -- Progress (streaks, calendar, achievements) and
+ * Stats behind one tab, with a switch at the top of both (youView.ts says
+ * why a seventh tab was not added). Lit on either screen; opens the last.
+ *
  * The bar hides itself in the immersive modes (see app.css) rather than
  * taking a prop for it: the table and a running drill own the bottom edge
  * with their ActionBar/ZonePad, and on a 320px screen two stacked bottom bars
@@ -29,7 +34,9 @@ const TABS: { screen: Screen; label: string; glyph: string }[] = [
   { screen: 'table', label: 'Play', glyph: '♠' },
   { screen: 'drills', label: 'Drills', glyph: '◎' },
   { screen: 'charts', label: 'Charts', glyph: '▦' },
-  { screen: 'stats', label: 'Stats', glyph: '◔' },
+  // Wave W: the star of the achievements; 'stats' stands for both of You's
+  // screens (see `isActive`), and a tap opens whichever was open last.
+  { screen: 'stats', label: 'You', glyph: '★' },
   // Wave J: real play, after everything that is practice. The club to Play's
   // spade: the same family of text glyph, so it takes the bar's ink and size.
   { screen: 'casino', label: 'Casino', glyph: '♣' },
@@ -64,7 +71,8 @@ export function TabBar({
   return (
     <nav className="tab-bar" aria-label="Main">
       {TABS.map((tab) => {
-        const active = current === tab.screen;
+        const you = tab.screen === 'stats';
+        const active = you ? isYouScreen(current) : current === tab.screen;
         return (
           <button
             key={tab.screen}
@@ -78,7 +86,7 @@ export function TabBar({
             // that); the running session is its description instead.
             aria-describedby={tab.screen === 'casino' && casinoLive ? 'casino-tab-live-desc' : undefined}
             aria-current={active ? 'page' : undefined}
-            onClick={() => onNavigate(tab.screen)}
+            onClick={() => onNavigate(you ? lastYouView() : tab.screen)}
           >
             <span className="tab-glyph" aria-hidden="true">{tab.glyph}</span>
             {tab.screen === 'casino' && casinoLive && (

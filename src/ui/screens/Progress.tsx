@@ -5,6 +5,7 @@ import { loadProgress, contextFor, habitNow } from '../../habits/progressStore';
 import { goalFor, heatmap } from '../../habits/progress';
 import { evaluateAchievements, type AchievementStatus, type Ladder, type Tier } from '../../habits/achievements';
 import { localDayKey } from '../../store/practiceDays';
+import { YouHeader } from '../components/YouHeader';
 import './progress.css';
 import './progressLadder.css';
 
@@ -76,7 +77,7 @@ function fmtMinutes(ms: number): string {
   return min >= 120 ? `${Math.floor(min / 60)} h ${min % 60} m` : `${min} min`;
 }
 
-/** Wave N: streaks, the last 12 weeks and the achievements. */
+/** Wave N: streaks, the last 12 weeks and the achievements. Wave W: one half of the You tab. */
 export function Progress({ settings, onNavigate }: { settings: Settings; onNavigate: (s: Screen) => void }) {
   const now = habitNow();
   const today = localDayKey(new Date(now));
@@ -92,109 +93,107 @@ export function Progress({ settings, onNavigate }: { settings: Settings; onNavig
   const activeMs = days.reduce((a, d) => a + d.activeMs, 0);
 
   return (
-    <div className="progress-screen" data-testid="progress-screen">
-      <header className="progress-head">
-        <button type="button" className="u-btn progress-back" onClick={() => onNavigate('home')}>
-          &lsaquo; Home
-        </button>
-        <h1 className="progress-title">Progress</h1>
-      </header>
+    <div className="progress-screen you-screen" data-testid="progress-screen">
+      {/* Wave W: the You tab's switch; Home is a tab away, so no Back. */}
+      <YouHeader current="progress" onNavigate={onNavigate} />
+      <h1 className="u-sr-only">Progress</h1>
+      <div className="progress-body">
+        <section className="progress-card progress-streaks" aria-label="Streaks">
+          <div className="progress-fig">
+            <span className="progress-fig-num" data-testid="progress-current">{ctx.streak.current}</span>
+            <span className="progress-fig-label">current</span>
+          </div>
+          <div className="progress-fig">
+            <span className="progress-fig-num" data-testid="progress-longest">{ctx.streak.longest}</span>
+            <span className="progress-fig-label">longest</span>
+          </div>
+          <div className="progress-fig">
+            <span className="progress-fig-num">{'❄'} {ctx.streak.freezes}</span>
+            <span className="progress-fig-label">freezes</span>
+          </div>
+        </section>
 
-      <section className="progress-card progress-streaks" aria-label="Streaks">
-        <div className="progress-fig">
-          <span className="progress-fig-num" data-testid="progress-current">{ctx.streak.current}</span>
-          <span className="progress-fig-label">current</span>
-        </div>
-        <div className="progress-fig">
-          <span className="progress-fig-num" data-testid="progress-longest">{ctx.streak.longest}</span>
-          <span className="progress-fig-label">longest</span>
-        </div>
-        <div className="progress-fig">
-          <span className="progress-fig-num">{'❄'} {ctx.streak.freezes}</span>
-          <span className="progress-fig-label">freezes</span>
-        </div>
-      </section>
+        <section className="progress-card" aria-label="Last 12 weeks">
+          <h2 className="progress-h2">Last 12 weeks</h2>
+          <div className="heatmap" role="img" aria-label={`${daysMet} days with the goal met`}>
+            {cols.map((col, i) => (
+              <div className="heatmap-col" key={i}>
+                {col.map((c) => (
+                  <span
+                    key={c.key}
+                    className={`heat-cell l${c.level}${c.frozen ? ' is-frozen' : ''}${c.future ? ' is-future' : ''}${c.key === today ? ' is-today' : ''}`}
+                    title={c.key}
+                  />
+                ))}
+              </div>
+            ))}
+          </div>
+          <p className="heatmap-legend">
+            <span className="heatmap-key"><span className="heat-cell l0" /> none</span>
+            <span className="heatmap-key"><span className="heat-cell l2" /> some</span>
+            <span className="heatmap-key"><span className="heat-cell l4" /> goal met</span>
+            <span className="heatmap-key"><span className="heat-cell l0 is-frozen" /> freeze</span>
+            <span className="heatmap-key"><span className="heat-cell l0 is-today" /> today</span>
+          </p>
+          <dl className="progress-totals">
+            <div><dt>Days met</dt><dd>{daysMet}</dd></div>
+            <div><dt>Active time</dt><dd>{fmtMinutes(activeMs)}</dd></div>
+            <div><dt>Answers</dt><dd>{progress.answersTotal.toLocaleString()}</dd></div>
+            <div><dt>Driven</dt><dd>{fmtMinutes(progress.drive.totalMs)}</dd></div>
+          </dl>
+        </section>
 
-      <section className="progress-card" aria-label="Last 12 weeks">
-        <h2 className="progress-h2">Last 12 weeks</h2>
-        <div className="heatmap" role="img" aria-label={`${daysMet} days with the goal met`}>
-          {cols.map((col, i) => (
-            <div className="heatmap-col" key={i}>
-              {col.map((c) => (
-                <span
-                  key={c.key}
-                  className={`heat-cell l${c.level}${c.frozen ? ' is-frozen' : ''}${c.future ? ' is-future' : ''}${c.key === today ? ' is-today' : ''}`}
-                  title={c.key}
-                />
-              ))}
-            </div>
-          ))}
-        </div>
-        <p className="heatmap-legend">
-          <span className="heatmap-key"><span className="heat-cell l0" /> none</span>
-          <span className="heatmap-key"><span className="heat-cell l2" /> some</span>
-          <span className="heatmap-key"><span className="heat-cell l4" /> goal met</span>
-          <span className="heatmap-key"><span className="heat-cell l0 is-frozen" /> freeze</span>
-          <span className="heatmap-key"><span className="heat-cell l0 is-today" /> today</span>
-        </p>
-        <dl className="progress-totals">
-          <div><dt>Days met</dt><dd>{daysMet}</dd></div>
-          <div><dt>Active time</dt><dd>{fmtMinutes(activeMs)}</dd></div>
-          <div><dt>Answers</dt><dd>{progress.answersTotal.toLocaleString()}</dd></div>
-          <div><dt>Driven</dt><dd>{fmtMinutes(progress.drive.totalMs)}</dd></div>
-        </dl>
-      </section>
-
-      <section className="progress-card" aria-label="Achievements">
-        <h2 className="progress-h2">
-          Achievements <span className="progress-h2-count" data-testid="achievements-count">{earnedCount}/{statuses.length}</span>
-        </h2>
-        {GROUPS.map((g) => {
-          const items = statuses.filter((s) => s.def.group === g);
-          return (
-            <div key={g} className="ach-group">
-              <h3 className="ach-group-title">{g}</h3>
-              <ul className="ach-grid">
-                {items.map((s) => {
-                  // Wave T: a mastery ladder is one tile, drawn at its first tier.
-                  if (s.def.ladder) {
-                    const ladder = s.def.ladder;
-                    if (items.find((x) => x.def.ladder?.id === ladder.id) !== s) return null;
-                    return <LadderTile key={ladder.id} ladder={ladder} tiers={items.filter((x) => x.def.ladder?.id === ladder.id)} />;
-                  }
-                  const hidden = s.def.secret && !s.earned;
-                  return (
-                    <li
-                      key={s.def.id}
-                      className={`ach tier-${s.def.tier}${s.earned ? ' is-earned' : ''}`}
-                      data-testid={`ach-${s.def.id}`}
-                      data-earned={s.earned ? '1' : '0'}
-                    >
-                      <span className="ach-medal" aria-hidden="true" />
-                      <span className="ach-body">
-                        <span className="ach-title">{hidden ? 'Secret' : s.def.title}</span>
-                        <span className="ach-how">{hidden ? 'Keep practising to find this one.' : s.def.how}</span>
-                        {s.earned ? (
-                          <span className="ach-date">Earned{s.earnedAt !== undefined && s.earnedAt !== '' ? ` ${fmtDate(s.earnedAt)}` : s.earnedAt === '' ? ' from history' : ''}</span>
-                        ) : hidden ? null : (
-                          <span className="ach-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(s.fraction * 100)}>
-                            <span className="ach-bar-fill" style={{ width: `${Math.round(s.fraction * 100)}%` }} />
-                          </span>
-                        )}
-                        {!s.earned && !hidden && (
-                          <span className="ach-note">
-                            {s.note ?? `${Math.floor(s.value).toLocaleString()} / ${s.target.toLocaleString()}`}
-                          </span>
-                        )}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          );
-        })}
-      </section>
+        <section className="progress-card" aria-label="Achievements">
+          <h2 className="progress-h2">
+            Achievements <span className="progress-h2-count" data-testid="achievements-count">{earnedCount}/{statuses.length}</span>
+          </h2>
+          {GROUPS.map((g) => {
+            const items = statuses.filter((s) => s.def.group === g);
+            return (
+              <div key={g} className="ach-group">
+                <h3 className="ach-group-title">{g}</h3>
+                <ul className="ach-grid">
+                  {items.map((s) => {
+                    // Wave T: a mastery ladder is one tile, drawn at its first tier.
+                    if (s.def.ladder) {
+                      const ladder = s.def.ladder;
+                      if (items.find((x) => x.def.ladder?.id === ladder.id) !== s) return null;
+                      return <LadderTile key={ladder.id} ladder={ladder} tiers={items.filter((x) => x.def.ladder?.id === ladder.id)} />;
+                    }
+                    const hidden = s.def.secret && !s.earned;
+                    return (
+                      <li
+                        key={s.def.id}
+                        className={`ach tier-${s.def.tier}${s.earned ? ' is-earned' : ''}`}
+                        data-testid={`ach-${s.def.id}`}
+                        data-earned={s.earned ? '1' : '0'}
+                      >
+                        <span className="ach-medal" aria-hidden="true" />
+                        <span className="ach-body">
+                          <span className="ach-title">{hidden ? 'Secret' : s.def.title}</span>
+                          <span className="ach-how">{hidden ? 'Keep practising to find this one.' : s.def.how}</span>
+                          {s.earned ? (
+                            <span className="ach-date">Earned{s.earnedAt !== undefined && s.earnedAt !== '' ? ` ${fmtDate(s.earnedAt)}` : s.earnedAt === '' ? ' from history' : ''}</span>
+                          ) : hidden ? null : (
+                            <span className="ach-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(s.fraction * 100)}>
+                              <span className="ach-bar-fill" style={{ width: `${Math.round(s.fraction * 100)}%` }} />
+                            </span>
+                          )}
+                          {!s.earned && !hidden && (
+                            <span className="ach-note">
+                              {s.note ?? `${Math.floor(s.value).toLocaleString()} / ${s.target.toLocaleString()}`}
+                            </span>
+                          )}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            );
+          })}
+        </section>
+      </div>
     </div>
   );
 }

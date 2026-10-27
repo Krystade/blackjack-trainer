@@ -427,7 +427,7 @@ test('flashcards: a graded answer surfaces a median decision time on the Stats s
   };
 
   await goHomeAndNavigate(page, '/?e2e=1', 'Stats');
-  await expect(page.locator('.stats-heading')).toHaveText('Stats');
+  await expect(page.getByTestId('you-seg-stats')).toHaveAttribute('aria-selected', 'true');
 
   const row = page.locator('.category-row', { hasText: CATEGORY_LABELS[category] });
   await expect(row.locator('.category-latency')).not.toHaveText('—');

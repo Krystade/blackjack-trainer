@@ -14,7 +14,7 @@ const DAY = 24 * 60 * 60 * 1000;
 async function openStats(page: Page) {
   await page.goto('/?e2e=1');
   await page.locator('.home-stats-link').click();
-  await expect(page.locator('.stats-heading')).toHaveText('Stats');
+  await expect(page.getByTestId('you-seg-stats')).toHaveAttribute('aria-selected', 'true');
 }
 
 const profileRow = (page: Page, label: string) => page.locator('.mistake-row', { hasText: label });
@@ -51,7 +51,7 @@ test('B2 #35: a Hot shoe session shows no bankroll result in Table sessions', as
     ],
   });
   await openStats(page);
-  await statsTab(page, 'Progress');
+  await statsTab(page, 'Over time');
   const rows = page.locator('.session-row');
   await expect(rows).toHaveCount(2);
   const hot = rows.filter({ hasText: 'Hot shoe' });
@@ -91,7 +91,7 @@ test('C-R9: a provisional (not ended) session says so in Table sessions', async 
     ],
   });
   await openStats(page);
-  await statsTab(page, 'Progress');
+  await statsTab(page, 'Over time');
   const rows = page.locator('.session-row');
   await expect(rows).toHaveCount(2);
   await expect(rows.filter({ hasText: '12 rounds' })).toContainText(' · not ended');

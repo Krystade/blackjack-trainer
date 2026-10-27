@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withProfile, withStats, statsTab } from './helpers';
+import { withProfile, withStats, statsTab, openStats } from './helpers';
 
 /**
  * H9 (wave H, story 14): Stats > Drills > Deviation quiz said "No deviation
@@ -16,7 +16,7 @@ async function openDrillsStats(page: Page, stats: Record<string, unknown>) {
   await withProfile(page);
   await withStats(page, stats);
   await page.goto('/?e2e=1');
-  await page.locator('.tab-bar').getByRole('button', { name: 'Stats', exact: true }).click();
+  await openStats(page);
   await statsTab(page, 'Drills');
   const section = page.locator('details.stats-section[data-tab="drills"]', { has: page.locator('summary', { hasText: 'Deviation quiz' }) });
   await expect(section).toBeVisible();

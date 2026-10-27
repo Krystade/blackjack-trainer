@@ -43,13 +43,13 @@ test('a tab tap with unsaved edits asks first; dismissing keeps the draft', asyn
     asked = d.message();
     void d.dismiss();
   });
-  await page.locator('.tab-bar').getByRole('button', { name: 'Stats' }).click();
+  await page.locator('.tab-bar').getByRole('button', { name: 'You' }).click();
   expect(asked).toMatch(/unsaved/i);
   await expect(page.locator('.settings-heading')).toHaveText('Edit profile');
   await expect(nameInput(page)).toHaveValue('Keep me');
 
   page.once('dialog', (d) => void d.accept());
-  await page.locator('.tab-bar').getByRole('button', { name: 'Stats' }).click();
+  await page.locator('.tab-bar').getByRole('button', { name: 'You' }).click();
   await expect(page.locator('.settings-heading')).toHaveCount(0);
   const names = await page.evaluate(() =>
     (JSON.parse(localStorage.getItem('bjtrainer.profiles.v1') ?? '[]') as { name: string }[]).map(
@@ -66,7 +66,7 @@ test('an untouched form leaves on a tab tap without asking', async ({ page }) =>
     asked = true;
     void d.dismiss();
   });
-  await page.locator('.tab-bar').getByRole('button', { name: 'Stats' }).click();
+  await page.locator('.tab-bar').getByRole('button', { name: 'You' }).click();
   await expect(page.locator('.settings-heading')).toHaveCount(0);
   expect(asked).toBe(false);
 });

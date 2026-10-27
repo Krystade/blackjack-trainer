@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { answerAndReadStrip, withProfile, withSettings, withStats } from './helpers';
+import { answerAndReadStrip, withProfile, withSettings, withStats, openStats } from './helpers';
 
 /**
  * RV3. The engine side is covered exhaustively by
@@ -139,7 +139,7 @@ test('the Mixed session survives a pinned surrender index', async ({ page }) => 
 test('Stats counts the surrender indices it grades and drills', async ({ page }) => {
   await withProfile(page, { surrenderIndices: true });
   await page.goto('/?e2e=1');
-  await page.getByRole('button', { name: 'Stats' }).first().click();
+  await openStats(page);
 
   // Wave B2 #22 (deliberate change): the table lists the indexes the drills
   // ask, so the inactive H17 '11 v A' row is gone: 17 + the six Fab 4 = 23.
@@ -153,7 +153,7 @@ test('E7: a Fab 4 answer at the table gets its row, in the published wording', a
   await withProfile(page, { surrenderIndices: true });
   await withStats(page, { perIndex: { sur15v10: { right: 1, wrong: 0 } }, tablePerIndex: { sur15v10: { right: 1, wrong: 0 } } });
   await page.goto('/?e2e=1');
-  await page.getByRole('button', { name: 'Stats' }).first().click();
+  await openStats(page);
   const table = page.getByTestId('play-index-table');
   await expect(table.locator('tbody tr')).toHaveCount(1);
   await expect(table.locator('tbody tr')).toContainText('surrender at TC');
@@ -165,7 +165,7 @@ test('the index table is 17 rows with the flag off, so the count is not hardcode
 }) => {
   await withProfile(page, { surrenderIndices: false });
   await page.goto('/?e2e=1');
-  await page.getByRole('button', { name: 'Stats' }).first().click();
+  await openStats(page);
   // Wave B2 #22: 17, the H17 set the drills ask (11 v A is inactive under H17).
   // E7 (deliberate change): counted on the "not seen yet" line, not as rows.
   await expect(page.getByTestId('play-index-table').getByTestId('index-unseen')).toHaveText('17 not seen yet');

@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { shot, withSettings, withStats, withProfile, playRoundByAdvice, readStats, statsTab } from './helpers';
+import { shot, withSettings, withStats, withProfile, playRoundByAdvice, readStats, statsTab, openStats } from './helpers';
 
 test('a changed setting persists across reload', async ({ page }) => {
   // Feedback lives in the Play gear sheet since #33.
@@ -34,8 +34,8 @@ test('a short session shows up on the stats screen', async ({ page }) => {
   await expect(page.locator('.home-title')).toBeVisible();
 
   await page.locator('.home-stats-link').click();
-  await expect(page.locator('.stats-heading')).toHaveText('Stats');
-  await statsTab(page, 'Progress');
+  await expect(page.getByTestId('you-seg-stats')).toHaveAttribute('aria-selected', 'true');
+  await statsTab(page, 'Over time');
   await expect(page.locator('.session-row')).not.toHaveCount(0);
   await shot(page, '24-stats-with-session');
 });
@@ -106,7 +106,7 @@ test('importing a valid export blob restores stats (success path)', async ({ pag
   });
 
   await expect(page.locator('.stats-message')).toContainText('Backup imported');
-  await statsTab(page, 'Progress');
+  await statsTab(page, 'Over time');
   await expect(page.locator('.session-row', { hasText: 'Imported Profile' })).toBeVisible();
   await shot(page, '26-stats-import-success');
 
@@ -126,14 +126,14 @@ test('Reset stats clears all persisted stats after confirmation', async ({ page 
   });
   await page.goto('/?e2e=1');
   await page.locator('.home-stats-link').click();
-  await statsTab(page, 'Progress');
+  await statsTab(page, 'Over time');
   await expect(page.locator('.session-row')).not.toHaveCount(0);
 
   page.once('dialog', (dialog) => dialog.accept());
   await page.locator('.stats-danger-btn', { hasText: 'Reset stats' }).click();
 
   await expect(page.locator('.stats-message')).toContainText('Stats reset.');
-  await statsTab(page, 'Progress');
+  await statsTab(page, 'Over time');
   await expect(page.locator('.session-row')).toHaveCount(0);
   await shot(page, '27-stats-reset');
 
@@ -216,9 +216,9 @@ test('stats: Retention section renders retained accuracy from seeded gap reviews
   });
   await page.goto('/?e2e=1');
   await page.locator('.home-stats-link').click();
-  await expect(page.locator('.stats-heading')).toHaveText('Stats');
+  await expect(page.getByTestId('you-seg-stats')).toHaveAttribute('aria-selected', 'true');
 
-  await statsTab(page, 'Progress');
+  await statsTab(page, 'Over time');
 
   const retention = page.locator('.stats-section', { hasText: 'Retention' });
   await expect(retention).toBeVisible();
@@ -248,7 +248,7 @@ function gapRows(
 async function openRetention(page: Page) {
   await page.goto('/?e2e=1');
   await page.locator('.home-stats-link').click();
-  await statsTab(page, 'Progress');
+  await statsTab(page, 'Over time');
   return page.locator('.stats-section', { hasText: 'Retention' });
 }
 
@@ -317,7 +317,7 @@ test('stats: with every review at one gap length it says there is no curve, rath
 test('stats: Retention section shows the empty state before any spaced reviews', async ({ page }) => {
   await page.goto('/?e2e=1');
   await page.locator('.home-stats-link').click();
-  await statsTab(page, 'Progress');
+  await statsTab(page, 'Over time');
   const retention = page.locator('.stats-section', { hasText: 'Retention' });
   await expect(retention).toBeVisible();
   await expect(retention).toContainText('No spaced reviews yet');
@@ -337,7 +337,7 @@ test('stats: Endurance/fatigue shows front vs back-half drift from a declining s
   await page.goto('/?e2e=1');
   await page.locator('.home-stats-link').click();
 
-  await statsTab(page, 'Progress');
+  await statsTab(page, 'Over time');
 
   const section = page.locator('.stats-section', { hasText: 'Fatigue' });
   await expect(section).toBeVisible();
@@ -350,7 +350,7 @@ test('stats: Endurance/fatigue shows front vs back-half drift from a declining s
 test('stats: Endurance/fatigue shows the empty state before enough back-to-back runs', async ({ page }) => {
   await page.goto('/?e2e=1');
   await page.locator('.home-stats-link').click();
-  await statsTab(page, 'Progress');
+  await statsTab(page, 'Over time');
   const section = page.locator('.stats-section', { hasText: 'Fatigue' });
   await expect(section).toBeVisible();
   await expect(section).toContainText('Not enough back-to-back counting runs yet');
@@ -556,7 +556,7 @@ test('the range picker reaches the sections that were reading lifetime totals', 
 }) => {
   await seedDatedStats(page);
   await page.goto('/?e2e=1');
-  await page.getByRole('button', { name: 'Stats' }).first().click();
+  await openStats(page);
 
   // All time: both rows, everywhere.
   await statsTab(page, 'Drills');

@@ -107,7 +107,7 @@ test('an admitted miss is filed apart from wrong plays', async ({ page }) => {
   await expect(page.locator('.feedback-cell')).toBeVisible();
 
   await goHomeAndNavigate(page, '/?e2e=1', 'Stats');
-  await expect(page.locator('.stats-heading')).toHaveText('Stats');
+  await expect(page.getByTestId('you-seg-stats')).toHaveAttribute('aria-selected', 'true');
 
   // D-R2: Play's Mistake types are the table's only; an admitted miss is a
   // drill answer, so its row is on the Drills tab and not on Play.

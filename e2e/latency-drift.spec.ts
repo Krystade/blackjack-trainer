@@ -35,7 +35,7 @@ function session(daysAgo: number, count: number, ms: number, startMin = 0) {
 async function openStats(page: Page, tab: string) {
   await page.goto('/?e2e=1');
   await page.locator('.home-stats-link').click();
-  await expect(page.locator('.stats-heading')).toHaveText('Stats');
+  await expect(page.getByTestId('you-seg-stats')).toHaveAttribute('aria-selected', 'true');
   await statsTab(page, tab);
 }
 
@@ -47,7 +47,7 @@ test('a session that stays accurate but slows down is reported as pace drift', a
     // Six answers in one sitting: 1s each early, 3s each late.
     latencyHistory: [...session(1, 3, 1000, 0), ...session(1, 3, 3000, 3)],
   });
-  await openStats(page, 'Progress');
+  await openStats(page, 'Over time');
 
   const endurance = enduranceSection(page);
   await expect(endurance.locator('.mistake-row', { hasText: 'Early-session pace' })).toContainText(
@@ -67,7 +67,7 @@ test('a session that stays accurate but slows down is reported as pace drift', a
 
 test('holding pace late in a session is not reported as a decrement', async ({ page }) => {
   await withStats(page, { latencyHistory: session(1, 8, 1500) });
-  await openStats(page, 'Progress');
+  await openStats(page, 'Over time');
 
   const drift = enduranceSection(page).locator('.mistake-row', { hasText: 'Pace drift' });
   await expect(drift).toContainText('0.0s');
@@ -86,7 +86,7 @@ test('undated latency rows produce no pace drift at all', async ({ page }) => {
       elapsedMs: i < 6 ? 1000 : 5000,
     })),
   });
-  await openStats(page, 'Progress');
+  await openStats(page, 'Over time');
 
   const endurance = enduranceSection(page);
   await expect(endurance).toContainText('No dated answer times');
@@ -176,7 +176,7 @@ test('speeding up late in a session is reported as a negative drift, not as hold
   await withStats(page, {
     latencyHistory: [...session(1, 3, 4000, 0), ...session(1, 3, 1000, 3)],
   });
-  await openStats(page, 'Progress');
+  await openStats(page, 'Over time');
 
   const drift = enduranceSection(page).locator('.mistake-row', { hasText: 'Pace drift' });
   await expect(drift).toContainText('−3.0s');

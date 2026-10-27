@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings, withProfile, playRoundByAdvice, statsTab } from './helpers';
+import { withSettings, withProfile, playRoundByAdvice, statsTab, openStats } from './helpers';
 
 /**
  * Wave J: spreading to two hands. A ramp row marked ×2 plays two hands of its
@@ -71,7 +71,7 @@ test('one hand at a two-hand count is a hand-count miss: the strip, the spoken l
   await page.locator('.end-btn').click();
   await expect(page.locator('.report-bets li')).toHaveText(['TC +0 · you bet one hand of 2u · your ramp bets two hands of 2u']);
   await page.getByRole('button', { name: 'Back to Home', exact: true }).click();
-  await page.getByRole('button', { name: 'Stats', exact: true }).click();
+  await openStats(page);
   await statsTab(page, 'Play');
   await expect(page.getByTestId('bsl-table-bet')).toContainText('0/1');
   await expect(page.getByTestId('bsl-table-bet-hands')).toHaveText(/one hand or two\s*1/);

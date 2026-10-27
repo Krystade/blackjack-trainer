@@ -118,7 +118,9 @@ const SCREENS: { name: string; open: (page: Page) => Promise<void> }[] = [
   { name: 'Home', open: async () => {} },
   { name: 'Stats Play', open: async (p) => { await p.locator('.home-stats-link').click(); } },
   { name: 'Stats Drills', open: async (p) => { await p.locator('.home-stats-link').click(); await statsTab(p, 'Drills'); } },
-  { name: 'Stats Progress', open: async (p) => { await p.locator('.home-stats-link').click(); await statsTab(p, 'Progress'); } },
+  { name: 'Stats Over time', open: async (p) => { await p.locator('.home-stats-link').click(); await statsTab(p, 'Over time'); } },
+  // Wave W: the You tab's other half, which has the same sticky bar now.
+  { name: 'You Progress', open: async (p) => { await tab(p, 'You'); await expect(p.getByTestId('progress-screen')).toBeVisible(); } },
   { name: 'Settings', open: (p) => openSettingsScreen(p) },
   { name: 'Profiles', open: async (p) => { await p.locator('.home-profile-chip').click(); } },
   { name: 'Profile editor', open: async (p) => { await p.locator('.home-profile-chip').click(); await p.getByRole('button', { name: 'Edit', exact: true }).first().click(); } },
@@ -246,7 +248,7 @@ test('B1/s09: the Charts bar is one line from every origin; Back only where it g
 test('B1: Stats is a tab screen with no Back to Home', async ({ page }) => {
   await page.goto('/?e2e=1');
   await page.locator('.home-stats-link').click();
-  await expect(page.locator('.stats-heading')).toHaveText('Stats');
+  await expect(page.getByTestId('you-seg-stats')).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('button', { name: 'Back to Home' })).toHaveCount(0);
 });
 
