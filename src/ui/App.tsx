@@ -30,6 +30,7 @@ import { installAudioUnlock } from '../audio/unlock';
 import { setChimeLevels } from '../audio/speech';
 import { effectiveVolume } from '../audio/volume';
 import { installAudioContextKeepAlive } from '../audio/audioContext';
+import { setRoutePreferences } from '../audio/audioRoute';
 import { useActivityLive } from './activityLive';
 import { mayLeave } from './leaveGuard';
 import { lazyScreen, preloadWhenIdle } from './lazyScreen';
@@ -157,6 +158,7 @@ function App() {
     // a child's mount effect on a muted cold load would otherwise read the
     // module default (volume 1). Idempotent: it only stores two numbers.
     setChimeLevels(effectiveVolume(loaded.audio), loaded.audio.chimeVolume);
+    setRoutePreferences(loaded.audio.audioRoute, loaded.audio.routeStrategy);
     return loaded;
   });
   const [activeProfile, setActiveProfileState] = useState<Profile>(() => getActiveProfile());
@@ -255,6 +257,7 @@ function App() {
   // mute and Chime volume reach every chime path, not just useAudio's.
   useEffect(() => {
     setChimeLevels(effectiveVolume(settings.audio), settings.audio.chimeVolume);
+    setRoutePreferences(settings.audio.audioRoute, settings.audio.routeStrategy);
   }, [settings.audio]);
   useEffect(() => installAudioContextKeepAlive(), []);
 

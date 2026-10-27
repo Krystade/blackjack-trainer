@@ -34,6 +34,7 @@ import { elementVolume } from './volume';
 import { getLiveAudioContext, liveAudioContextNow, markAudioClockSuspect, onAudioContextReplaced } from './audioContext';
 import { cachedToneDataUri, earconSamples, singleNote, TONE_SAMPLE_RATE, type ToneSpec } from './tone';
 import { isVoiceCaptureActive, micSessionCostPaid } from './micSessionCost';
+import { applyRouteSink, routeSinkId } from './audioRoute';
 import { diag } from '../diag/diagnosticLog';
 import { notifySpeechEnded } from './speechActivity';
 
@@ -1117,7 +1118,10 @@ export function playClipsResumable(
       // toggled off at 01:36:04, and the next two prompts played on the
       // element and came out of the earpiece. Web Audio after the mic closed
       // was on the loud speaker in the first desk run.
-      if (isVoiceCaptureActive() || micSessionCostPaid()) {
+      // Wave U: the 'speaker-sink' route strategy keeps the element and points
+      // it at a listed loud-speaker output instead (audio/audioRoute.ts).
+      const sinkWanted = routeSinkId() !== null;
+      if ((isVoiceCaptureActive() || micSessionCostPaid()) && !sinkWanted) {
         const viaWebAudio = await playChainThroughWebAudio(
           fileList.map((f) => `${base}clips/${voiceId}/${f.file}`),
           {
@@ -1282,7 +1286,8 @@ export function playClipsResumable(
           }
         };
 
-        playNext();
+        if (sinkWanted) void applyRouteSink(audio).then(() => playNext());
+        else playNext();
       });
     } catch (e) {
       // The outer catch: a manifest fetch that rejected, a bad JSON body, a

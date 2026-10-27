@@ -18,6 +18,7 @@ import { reassertAudioFocus } from '../audio/audioFocus';
 import { markMicSessionOpened, setVoiceCaptureActive } from '../audio/micSessionCost';
 import { markInputDeviceChanged } from '../diag/deviceChurn';
 import { audioSessionSupported, readAudioSessionType } from '../audio/audioSession';
+import { beginCaptureRoute, endCaptureRoute, logRouteSnapshot } from '../audio/audioRoute';
 import { logAudioInputs, logHardwareRate, logMicPermission } from '../diag/environment';
 import {
   micHasWorked,
@@ -529,7 +530,12 @@ export function useVoiceControl({
       if (text !== undefined) readyGenRef.current += 1;
     });
     setVoiceCaptureActive(true);
+    // Wave U: the audio-route plan (declare the session type, hold an input)
+    // goes in BEFORE the recogniser starts, synchronously, so the start stays
+    // inside whatever gesture began it. Auto changes nothing that shipped.
+    beginCaptureRoute('voice-on');
     controller.start();
+    void logRouteSnapshot('voice-on');
 
     // Everything below is a nudge from outside the controller, for the events
     // it cannot see: the page coming back, the network returning, the car's
@@ -611,6 +617,7 @@ export function useVoiceControl({
       if (readyTimer !== null) clearTimeout(readyTimer);
       controller.stop();
       setVoiceCaptureActive(false);
+      endCaptureRoute('voice-off');
       controllerRef.current = null;
       void releaseWakeLock('voice');
       diag('mic', 'listen-off', { context: contextRef.current });

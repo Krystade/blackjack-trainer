@@ -273,6 +273,18 @@ export interface AudioSettings {
    * load; absent means DEFAULT_CHIME_LEVEL (audio/volume.ts, measured).
    */
   chimeVolume?: number;
+  /**
+   * Wave U: where sound and the mic go while voice answers are on -- 'auto'
+   * (absent), 'phone' (loud speaker + phone mic, even with Bluetooth
+   * connected) or 'bluetooth' (the car's or a headset's speaker + mic).
+   * Strings, not the audio module's union: the store must not import it.
+   */
+  audioRoute?: 'auto' | 'phone' | 'bluetooth';
+  /**
+   * Wave U: how sound is played while the mic is open -- 'auto' (absent),
+   * 'web-audio', 'play-and-record' or 'speaker-sink'. See audio/audioRoute.ts.
+   */
+  routeStrategy?: 'auto' | 'web-audio' | 'play-and-record' | 'speaker-sink';
   voiceURI: string; // 'default' or a SpeechSynthesisVoice.voiceURI
   answerPauseMs: number; // 0..5000, the eyes-free self-check pause
   // Eyes-free ZonePad presentation: false (default) shows the five labeled
