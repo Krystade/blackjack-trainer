@@ -489,6 +489,9 @@ const EXTRA_KEYS: { key: string; field: string }[] = [
   // Wave W: the Custom deck's saved lists (drills/customLists.ts) -- painted
   // by hand, so as unrecoverable as a profile.
   { key: 'bjtrainer.customLists.v1', field: 'customLists' },
+  // Wave L (lane v): finished guided sessions (what improved, two achievements)
+  // and today's unfinished one (guided/store.ts).
+  { key: 'bjtrainer.guided.v1', field: 'guided' },
 ];
 
 /**

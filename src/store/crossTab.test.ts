@@ -201,6 +201,9 @@ describe('OWNED_KEYS', () => {
     // Wave W: which half of the You tab (Progress | Stats) opens next, read
     // on the tap. Another tab's choice would only change where the next tap lands.
     'bjtrainer.youView.v1': 'per-device view preference, read on the tab tap',
+    // Wave L (lane v): read-modify-written from storage at every segment and
+    // on finishing (never cached whole), and one guided session runs in one tab.
+    'bjtrainer.guided.v1': 'read fresh at each write; a guided session belongs to the tab running it',
   };
 
   /**

@@ -24,10 +24,17 @@ const TODAY = '2026-10-21';
 const NOW = Date.parse(`${TODAY}T12:00:00.000Z`);
 const DAY = 86_400_000;
 
-function ctx(opts: { stats?: Partial<Stats>; progress?: Partial<ProgressState>; casino?: number; nowMs?: number } = {}): AchievementContext {
+function ctx(opts: { stats?: Partial<Stats>; progress?: Partial<ProgressState>; casino?: number; nowMs?: number; guided?: number } = {}): AchievementContext {
   const progress: ProgressState = { ...emptyProgress(), ...opts.progress };
   const stats = { ...structuredClone(EMPTY_STATS), ...opts.stats } as Stats;
-  return { stats, progress, streak: computeStreak(progress.days, TODAY), casinoSessions: opts.casino ?? 0, nowMs: opts.nowMs ?? NOW };
+  return {
+    stats,
+    progress,
+    streak: computeStreak(progress.days, TODAY),
+    casinoSessions: opts.casino ?? 0,
+    nowMs: opts.nowMs ?? NOW,
+    ...(opts.guided !== undefined ? { guidedSessions: opts.guided } : {}),
+  };
 }
 
 const metRun = (n: number, last = TODAY): Record<string, DayRecord> =>
@@ -166,6 +173,9 @@ const CASES: Record<string, [AchievementContext, AchievementContext]> = {
     ctx({ stats: { categories: { ...EMPTY_STATS.categories, wong: { right: 24, wrong: 9 } } } }),
     ctx({ stats: { categories: { ...EMPTY_STATS.categories, wong: { right: 25, wrong: 0 } } } }),
   ],
+  // Wave L (lane v): guided sessions run to the end; absent reads as none.
+  'guided-1': [ctx(), ctx({ guided: 1 })],
+  'guided-7': [ctx({ guided: 6 }), ctx({ guided: 7 })],
   'casino-1': [ctx({ casino: 0 }), ctx({ casino: 1 })],
   'casino-10': [ctx({ casino: 9 }), ctx({ casino: 10 })],
 };
@@ -178,7 +188,7 @@ afterEach(() => {
 
 describe('achievements', () => {
   it('there are about fifty, with unique ids, and every one has a case below', () => {
-    expect(ACHIEVEMENTS.length).toBe(51);
+    expect(ACHIEVEMENTS.length).toBe(53);
     expect(new Set(ACHIEVEMENTS.map((a) => a.id)).size).toBe(ACHIEVEMENTS.length);
     // `<id>-timed` is a second case for the same achievement.
     expect([...new Set(Object.keys(CASES).map((k) => k.replace(/-timed$/, '')))].sort()).toEqual(ACHIEVEMENTS.map((a) => a.id).sort());

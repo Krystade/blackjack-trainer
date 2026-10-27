@@ -20,6 +20,7 @@ import {
 } from './progress';
 import { backfillDate, newlyEarned, type AchievementContext } from './achievements';
 import { momentLine, queueMoment } from './moment';
+import { guidedCompletedCount } from '../guided/store';
 
 /**
  * Wave N: the habit tracker's persistence, under its own key. Fed by every
@@ -105,8 +106,44 @@ function casinoSessions(): number {
   }
 }
 
+function guidedSessions(): number {
+  try {
+    return guidedCompletedCount();
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Wave L (lane v): others told of every stats save, after the habit record has
+ * taken it -- the guided session counts its segments' answers from these, so
+ * no drill has to report to it. `replaced` as for the observer below.
+ */
+export type StatsSaveListener = (written: Stats, replaced: boolean, untrimmed: Stats) => void;
+const saveListeners = new Set<StatsSaveListener>();
+export function onStatsSaved(fn: StatsSaveListener): () => void {
+  saveListeners.add(fn);
+  return () => saveListeners.delete(fn);
+}
+function tellSaveListeners(written: Stats, replaced: boolean, untrimmed: Stats): void {
+  for (const fn of [...saveListeners]) {
+    try {
+      fn(written, replaced, untrimmed);
+    } catch {
+      /* a listener must not break saving */
+    }
+  }
+}
+
 export function contextFor(stats: Stats, progress: ProgressState, nowMs = clock()): AchievementContext {
-  return { stats, progress, streak: computeStreak(progress.days, localDayKey(new Date(nowMs))), casinoSessions: casinoSessions(), nowMs };
+  return {
+    stats,
+    progress,
+    streak: computeStreak(progress.days, localDayKey(new Date(nowMs))),
+    casinoSessions: casinoSessions(),
+    nowMs,
+    guidedSessions: guidedSessions(),
+  };
 }
 
 /**
@@ -154,6 +191,7 @@ export function noteStatsSaved(written: Stats, replaced: boolean, untrimmed: Sta
   const sig = statsSignature(written);
   if (replaced) {
     saveProgress({ ...prev, sig });
+    tellSaveListeners(written, true, untrimmed);
     return;
   }
   const delta = signatureDelta(prev.sig, statsSignature(untrimmed), untrimmed);
@@ -186,6 +224,7 @@ export function noteStatsSaved(written: Stats, replaced: boolean, untrimmed: Sta
     diag('nav', 'habits-unlock', { ids: ids.join(',') });
     emit({ kind: 'unlock', ids });
   }
+  tellSaveListeners(written, false, untrimmed);
 }
 
 /** Backfill inside a save must not emit a second summary later; it emits once here too. */
@@ -235,6 +274,7 @@ export function _resetHabitsForTest(): void {
   installed = false;
   isDrive = () => false;
   listeners.clear();
+  saveListeners.clear();
   undelivered = [];
   setStatsSaveObserver(null);
 }

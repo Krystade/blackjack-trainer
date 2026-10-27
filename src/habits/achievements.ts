@@ -27,6 +27,11 @@ export interface AchievementContext {
    * always earns the same achievements, backfill included.
    */
   nowMs: number;
+  /**
+   * Wave L (lane v): guided sessions run to the end of their plan
+   * (guided/store.ts). OPTIONAL: absent reads as none.
+   */
+  guidedSessions?: number;
 }
 
 export interface Measure {
@@ -336,6 +341,11 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
     group: 'Drills',
     measure: (c) => m(Math.min(1, c.stats.masterySweepsCompleted ?? 0), 1),
   },
+  // Wave L (lane v): the guided session (guided/session.ts countsAsCompleted).
+  ...tiered({ group: 'Drills' }, 'guided', [
+    ['bronze', 1, 'Guided start', 'Finish a guided session.'],
+    ['silver', 7, 'Routine', 'Finish 7 guided sessions.'],
+  ], (c) => c.guidedSessions ?? 0),
   ...mastery(
     'Drills',
     {
