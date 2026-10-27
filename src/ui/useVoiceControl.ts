@@ -11,6 +11,7 @@ import { chime, isAppSpeaking, setSpeechActivityListener } from '../audio/speech
 import { recordHeard } from '../audio/voiceHistory';
 import { looksLikeAnAttempt, type VoiceAction } from '../audio/voiceRecognition';
 import { looksLikeSelfEcho } from '../audio/selfEcho';
+import { claimGuidedTranscript } from '../guided/voiceCommands';
 import { createMisheardLadder } from '../audio/misheardLadder';
 import { requestWakeLock, releaseWakeLock } from '../audio/wakeLock';
 import { diag } from '../diag/diagnosticLog';
@@ -284,7 +285,10 @@ export function useVoiceControl({
         endPushToTalk('heard');
         actionRef.current(action);
       },
-      onTranscript: (heard, offered) => transcriptRef.current?.(heard, offered) ?? null,
+      // Wave L (lane v): a guided session's "skip segment" / "pause" first --
+      // a no-op unless a guided session is running (guided/voiceCommands.ts).
+      onTranscript: (heard, offered) =>
+        claimGuidedTranscript(heard, offered, saidRef.current) ?? transcriptRef.current?.(heard, offered) ?? null,
       biasPhrases,
       log: (event, detail) => diag('mic', event, { ...detail, context: contextRef.current }),
       /*
