@@ -9,6 +9,7 @@ import { diag } from './diagnosticLog';
 import { matchRouteAlternatives, ROUTE_LINES, type RouteAnswer, type TrialMic, type TrialPath } from './routeKit';
 import { playThrough, routeClipUrl, sayRecorded, unlockWebAudio, waitForRouteQuiet, type HeldMic } from './testKitIO';
 import {
+  activeRoutePlan,
   applyRouteSink,
   beginCaptureRoute,
   captureRouteSettled,
@@ -96,6 +97,10 @@ export async function runRouteTrial(o: TrialOptions): Promise<{ played: string; 
       path: o.path,
       strategy: o.plan.strategy,
       hold: o.plan.hold,
+      // What the audio layer actually has in force as the line plays, not
+      // what the step asked for (review T1/M3): 'none' once the plan ended.
+      applied: activeRoutePlan()?.strategy ?? 'none',
+      appliedHold: activeRoutePlan()?.hold ?? 'none',
       mic: o.mic,
       session: readAudioSessionType() ?? 'unsupported',
       audioContext: ctxState,

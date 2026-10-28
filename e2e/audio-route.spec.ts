@@ -311,6 +311,33 @@ test('Stop during a Route kit trial closes the mic, and the abandoned step neith
   expect(all.slice(stoppedAt).filter((e) => e.event === 'kit-answer' || e.event === 'kit-route-play')).toEqual([]);
 });
 
+test('A step answered before its line plays takes its trial with it (review M3)', async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.setViewportSize(PHONE);
+  await withFakePhone(page, CAR);
+  await page.goto('/?e2e=1');
+  await page.getByTestId('testkit-open').click();
+  await page.getByRole('button', { name: /Route: car Bluetooth/ }).click();
+  const kit = page.getByTestId('testkit-screen');
+  await kit.getByRole('button', { name: 'Start', exact: true }).click();
+  await expect(page.getByTestId('routekit-snapshot')).toBeVisible();
+  await kit.getByRole('button', { name: 'Next', exact: true }).click();
+  // "Heard nothing" tapped the moment each of the first two steps shows,
+  // inside the trial's settle wait, before its line has played.
+  for (const id of ['auto-webaudio', 'pr-webaudio']) {
+    await expect(page.locator(`[data-step="${id}"]`)).toBeVisible();
+    await kit.getByRole('button', { name: 'Heard nothing' }).click();
+  }
+  // The third step runs to its question; answered by voice as normal.
+  await expect(page.locator('[data-step="hold-bt"]')).toBeVisible();
+  await answerByVoice(page, 'car', () => page.locator('[data-step="hold-phone"]').isVisible());
+  const plays = (await events(page))
+    .filter((e) => e.event === 'kit-route-play' && e.detail?.step !== 'hold-phone')
+    .map((e) => `${e.detail?.step}:${e.detail?.session}:${e.detail?.applied}:${e.detail?.appliedHold}`);
+  // No line from an answered step played later, under the next step's plan.
+  expect(plays).toEqual(['hold-bt:auto:web-audio:bluetooth']);
+});
+
 test('The car Route kit runs every step by voice and logs one summary line', async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize(PHONE);
@@ -348,14 +375,18 @@ test('The car Route kit runs every step by voice and logs one summary line', asy
         'auto-webaudio=Car speakers pr-webaudio=Car speakers hold-bt=Earpiece hold-phone=Earpiece quiet-close=Earpiece',
     });
   const all = await events(page);
-  // Every trial says which plan it ran under.
-  const plays = all.filter((e) => e.event === 'kit-route-play').map((e) => `${e.detail?.step}:${e.detail?.strategy}:${e.detail?.hold}`);
+  // Every trial played under the plan the AUDIO LAYER had in force (session
+  // type from the faked navigator.audioSession, plan from activeRoutePlan),
+  // not the step's own data. Quiet-close plays with the plan ended.
+  const plays = all
+    .filter((e) => e.event === 'kit-route-play')
+    .map((e) => `${e.detail?.step}:${e.detail?.session}:${e.detail?.applied}:${e.detail?.appliedHold}`);
   expect(plays).toEqual([
-    'auto-webaudio:web-audio:none',
-    'pr-webaudio:play-and-record:none',
-    'hold-bt:web-audio:bluetooth',
-    'hold-phone:web-audio:phone',
-    'quiet-close:web-audio:none',
+    'auto-webaudio:auto:web-audio:none',
+    'pr-webaudio:play-and-record:play-and-record:none',
+    'hold-bt:auto:web-audio:bluetooth',
+    'hold-phone:auto:web-audio:phone',
+    'quiet-close:auto:none:none',
   ]);
   const asked = await page.evaluate(() => (window as unknown as { __asked: string[] }).__asked);
   expect(asked).toContain('mic-car');
