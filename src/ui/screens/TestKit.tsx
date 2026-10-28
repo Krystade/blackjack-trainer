@@ -170,12 +170,14 @@ export function TestKit({ onNavigate }: { onNavigate: (s: Screen) => void }) {
     if (!kit) return;
     const next = index + 1;
     if (next >= steps.length) {
-      void releaseAll();
-      clearProgress();
+      // The plan ends under its own name BEFORE releaseAll, which would
+      // otherwise end it first as 'testkit-release' (review L9).
       if (isRouteKitId(kit)) {
         endCaptureRoute('route-kit-done');
         diag('test', 'kit-route-summary', { kit, ...routeKitSummary(kit, routeResults.current) });
       }
+      void releaseAll();
+      clearProgress();
       diag('test', 'kit-finished', { kit });
       setDone(true);
       return;

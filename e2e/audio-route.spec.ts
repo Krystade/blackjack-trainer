@@ -410,6 +410,8 @@ test('The car Route kit runs every step by voice and logs one summary line', asy
         'auto-webaudio=Car speakers pr-webaudio=Car speakers hold-bt=Earpiece hold-phone=Earpiece quiet-close=Earpiece',
     });
   const all = await events(page);
+  // The kit's last plan ends under the kit's own name (review L9).
+  expect(all.filter((e) => e.event === 'route-plan-end').at(-1)?.detail).toMatchObject({ reason: 'route-kit-done' });
   // Every trial played under the plan the AUDIO LAYER had in force (session
   // type from the faked navigator.audioSession, plan from activeRoutePlan),
   // not the step's own data. Quiet-close plays with the plan ended.
