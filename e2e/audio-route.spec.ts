@@ -59,7 +59,25 @@ async function withFakePhone(page: Page, devices: Array<{ kind: string; label: s
       const id = typeof c.audio === 'object' ? (c.audio.deviceId?.exact ?? 'default') : 'default';
       asked.push(id);
       const label = list.find((d) => d.deviceId === id)?.label ?? 'iPhone Microphone';
-      const track = { kind: 'audio', label, stop() {}, getSettings: () => ({ deviceId: id, sampleRate: 8000 }) };
+      const stops = ((w as { __stops?: string[] }).__stops ??= []);
+      const live = ((w as { __live?: Record<string, number> }).__live ??= {});
+      live[id] = (live[id] ?? 0) + 1;
+      let ended = false;
+      const track = {
+        kind: 'audio',
+        label,
+        readyState: 'live',
+        muted: false,
+        addEventListener() {},
+        stop() {
+          if (ended) return;
+          ended = true;
+          track.readyState = 'ended';
+          stops.push(id);
+          live[id] -= 1;
+        },
+        getSettings: () => ({ deviceId: id, sampleRate: 8000 }),
+      };
       return { getTracks: () => [track], getAudioTracks: () => [track] };
     };
   }, devices);
@@ -162,6 +180,23 @@ test('Test this route plays with the mic on and takes the answer by voice', asyn
   await expect
     .poll(async () => (await events(page)).find((e) => e.event === 'route-test')?.detail, { timeout: 5_000 })
     .toMatchObject({ answer: 'Car speakers', via: 'voice', expected: 'Car speakers', ok: true, hold: 'bluetooth' });
+});
+
+test('Test this route ends its plan: the held mic is stopped and the declaration undone (review H1)', async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.setViewportSize(PHONE);
+  await withFakePhone(page, CAR);
+  await withSettings(page, { audio: { audioRoute: 'bluetooth', routeStrategy: 'play-and-record' } });
+  await page.goto('/?e2e=1');
+  await openInTheCar(page);
+  await page.getByTestId('audio-route-test').click();
+  await expect(page.getByTestId('audio-route-ask')).toBeVisible({ timeout: 15_000 });
+  await page.getByTestId('audio-route-ask').getByRole('button', { name: 'Car speakers' }).click();
+  await expect(page.getByTestId('audio-route-result')).toBeVisible();
+  const live = () => page.evaluate(() => (window as unknown as { __live?: Record<string, number> }).__live?.['mic-car'] ?? 0);
+  await expect.poll(live).toBe(0);
+  expect(await page.evaluate(() => (window as unknown as { __stops: string[] }).__stops)).toContain('mic-car');
+  expect(await page.evaluate(() => (window as unknown as { __session: { type: string } }).__session.type)).toBe('auto');
 });
 
 test('A tapped answer that misses the route says what was expected', async ({ page }) => {

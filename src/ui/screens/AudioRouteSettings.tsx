@@ -3,6 +3,7 @@ import './audioRoute.css';
 import type { AudioSettings } from '../../store/types';
 import {
   detectRoute,
+  endCaptureRoute,
   lastDetectedRoute,
   planRoute,
   type DetectedRoute,
@@ -70,6 +71,8 @@ export function AudioRouteSettings({
       cancelListen.current?.();
       void mic.current?.close();
       mic.current = null;
+      // The test's plan (a held mic, a declared type) goes with the screen.
+      endCaptureRoute('settings-leave');
     };
   }, []);
 
@@ -106,6 +109,8 @@ export function AudioRouteSettings({
     });
     setTest({ phase: 'done', answer, via, heard, expected });
     void ensureMic('closed');
+    // Review H1: the test's plan ends with the test.
+    endCaptureRoute('settings-test');
   };
 
   const runTest = async () => {

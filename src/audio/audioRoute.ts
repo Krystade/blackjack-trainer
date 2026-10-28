@@ -282,6 +282,14 @@ export async function logRouteSnapshot(reason: string): Promise<DetectedRoute> {
  */
 export function beginCaptureRoute(reason: string, planOverride?: RoutePlan): RoutePlan {
   const plan = planOverride ?? planRoute(prefs.pref, prefs.strategy, lastRoute);
+  // NO BEGIN INHERITS AN EARLIER PLAN, whoever forgot to end it: a mic held
+  // for a Settings test must not still be open in the next drill, and an
+  // Auto drill must not run under an earlier declaration (review H1).
+  stopHeld();
+  if (declared && plan.strategy !== 'play-and-record') {
+    declared = false;
+    requestAudioSessionType('auto');
+  }
   activePlan = plan;
   const gen = ++captureGen;
   if (plan.strategy === 'play-and-record') {

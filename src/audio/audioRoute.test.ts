@@ -211,6 +211,21 @@ describe('the runtime', () => {
     expect(readDiagnosticLog().some((e) => e.event === 'route-hold' && e.detail?.state === 'held')).toBe(false);
   });
 
+  it('a new begin releases the previous hold and drops its declaration (review H1)', async () => {
+    install([CAR, PHONE]);
+    await detectRoute();
+    // A Settings test that never ended its plan...
+    beginCaptureRoute('settings-test', { strategy: 'play-and-record', hold: 'bluetooth', evidence: 'drive-decides', why: 't' });
+    await captureRouteSettled();
+    expect(session.type).toBe('play-and-record');
+    expect(stopped).toEqual([]);
+    // ...must not leak into the next (Auto) drill.
+    const plan = beginCaptureRoute('voice-on');
+    expect(plan.strategy).toBe('web-audio');
+    expect(stopped).toEqual(['mic-car']);
+    expect(session.type).toBe('auto');
+  });
+
   it('the sink id is offered only while a speaker-sink plan is in force', async () => {
     install([PHONE, SPEAKER_OUT]);
     (globalThis as { HTMLMediaElement?: unknown }).HTMLMediaElement = class {
