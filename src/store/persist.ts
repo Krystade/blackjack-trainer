@@ -1,4 +1,4 @@
-import { DEFAULT_SETTINGS, EMPTY_STATS, type Settings, type Stats } from './types';
+import { DEFAULT_SETTINGS, EMPTY_STATS, type AudioSettings, type Settings, type Stats } from './types';
 import { capHistories } from './retention';
 import { diag } from '../diag/diagnosticLog';
 import { diffSettings, formatChanges } from '../diag/settingsDiff';
@@ -98,6 +98,24 @@ const RETIRED_AUDIO_KEYS = [
 ] as const;
 const RETIRED_TOP_KEYS = ['countPeek'] as const;
 
+/**
+ * The audio-route settings' allowed values (Wave U). Anything else -- a value
+ * from a later build after a rollback, or a hand edit -- is dropped on load,
+ * so it reads as Auto rather than reaching the route planner, which would
+ * otherwise treat an unknown route as a Bluetooth hold.
+ */
+const AUDIO_ROUTES: ReadonlyArray<NonNullable<AudioSettings['audioRoute']>> = ['auto', 'phone', 'bluetooth'];
+const ROUTE_STRATEGIES: ReadonlyArray<NonNullable<AudioSettings['routeStrategy']>> = [
+  'auto',
+  'web-audio',
+  'play-and-record',
+  'speaker-sink',
+];
+
+function dropUnlisted(obj: Record<string, unknown>, key: string, allowed: ReadonlyArray<string>): void {
+  if (key in obj && !allowed.includes(obj[key] as string)) delete obj[key];
+}
+
 function mergeSettings(parsed: Record<string, unknown>): Settings {
   const base = structuredClone(DEFAULT_SETTINGS);
   const p = { ...parsed } as Partial<Settings> & Record<string, unknown>;
@@ -112,6 +130,8 @@ function mergeSettings(parsed: Record<string, unknown>): Settings {
       : base.audio;
   for (const k of RETIRED_DRILL_KEYS) delete (drill as unknown as Record<string, unknown>)[k];
   for (const k of RETIRED_AUDIO_KEYS) delete (audio as unknown as Record<string, unknown>)[k];
+  dropUnlisted(audio as unknown as Record<string, unknown>, 'audioRoute', AUDIO_ROUTES);
+  dropUnlisted(audio as unknown as Record<string, unknown>, 'routeStrategy', ROUTE_STRATEGIES);
   // The recorded voice is no longer a choice (see AudioSettings.useClips).
   // Forced rather than defaulted, because a `false` saved while the shipped
   // default was off would otherwise win over the default forever, with no

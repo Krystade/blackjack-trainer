@@ -48,6 +48,26 @@ describe('settings retired in the cull', () => {
   });
 });
 
+describe('audio route settings (Wave U)', () => {
+  it('keeps every allowed value', () => {
+    for (const audioRoute of ['auto', 'phone', 'bluetooth'] as const) {
+      expect(mergeSettings({ version: 1, audio: { audioRoute } }).audio.audioRoute).toBe(audioRoute);
+    }
+    for (const routeStrategy of ['auto', 'web-audio', 'play-and-record', 'speaker-sink'] as const) {
+      expect(mergeSettings({ version: 1, audio: { routeStrategy } }).audio.routeStrategy).toBe(routeStrategy);
+    }
+  });
+
+  it('drops a value not on the list, so it reads as Auto', () => {
+    const s = mergeSettings({ version: 1, audio: { audioRoute: 'usb', routeStrategy: 'half-duplex', voiceURI: 'Samantha' } });
+    expect(s.audio.audioRoute).toBeUndefined();
+    expect(s.audio.routeStrategy).toBeUndefined();
+    expect('audioRoute' in s.audio).toBe(false);
+    expect(s.audio.voiceURI).toBe('Samantha');
+    expect(mergeSettings({ version: 1, audio: { audioRoute: 7 } }).audio.audioRoute).toBeUndefined();
+  });
+});
+
 /**
  * The two microphone-experiment arms are fixed behaviour now, so a stored
  * control arm must not ride along through every save -- and must not be

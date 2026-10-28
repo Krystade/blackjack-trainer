@@ -237,7 +237,12 @@ export function captureRouteSettled(): Promise<void> {
 
 /** From the settings, whenever they change. */
 export function setRoutePreferences(pref: RoutePref | undefined, strategy: RouteStrategySetting | undefined): void {
-  prefs = { pref: pref ?? 'auto', strategy: strategy ?? 'auto' };
+  // Belt and braces with the load-time check in store/persist.ts: an unknown
+  // route would otherwise become a Bluetooth hold (review L4).
+  prefs = {
+    pref: pref === 'phone' || pref === 'bluetooth' ? pref : 'auto',
+    strategy: strategy === 'web-audio' || strategy === 'play-and-record' || strategy === 'speaker-sink' ? strategy : 'auto',
+  };
 }
 
 export function routePreferences(): { pref: RoutePref; strategy: RouteStrategySetting } {

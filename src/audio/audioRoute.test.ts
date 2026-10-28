@@ -3,6 +3,7 @@ import {
   AUTO_STRATEGY,
   _resetAudioRouteForTest,
   activeRoutePlan,
+  routePreferences,
   holdStatus,
   beginCaptureRoute,
   captureRouteSettled,
@@ -161,6 +162,16 @@ describe('the runtime', () => {
     endCaptureRoute('test-end');
     if (realNavigator) Object.defineProperty(globalThis, 'navigator', realNavigator);
     else delete (globalThis as { navigator?: unknown }).navigator;
+  });
+
+  it('an unknown setting is Auto, never a hold (review L4)', async () => {
+    install([CAR, PHONE]);
+    setRoutePreferences('usb' as never, 'half-duplex' as never);
+    expect(routePreferences()).toEqual({ pref: 'auto', strategy: 'auto' });
+    const plan = beginCaptureRoute('t');
+    await captureRouteSettled();
+    expect(plan).toMatchObject({ strategy: 'web-audio', hold: 'none' });
+    expect(getUserMedia).not.toHaveBeenCalled();
   });
 
   it('Auto declares nothing and opens nothing', async () => {
