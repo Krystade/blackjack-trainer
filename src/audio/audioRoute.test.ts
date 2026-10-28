@@ -200,12 +200,34 @@ describe('the runtime', () => {
     expect(getUserMedia).toHaveBeenCalledWith({ audio: { deviceId: { exact: 'mic-phone' } } });
   });
 
-  it('a hold that lands after voice stopped is released at once', async () => {
+  it('voice stopped while the devices are read: no capture is ever opened (review L1)', async () => {
     install([CAR, PHONE]);
     setRoutePreferences('bluetooth', 'auto');
     await detectRoute();
     beginCaptureRoute('t');
+    // Before the hold's enumerate resolves. Opening a capture is what flips
+    // the route, so a late open-then-stop is not harmless.
     endCaptureRoute('early');
+    await captureRouteSettled();
+    expect(getUserMedia).not.toHaveBeenCalled();
+    expect(readDiagnosticLog().some((e) => e.event === 'route-hold' && e.detail?.state === 'held')).toBe(false);
+  });
+
+  it('a hold whose capture lands after voice stopped is released at once', async () => {
+    install([CAR, PHONE]);
+    let land: () => void = () => {};
+    const gate = new Promise<void>((r) => (land = r));
+    const inner = getUserMedia.getMockImplementation()!;
+    getUserMedia.mockImplementation(async (c) => {
+      await gate;
+      return inner(c);
+    });
+    setRoutePreferences('bluetooth', 'auto');
+    await detectRoute();
+    beginCaptureRoute('t');
+    await vi.waitFor(() => expect(getUserMedia).toHaveBeenCalled());
+    endCaptureRoute('late');
+    land();
     await captureRouteSettled();
     expect(stopped).toEqual(['mic-car']);
     expect(readDiagnosticLog().some((e) => e.event === 'route-hold' && e.detail?.state === 'held')).toBe(false);

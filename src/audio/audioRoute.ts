@@ -312,6 +312,9 @@ async function holdInput(which: Exclude<HoldInput, 'none'>, gen: number): Promis
   // A fresh read: the labels may only now exist (permission), and the
   // Bluetooth device may have come or gone since the last one.
   const route = await detectRoute();
+  // Voice went off (or another plan began) during the read: open nothing.
+  // Opening a capture is the event that flips the route (review L1).
+  if (gen !== captureGen) return;
   if (which === 'phone' && route.kind !== 'bluetooth') {
     // Nothing to steer away from: the phone mic is the route already.
     diag('route', 'route-hold', { which, state: 'not-needed', inputs: route.inputs.join(' | ') || 'none' });
