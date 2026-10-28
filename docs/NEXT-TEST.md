@@ -1,5 +1,9 @@
 # The next test run
 
+> **2026-10-26 (wave U): the next run is the three Route kits** — Test kit → Route: phone only /
+> car Bluetooth / headset, answered by voice. Run sheet and what each step decides:
+> `docs/research/2026-10-26-audio-routes.md` §4–5. The sections below are the earlier runs.
+
 Written 2026-10-06, after four car runs that each answered less than they could
 have. Everything below exists because a question went unanswered for want of one
 line in the log.
