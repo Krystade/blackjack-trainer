@@ -85,6 +85,7 @@ export function RouteVoiceStep({
   const [heard, setHeard] = useState<string | null>(null);
   const cancel = useRef<(() => void) | null>(null);
   const played = useRef('');
+  const holdState = useRef('none');
   const answered = useRef(false);
   /** The running trial's token: set on answer, unmount and Play again (review H2/M3). */
   const trial = useRef<{ aborted: boolean }>({ aborted: false });
@@ -95,6 +96,8 @@ export function RouteVoiceStep({
     path: step.path,
     mic: step.mic,
     played: played.current,
+    // Only a hold step carries it: the summary marks one whose hold failed.
+    ...(step.hold !== 'none' ? { holdState: holdState.current } : {}),
   });
 
   const answer = (a: RouteAnswer, via: 'voice' | 'tap', said?: string) => {
@@ -131,6 +134,7 @@ export function RouteVoiceStep({
     const res = await runRouteTrial({ id: step.id, plan, path: step.path, mic: step.mic, ensureMic, signal: token });
     if (token.aborted) return;
     played.current = res.played;
+    holdState.current = res.holdState;
     if (answered.current) return;
     setNote(res.played === 'ended' ? '' : `The line did not play (${res.played}).`);
     setPhase('asking');

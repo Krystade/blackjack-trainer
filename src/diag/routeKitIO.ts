@@ -10,6 +10,7 @@ import { matchRouteAlternatives, ROUTE_LINES, type RouteAnswer, type TrialMic, t
 import { playThrough, routeClipUrl, sayRecorded, unlockWebAudio, waitForRouteQuiet, type HeldMic } from './testKitIO';
 import {
   activeRoutePlan,
+  holdStatus,
   applyRouteSink,
   beginCaptureRoute,
   captureRouteSettled,
@@ -51,9 +52,11 @@ export const TRIAL_ABORTED = 'aborted';
  * Play the route clip under a plan. Resolves with how the play went; the
  * microphone is OPEN again when it resolves, ready for the spoken answer.
  */
-export async function runRouteTrial(o: TrialOptions): Promise<{ played: string; micError: string | null }> {
+export async function runRouteTrial(
+  o: TrialOptions,
+): Promise<{ played: string; micError: string | null; holdState: string }> {
   const gone = () => o.signal?.aborted === true;
-  const abandoned = { played: TRIAL_ABORTED, micError: null };
+  const abandoned = { played: TRIAL_ABORTED, micError: null, holdState: 'none' };
   unlockWebAudio();
   // A fresh start per trial: a plan from the step before must not leak in.
   await o.ensureMic('closed');
@@ -90,6 +93,8 @@ export async function runRouteTrial(o: TrialOptions): Promise<{ played: string; 
   const url = await routeClipUrl();
   if (gone()) return abandoned;
   let played = 'no-clip';
+  // Whether the step's hold actually holds a track as the line plays (M4).
+  const hold = holdStatus();
   if (url) {
     const ctxState = getSharedAudioContext()?.state ?? 'none';
     diag('test', 'kit-route-play', {
@@ -101,6 +106,8 @@ export async function runRouteTrial(o: TrialOptions): Promise<{ played: string; 
       // what the step asked for (review T1/M3): 'none' once the plan ended.
       applied: activeRoutePlan()?.strategy ?? 'none',
       appliedHold: activeRoutePlan()?.hold ?? 'none',
+      holdState: hold.state,
+      holdGot: hold.got ?? 'none',
       mic: o.mic,
       session: readAudioSessionType() ?? 'unsupported',
       audioContext: ctxState,
@@ -114,7 +121,7 @@ export async function runRouteTrial(o: TrialOptions): Promise<{ played: string; 
     beginCaptureRoute(`trial:${o.id}:answer`, { ...o.plan, hold: 'none' });
     micError = await o.ensureMic('open');
   }
-  return { played, micError };
+  return { played, micError, holdState: hold.state };
 }
 
 async function playElementWithSink(url: string): Promise<string> {

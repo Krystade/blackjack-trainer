@@ -219,6 +219,11 @@ export interface RouteStepResult {
   step: string;
   answer: RouteAnswer | 'skipped';
   via: 'voice' | 'tap' | 'skip';
+  /**
+   * A hold step's outcome as its line played (audioRoute HoldState). Any
+   * value but 'held' means the step ran without the input it tests.
+   */
+  hold?: string;
 }
 
 /**
@@ -230,6 +235,7 @@ export function routeKitSummary(kit: RouteKitId, results: readonly RouteStepResu
   answered: number;
   byVoice: number;
   byStep: string;
+  holdsFailed: number;
 } {
   const target = ROUTE_KITS[kit].target;
   const answered = results.filter((r) => r.answer !== 'skipped');
@@ -237,8 +243,13 @@ export function routeKitSummary(kit: RouteKitId, results: readonly RouteStepResu
     hits: answered.filter((r) => r.answer === target).length,
     answered: answered.length,
     byVoice: results.filter((r) => r.via === 'voice').length,
-    byStep: results.map((r) => `${r.step}=${r.answer}`).join(' '),
+    byStep: results.map((r) => `${r.step}=${r.answer}${holdFailed(r) ? `(hold failed: ${r.hold})` : ''}`).join(' '),
+    holdsFailed: results.filter(holdFailed).length,
   };
+}
+
+function holdFailed(r: RouteStepResult): boolean {
+  return r.hold !== undefined && r.hold !== 'held';
 }
 
 /** What the detected route reads as, in a few words. */

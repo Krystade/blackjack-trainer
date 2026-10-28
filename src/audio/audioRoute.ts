@@ -61,6 +61,8 @@ export interface DetectedRoute {
   kind: RouteKind;
   /** Every audio input's label, in the order the browser listed them. */
   inputs: string[];
+  /** Their deviceIds, same order; aliases and blanks left out. */
+  inputIds: string[];
   /** The first listed input: WebKit sorts the route's current input first. */
   first: string | null;
   /** The non-phone input, when there is one. */
@@ -97,6 +99,7 @@ export function classifyInputs(devices: readonly DeviceLike[], sinkIdSupported =
   return {
     kind,
     inputs: inputs.map((d) => d.label || '(unlabelled)'),
+    inputIds: inputs.map((d) => d.deviceId).filter((id) => !ALIAS_IDS.has(id)),
     first: inputs[0] ? inputs[0].label || '(unlabelled)' : null,
     bluetooth: btDev ? { label: btDev.label, deviceId: btDev.deviceId } : null,
     phone: phoneDev ? { label: phoneDev.label, deviceId: phoneDev.deviceId } : null,
@@ -201,6 +204,32 @@ let declared = false;
 let captureGen = 0;
 let holdSettled: Promise<void> = Promise.resolve();
 
+/**
+ * What became of the plan's hold. Anything but `held` means the step ran
+ * WITHOUT the input it was meant to test, and a kit summary says so (M4).
+ */
+export type HoldState =
+  | 'none'
+  | 'pending'
+  | 'held'
+  | 'failed'
+  | 'no-track'
+  | 'unlabelled'
+  | 'no-such-input'
+  | 'not-needed';
+let holdState: HoldState = 'none';
+let heldTrack: MediaStreamTrack | null = null;
+
+/** The hold as it stands now: its state and, when held, the live track's. */
+export function holdStatus(): { state: HoldState; got: string | null; readyState: string | null; muted: boolean | null } {
+  return {
+    state: holdState,
+    got: heldTrack ? heldTrack.label || '(unlabelled)' : null,
+    readyState: heldTrack ? (heldTrack.readyState ?? 'unknown') : null,
+    muted: heldTrack ? (heldTrack.muted ?? null) : null,
+  };
+}
+
 /** Resolves once the plan's held input is open, refused or not wanted. */
 export function captureRouteSettled(): Promise<void> {
   return holdSettled;
@@ -295,6 +324,7 @@ export function beginCaptureRoute(reason: string, planOverride?: RoutePlan): Rou
     requestAudioSessionType('auto');
   }
   activePlan = plan;
+  holdState = plan.hold !== 'none' ? 'pending' : 'none';
   const gen = ++captureGen;
   if (plan.strategy === 'play-and-record') {
     declared = true;
@@ -338,6 +368,7 @@ async function replanHold(begun: RoutePlan, gen: number): Promise<void> {
       why: fresh.why,
     });
   }
+  holdState = fresh.hold !== 'none' ? 'pending' : 'none';
   if (fresh.hold !== 'none') await holdInput(fresh.hold, gen, route);
 }
 
@@ -348,39 +379,93 @@ async function holdInput(which: Exclude<HoldInput, 'none'>, gen: number, readNow
   // Voice went off (or another plan began) during the read: open nothing.
   // Opening a capture is the event that flips the route (review L1).
   if (gen !== captureGen) return;
-  if (which === 'phone' && route.kind !== 'bluetooth') {
+  const inputs = route.inputs.join(' | ') || 'none';
+  if (which === 'phone' && route.kind === 'phone') {
     // Nothing to steer away from: the phone mic is the route already.
-    diag('route', 'route-hold', { which, state: 'not-needed', inputs: route.inputs.join(' | ') || 'none' });
+    holdState = 'not-needed';
+    diag('route', 'route-hold', { which, state: 'not-needed', inputs });
     return;
   }
-  const target = which === 'phone' ? route.phone : route.bluetooth;
-  if (!target) {
-    diag('route', 'route-hold', { which, state: 'no-such-input', inputs: route.inputs.join(' | ') || 'none' });
+  const pick = pickHoldTarget(which, route);
+  if (pick === 'unlabelled' || pick === null) {
+    // 'unlabelled' is "cannot tell", not "nothing to do": no permission yet,
+    // so the names that tell the phone's mic from the car's are blank (M4).
+    holdState = pick === null ? 'no-such-input' : 'unlabelled';
+    diag('route', 'route-hold', { which, state: holdState, inputs });
     return;
   }
+  const constraints: MediaStreamConstraints =
+    pick.deviceId === null ? { audio: true } : { audio: { deviceId: { exact: pick.deviceId } } };
   try {
-    const stream = await openMicStream({ audio: { deviceId: { exact: target.deviceId } } });
+    const stream = await openMicStream(constraints);
     if (gen !== captureGen || activePlan === null) {
       for (const t of stream.getTracks()) t.stop();
       return;
     }
+    const track = stream.getAudioTracks()[0];
+    if (!track || track.readyState === 'ended') {
+      // A stream with no live audio track holds nothing: say so (M4).
+      for (const t of stream.getTracks()) t.stop();
+      holdState = 'no-track';
+      diag('route', 'route-hold', { which, state: 'no-track', wanted: pick.label, match: pick.match, gotTrack: false });
+      return;
+    }
     stopHeld();
     held = stream;
-    const track = stream.getAudioTracks()[0];
-    const settings = (track?.getSettings?.() ?? {}) as MediaTrackSettings;
+    heldTrack = track;
+    holdState = 'held';
+    const settings = (track.getSettings?.() ?? {}) as MediaTrackSettings;
     diag('route', 'route-hold', {
       which,
       state: 'held',
-      wanted: target.label,
-      got: track?.label || '(unlabelled)',
+      wanted: pick.label,
+      match: pick.match,
+      gotTrack: true,
+      got: track.label || '(unlabelled)',
       trackSampleRate: settings.sampleRate ?? 'unknown',
     });
   } catch (e) {
-    diag('route', 'route-hold', { which, state: 'failed', wanted: target.label, why: e instanceof Error ? e.name : String(e) });
+    holdState = 'failed';
+    diag('route', 'route-hold', {
+      which,
+      state: 'failed',
+      wanted: pick.label,
+      match: pick.match,
+      why: e instanceof Error ? e.name : String(e),
+    });
   }
 }
 
+/**
+ * The input to hold. By label when there are labels. Without them (a page
+ * that has only used the recogniser may never have been granted them -- see
+ * testKitIO listInputsAfterGrant), by position, logged as such:
+ *
+ *   bluetooth  the FIRST listed input: WebKit sorts the route's current input
+ *              first, and iOS makes a connected hands-free device the current
+ *              one. No usable id at all: any audio input (`audio: true`).
+ *   phone      the second listed input, when there are two or more -- a
+ *              guess, since only the first is known to be the current one.
+ *              One input or none: 'unlabelled', nothing held.
+ */
+export function pickHoldTarget(
+  which: Exclude<HoldInput, 'none'>,
+  route: DetectedRoute,
+): { deviceId: string | null; label: string; match: 'label' | 'first-input' | 'other-input' | 'any-input' } | 'unlabelled' | null {
+  const named = which === 'phone' ? route.phone : route.bluetooth;
+  if (named) return { deviceId: named.deviceId, label: named.label, match: 'label' };
+  if (route.kind !== 'unknown') return null;
+  const ids = route.inputIds;
+  if (which === 'bluetooth') {
+    return ids[0]
+      ? { deviceId: ids[0], label: '(unlabelled, first)', match: 'first-input' }
+      : { deviceId: null, label: '(any input)', match: 'any-input' };
+  }
+  return ids.length >= 2 ? { deviceId: ids[1], label: '(unlabelled, second)', match: 'other-input' } : 'unlabelled';
+}
+
 function stopHeld(): void {
+  heldTrack = null;
   if (!held) return;
   for (const t of held.getTracks()) t.stop();
   held = null;
@@ -391,6 +476,7 @@ export function endCaptureRoute(reason: string): void {
   captureGen += 1;
   const had = activePlan;
   activePlan = null;
+  holdState = 'none';
   stopHeld();
   if (declared) {
     declared = false;
@@ -429,6 +515,8 @@ export function _resetAudioRouteForTest(): void {
   lastRoute = classifyInputs([]);
   activePlan = null;
   held = null;
+  heldTrack = null;
+  holdState = 'none';
   declared = false;
   captureGen = 0;
   holdSettled = Promise.resolve();

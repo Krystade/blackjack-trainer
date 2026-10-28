@@ -107,7 +107,18 @@ describe('routeKitSummary', () => {
       answered: 3,
       byVoice: 2,
       byStep: 'auto-webaudio=Earpiece pr-webaudio=Car speakers hold-bt=Car speakers hold-phone=skipped',
+      holdsFailed: 0,
     });
+  });
+
+  it('marks a hold step whose hold did not get a track as "hold failed" (review M4)', () => {
+    const s = routeKitSummary('route-car', [
+      { step: 'auto-webaudio', answer: 'Car speakers', via: 'voice' },
+      { step: 'hold-bt', answer: 'Car speakers', via: 'voice', hold: 'unlabelled' },
+      { step: 'hold-phone', answer: 'Earpiece', via: 'voice', hold: 'held' },
+    ]);
+    expect(s.byStep).toBe('auto-webaudio=Car speakers hold-bt=Car speakers(hold failed: unlabelled) hold-phone=Earpiece');
+    expect(s.holdsFailed).toBe(1);
   });
 
   it('the phone kit target is the loud speaker, so the car answer is a miss there', () => {

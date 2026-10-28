@@ -3,6 +3,7 @@ import {
   AUTO_STRATEGY,
   _resetAudioRouteForTest,
   activeRoutePlan,
+  holdStatus,
   beginCaptureRoute,
   captureRouteSettled,
   classifyInputs,
@@ -128,10 +129,16 @@ describe('the runtime', () => {
   function install(devices: DeviceLike[]): void {
     session = { type: 'auto' };
     stopped = [];
-    getUserMedia = vi.fn(async (c: { audio: { deviceId: { exact: string } } }) => {
-      const id = c.audio.deviceId.exact;
+    getUserMedia = vi.fn(async (c: { audio: { deviceId: { exact: string } } | true }) => {
+      const id = c.audio === true ? 'any' : c.audio.deviceId.exact;
       const label = devices.find((d) => d.deviceId === id)?.label ?? '';
-      const track = { label, stop: () => stopped.push(id), getSettings: () => ({ sampleRate: 8000, deviceId: id }) };
+      const track = {
+        label,
+        readyState: 'live',
+        muted: false,
+        stop: () => stopped.push(id),
+        getSettings: () => ({ sampleRate: 8000, deviceId: id }),
+      };
       return { getTracks: () => [track], getAudioTracks: () => [track] };
     });
     Object.defineProperty(globalThis, 'navigator', {
@@ -260,6 +267,52 @@ describe('the runtime', () => {
     beginCaptureRoute('voice-on');
     await captureRouteSettled();
     expect(getUserMedia).toHaveBeenCalledWith({ audio: { deviceId: { exact: 'mic-phone' } } });
+  });
+
+  describe('holds with no labels (review M4)', () => {
+    const A: DeviceLike = { kind: 'audioinput', label: '', deviceId: 'id-a' };
+    const B: DeviceLike = { kind: 'audioinput', label: '', deviceId: 'id-b' };
+    const holdRow = () => readDiagnosticLog().find((e) => e.event === 'route-hold')?.detail;
+
+    it('Bluetooth falls back to the first listed input by its deviceId, and says it matched by position', async () => {
+      install([A, B]);
+      setRoutePreferences('bluetooth', 'auto');
+      beginCaptureRoute('t');
+      await captureRouteSettled();
+      expect(getUserMedia).toHaveBeenCalledWith({ audio: { deviceId: { exact: 'id-a' } } });
+      expect(holdRow()).toMatchObject({ which: 'bluetooth', state: 'held', match: 'first-input', gotTrack: true });
+      expect(holdStatus()).toMatchObject({ state: 'held', readyState: 'live' });
+    });
+
+    it('Bluetooth with no usable id at all holds any audio input', async () => {
+      install([{ kind: 'audioinput', label: '', deviceId: '' }]);
+      setRoutePreferences('bluetooth', 'auto');
+      beginCaptureRoute('t');
+      await captureRouteSettled();
+      expect(getUserMedia).toHaveBeenCalledWith({ audio: true });
+      expect(holdRow()).toMatchObject({ state: 'held', match: 'any-input' });
+    });
+
+    it('Phone with one unlabelled input logs "unlabelled", not "not-needed", and holds nothing', async () => {
+      install([A]);
+      setRoutePreferences('phone', 'auto');
+      beginCaptureRoute('t');
+      await captureRouteSettled();
+      expect(getUserMedia).not.toHaveBeenCalled();
+      expect(holdRow()).toMatchObject({ which: 'phone', state: 'unlabelled' });
+      expect(holdStatus().state).toBe('unlabelled');
+    });
+
+    it('a stream with no audio track is a failed hold, not a held one', async () => {
+      install([CAR, PHONE]);
+      getUserMedia.mockImplementation(async () => ({ getTracks: () => [], getAudioTracks: () => [] }));
+      setRoutePreferences('bluetooth', 'auto');
+      await detectRoute();
+      beginCaptureRoute('t');
+      await captureRouteSettled();
+      expect(holdRow()).toMatchObject({ state: 'no-track', gotTrack: false });
+      expect(holdStatus().state).toBe('no-track');
+    });
   });
 
   it('a new begin releases the previous hold and drops its declaration (review H1)', async () => {

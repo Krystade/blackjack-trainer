@@ -192,6 +192,7 @@ export function TestKit({ onNavigate }: { onNavigate: (s: Screen) => void }) {
         step: step.id,
         answer: (ROUTE_ANSWERS as readonly string[]).includes(value) ? (value as RouteAnswer) : 'skipped',
         via: extra.via === 'voice' ? 'voice' : extra.via === 'tap' ? 'tap' : 'skip',
+        ...(typeof extra.holdState === 'string' ? { hold: extra.holdState } : {}),
       });
     }
     phoneRun.current.answers[step.id] = value;
