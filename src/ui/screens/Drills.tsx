@@ -43,6 +43,7 @@ import { FlashcardsView } from './drills/FlashcardsView';
 import { DeviationQuizView } from './drills/DeviationQuizView';
 import { MixedSessionView } from './drills/MixedSessionView';
 import { lazyScreen, preloadWhenIdle } from '../lazyScreen';
+import { GuidedEntry } from './guided/GuidedEntry';
 // Wave O: these two carry the generated side-bet and variant-chart tables
 // (~240KB), so they load when first opened (precached for offline).
 const SideCountDrillView = lazyScreen('sidecountdrill', () => import('./drills/SideCountDrillView').then((m) => m.SideCountDrillView));
@@ -75,7 +76,8 @@ type DrillMode =
   | 'custom'
   | 'speed'
   | 'sidecount'
-  | 'variant';
+  | 'variant'
+  | 'guided';
 
 /** The painted tiers, order-free, with an unsaved selection read as the editor shows it. */
 function tiersKey(settings: Settings): string {
@@ -134,6 +136,18 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
     window.scrollTo(0, 0);
   }, [mode]);
 
+  // Wave L (lane v): a guided session, opened from Home's card.
+  if (mode === 'guided') {
+    return (
+      <GuidedEntry
+        settings={settings}
+        activeProfile={activeProfile}
+        onSettingsChange={onSettingsChange}
+        onNavigate={onNavigate}
+        onNone={() => setMode('picker')}
+      />
+    );
+  }
   if (mode === 'count') {
     return (
       <CountDrillView

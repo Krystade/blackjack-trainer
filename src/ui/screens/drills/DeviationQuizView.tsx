@@ -89,7 +89,8 @@ export function DeviationQuizView({
   onBack,
   onSettingsChange,
   reviewIds = null,
-  onHome }: {
+  onHome,
+  onReviewDone }: {
   settings: Settings;
   activeProfile: Profile;
   onBack: () => void;
@@ -98,6 +99,8 @@ export function DeviationQuizView({
   reviewIds?: string[] | null;
   /** The review's end state offers Home. */
   onHome?: () => void;
+  /** Wave L (lane v): told when a handed-over review deck runs out (the guided session moves on). */
+  onReviewDone?: () => void;
 }) {
   // Use the active filter (falls back to 'all' if saved index is inactive)
   const activeFilter = getActiveQuizFilter(settings.drill.quizIndex, activeProfile);
@@ -242,6 +245,7 @@ export function DeviationQuizView({
     clock.clear();
     review.finish();
     if (eyesFree || voiceOn) speak('Review done.', speechOptsFrom(settings.audio, { interrupt: false }));
+    onReviewDone?.();
   };
 
   const changeIndex = (quizIndex: DeviationId | 'all') => {

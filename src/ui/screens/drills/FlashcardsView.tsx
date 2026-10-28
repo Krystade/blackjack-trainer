@@ -87,6 +87,7 @@ export function FlashcardsView({
   onSettingsChange,
   handOver = null,
   onHome,
+  onReviewDone,
   onCustomize }: {
   /** Wave M: open the Custom editor and come back here. */
   onCustomize?: () => void;
@@ -98,6 +99,8 @@ export function FlashcardsView({
   handOver?: FlashHandOver | null;
   /** The review's end state offers Home. */
   onHome?: () => void;
+  /** Wave L (lane v): told when a handed-over review deck runs out (the guided session moves on). */
+  onReviewDone?: () => void;
 }) {
   const session = useAnswerSession(settings, 'flashcards');
   const {
@@ -257,6 +260,7 @@ export function FlashcardsView({
     if (eyesFree || voiceOn) {
       speak(reviewSource === 'review' ? 'Review done.' : 'All done.', speechOptsFrom(settings.audio, { interrupt: false }));
     }
+    onReviewDone?.();
   };
 
   // #13 / B2: HandDeckControls has already saved the change.

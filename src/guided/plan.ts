@@ -32,6 +32,8 @@ export interface SegmentDef {
   id: SegmentId;
   /** On screen. */
   label: string;
+  /** On screen where six share a row (the transition's rail). */
+  short: string;
   /** Spoken, after "Next: " / "First: ". */
   spoken: string;
   /** Weight in the 15-minute plan. */
@@ -43,12 +45,12 @@ export interface SegmentDef {
 
 /** In session order. */
 export const SEGMENTS: readonly SegmentDef[] = [
-  { id: 'warmup', label: 'Warm-up', spoken: 'warm-up', base: 2, perMinute: 8, rungs: ['basic', 'repair'] },
-  { id: 'speed', label: 'Speed', spoken: 'speed', base: 2, perMinute: 10, rungs: ['basic'] },
-  { id: 'count', label: 'Running count', spoken: 'running count', base: 3, rungs: ['count'] },
-  { id: 'truecount', label: 'True count', spoken: 'true count', base: 3, rungs: ['tc'] },
-  { id: 'deviations', label: 'Deviations', spoken: 'deviations', base: 3, perMinute: 6, rungs: ['deviations'] },
-  { id: 'bets', label: 'Bet sizing', spoken: 'bet sizing', base: 2, perMinute: 8, rungs: ['betramp'] },
+  { id: 'warmup', label: 'Warm-up', short: 'Warm-up', spoken: 'warm-up', base: 2, perMinute: 8, rungs: ['basic', 'repair'] },
+  { id: 'speed', label: 'Speed', short: 'Speed', spoken: 'speed', base: 2, perMinute: 10, rungs: ['basic'] },
+  { id: 'count', label: 'Running count', short: 'Count', spoken: 'running count', base: 3, rungs: ['count'] },
+  { id: 'truecount', label: 'True count', short: 'True count', spoken: 'true count', base: 3, rungs: ['tc'] },
+  { id: 'deviations', label: 'Deviations', short: 'Deviations', spoken: 'deviations', base: 3, perMinute: 6, rungs: ['deviations'] },
+  { id: 'bets', label: 'Bet sizing', short: 'Bets', spoken: 'bet sizing', base: 2, perMinute: 8, rungs: ['betramp'] },
 ];
 
 export function segmentDef(id: SegmentId): SegmentDef {

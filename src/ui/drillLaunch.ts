@@ -13,7 +13,8 @@ import { ALL_SCOPES, withScopes } from '../drills/handScope';
  */
 // C-R3: Home's Drive can also open Mixed and Produce the true count, and
 // (H3) Speed.
-export type DrillLaunch = Exclude<NextStepKind, 'play'> | 'mixed' | 'producetc' | 'speed';
+// Wave L (lane v): and Home's guided session card opens 'guided'.
+export type DrillLaunch = Exclude<NextStepKind, 'play'> | 'mixed' | 'producetc' | 'speed' | 'guided';
 
 let pending: DrillLaunch | null = null;
 
