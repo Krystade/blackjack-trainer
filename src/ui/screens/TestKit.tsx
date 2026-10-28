@@ -94,6 +94,8 @@ export function TestKit({ onNavigate }: { onNavigate: (s: Screen) => void }) {
   const resumed = useRef(parseProgress(store()?.getItem(KIT_PROGRESS_KEY) ?? null, Date.now()));
   const [kit, setKit] = useState<KitId | null>(resumed.current?.kit ?? null);
   const [index, setIndex] = useState(resumed.current?.stepIndex ?? 0);
+  /** The step a reload resumed at, until the kit moves on: it waits for a tap (L5). */
+  const resumedAt = useRef<number | null>(resumed.current?.stepIndex ?? null);
   const [done, setDone] = useState(false);
   const recordings = useRef<Array<{ name: string; rec: Recording }>>([]);
   const mic = useRef<HeldMic | null>(null);
@@ -159,6 +161,7 @@ export function TestKit({ onNavigate }: { onNavigate: (s: Screen) => void }) {
       /* the copy falls back to the whole log */
     }
     diag('test', 'kit-start', { kit: id });
+    resumedAt.current = null;
     routeResults.current = [];
     setKit(id);
     setIndex(0);
@@ -168,6 +171,7 @@ export function TestKit({ onNavigate }: { onNavigate: (s: Screen) => void }) {
 
   const advance = () => {
     if (!kit) return;
+    resumedAt.current = null;
     const next = index + 1;
     if (next >= steps.length) {
       // The plan ends under its own name BEFORE releaseAll, which would
@@ -335,6 +339,7 @@ export function TestKit({ onNavigate }: { onNavigate: (s: Screen) => void }) {
           ensureInput={ensureInput}
           run={phoneRun}
           releaseAll={releaseAll}
+          waitForTap={resumedAt.current === index}
           onAnswer={answer}
           onRecording={(name, rec) => recordings.current.push({ name, rec })}
           onReload={() => {
@@ -363,6 +368,8 @@ interface StepProps {
   onAnswer: (value: string, extra?: Record<string, unknown>) => void;
   onRecording: (name: string, rec: Recording) => void;
   onReload: () => void;
+  /** This is the step a reload resumed at. */
+  waitForTap?: boolean;
 }
 
 function StepView(props: StepProps) {
@@ -413,7 +420,15 @@ function StepView(props: StepProps) {
     case 'route-snapshot':
       return <RouteSnapshotStep onAnswer={props.onAnswer} />;
     case 'route-voice':
-      return <RouteVoiceStep step={step} ensureMic={props.ensureMic} mic={props.mic} onAnswer={props.onAnswer} />;
+      return (
+        <RouteVoiceStep
+          step={step}
+          ensureMic={props.ensureMic}
+          mic={props.mic}
+          onAnswer={props.onAnswer}
+          waitForTap={props.waitForTap}
+        />
+      );
   }
 }
 

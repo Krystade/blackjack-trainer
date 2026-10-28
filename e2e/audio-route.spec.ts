@@ -373,6 +373,31 @@ test('A step answered before its line plays takes its trial with it (review M3)'
   expect(plays).toEqual(['hold-bt:auto:web-audio:bluetooth']);
 });
 
+test('A Route kit resumed after a reload waits for a tap before it plays or listens (review L5)', async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.setViewportSize(PHONE);
+  await withFakePhone(page, CAR);
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem('seeded')) return;
+    sessionStorage.setItem('seeded', '1');
+    localStorage.setItem('bjtrainer.testkit.progress.v1', JSON.stringify({ kit: 'route-car', stepIndex: 2, savedAt: Date.now() }));
+  });
+  // The app reopens a kit saved within the resume window by itself.
+  await page.goto('/?e2e=1');
+  await expect(page.locator('[data-step="pr-webaudio"]')).toBeVisible();
+  // Long enough for an auto-run to have opened the mic and played.
+  await page.waitForTimeout(4000);
+  expect(await liveRecognisers(page)).toBe(0);
+  expect((await events(page)).filter((e) => e.event === 'kit-route-play')).toEqual([]);
+  await page.getByTestId('routekit-resume').click();
+  await expect
+    .poll(async () => (await events(page)).find((e) => e.event === 'kit-route-play')?.detail?.step, { timeout: 15_000 })
+    .toBe('pr-webaudio');
+  // Answered, the next step runs on its own as usual.
+  await answerByVoice(page, 'car', () => page.locator('[data-step="hold-bt"]').isVisible());
+  await expect(page.getByTestId('routekit-resume')).toHaveCount(0);
+});
+
 test('The car Route kit runs every step by voice and logs one summary line', async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize(PHONE);

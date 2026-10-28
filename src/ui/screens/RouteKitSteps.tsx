@@ -74,13 +74,20 @@ export function RouteVoiceStep({
   ensureMic,
   mic,
   onAnswer,
+  waitForTap = false,
 }: {
   step: Extract<RouteKitStep, { kind: 'route-voice' }>;
+  /**
+   * Set on the step a kit RESUMED at (a reload within the resume window):
+   * nothing plays or listens until Jack taps, since no gesture is behind the
+   * mount and he may not be ready (review L5).
+   */
+  waitForTap?: boolean;
   ensureMic: (want: 'open' | 'closed') => Promise<string | null>;
   mic: React.MutableRefObject<HeldMic | null>;
   onAnswer: Answer;
 }) {
-  const [phase, setPhase] = useState<'working' | 'asking' | 'done'>('working');
+  const [phase, setPhase] = useState<'paused' | 'working' | 'asking' | 'done'>(waitForTap ? 'paused' : 'working');
   const [note, setNote] = useState('Opening the microphone…');
   const [heard, setHeard] = useState<string | null>(null);
   const cancel = useRef<(() => void) | null>(null);
@@ -156,13 +163,25 @@ export function RouteVoiceStep({
     // Every mount runs and every unmount aborts, so StrictMode's rehearsal
     // mount starts a trial that the cleanup abandons at its next await, and
     // the real mount runs the one that counts (review H2).
-    void run();
+    if (!waitForTap) void run();
+    else diag('test', 'kit-route-waiting', { step: step.id, why: 'resumed' });
     return () => {
       trial.current.aborted = true;
       cancel.current?.();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  if (phase === 'paused') {
+    return (
+      <>
+        <p className="testkit-instruction">Picked up where you left off. Tap to play this step.</p>
+        <button type="button" className="u-btn u-btn-primary" data-testid="routekit-resume" onClick={() => void run()}>
+          Play this step
+        </button>
+      </>
+    );
+  }
 
   return (
     <>
