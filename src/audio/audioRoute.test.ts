@@ -1,8 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import {
   AUTO_STRATEGY,
   _resetAudioRouteForTest,
   activeRoutePlan,
+  applyRouteSink,
   routePreferences,
   holdStatus,
   beginCaptureRoute,
@@ -367,6 +368,36 @@ describe('the runtime', () => {
     expect(plan.strategy).toBe('web-audio');
     expect(stopped).toEqual(['mic-car']);
     expect(session.type).toBe('auto');
+  });
+
+  it('an element pointed at the speaker is pointed back when the plan ends (review L10)', async () => {
+    install([PHONE, SPEAKER_OUT]);
+    (globalThis as { HTMLMediaElement?: unknown }).HTMLMediaElement = class {
+      setSinkId() {}
+    };
+    onTestFinished(() => {
+      delete (globalThis as { HTMLMediaElement?: unknown }).HTMLMediaElement;
+    });
+    setRoutePreferences('auto', 'speaker-sink');
+    await detectRoute();
+    beginCaptureRoute('t');
+    const calls: string[] = [];
+    const el = {
+      sinkId: '',
+      async setSinkId(id: string) {
+        calls.push(id);
+        this.sinkId = id;
+      },
+    };
+    expect(await applyRouteSink(el as unknown as HTMLMediaElement)).toBe(true);
+    expect(el.sinkId).toBe('out-spk');
+    endCaptureRoute('voice-off');
+    await Promise.resolve();
+    expect(calls).toEqual(['out-spk', '']);
+    expect(el.sinkId).toBe('');
+    // Only once: a second end has nothing left to reset.
+    endCaptureRoute('again');
+    expect(calls).toEqual(['out-spk', '']);
   });
 
   it('the sink id is offered only while a speaker-sink plan is in force', async () => {

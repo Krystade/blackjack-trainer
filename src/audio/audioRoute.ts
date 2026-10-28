@@ -508,6 +508,7 @@ export function endCaptureRoute(reason: string): void {
   activePlan = null;
   holdState = 'none';
   stopHeld();
+  resetSinks(reason);
   if (declared) {
     declared = false;
     requestAudioSessionType('auto');
@@ -524,13 +525,37 @@ export function routeSinkId(): string | null {
   return pickSpeakerOutput(lastRoute)?.deviceId ?? null;
 }
 
+type SinkElement = HTMLMediaElement & { setSinkId?: (id: string) => Promise<void>; sinkId?: string };
+
+/**
+ * Elements this plan pointed at an output. clips.ts reuses ONE pooled element,
+ * and a sinkId outlives the plan that set it, so every one is pointed back at
+ * the default output when the plan ends (review L10).
+ */
+const sunk = new Set<SinkElement>();
+
+function resetSinks(reason: string): void {
+  for (const el of sunk) {
+    try {
+      void el.setSinkId?.('')?.catch?.((e: unknown) =>
+        diag('route', 'route-sink-reset-failed', { reason, why: e instanceof Error ? e.name : String(e) }),
+      );
+    } catch (e) {
+      diag('route', 'route-sink-reset-failed', { reason, why: e instanceof Error ? e.name : String(e) });
+    }
+  }
+  if (sunk.size > 0) diag('route', 'route-sink-reset', { reason, elements: sunk.size });
+  sunk.clear();
+}
+
 /** Point an element at the plan's output. Never throws; logs a refusal. */
 export async function applyRouteSink(el: HTMLMediaElement): Promise<boolean> {
   const id = routeSinkId();
   if (!id) return false;
-  const withSink = el as HTMLMediaElement & { setSinkId?: (id: string) => Promise<void> };
+  const withSink = el as SinkElement;
   if (typeof withSink.setSinkId !== 'function') return false;
   try {
+    sunk.add(withSink);
     await withSink.setSinkId(id);
     return true;
   } catch (e) {
