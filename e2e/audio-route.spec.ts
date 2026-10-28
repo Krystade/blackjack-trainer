@@ -26,20 +26,27 @@ async function withFakePhone(page: Page, devices: Array<{ kind: string; label: s
       onend: (() => void) | null = null;
       onerror: ((e: { error?: string }) => void) | null = null;
       onresult: ((e: unknown) => void) | null = null;
+      live = false;
       constructor() {
         (window as unknown as { __rec: FakeRecognition }).__rec = this;
+        ((window as unknown as { __recs?: FakeRecognition[] }).__recs ??= []).push(this);
       }
       start(): void {
+        this.live = true;
+        // A test can slow the engine down, to stop or leave mid-open.
+        const delay = (window as unknown as { __audioStartDelay?: number }).__audioStartDelay ?? 0;
         setTimeout(() => {
           this.onstart?.();
           this.onaudiostart?.();
-        }, 0);
+        }, delay);
       }
       stop(): void {
+        this.live = false;
         this.onerror?.({ error: 'aborted' });
         this.onend?.();
       }
       abort(): void {
+        this.live = false;
         this.onerror?.({ error: 'aborted' });
         this.onend?.();
       }
@@ -87,6 +94,17 @@ const CAR = [
   { kind: 'audioinput', label: 'TOYOTA Corolla', deviceId: 'mic-car' },
   { kind: 'audioinput', label: 'iPhone Microphone', deviceId: 'mic-phone' },
 ];
+
+/** Recognisers started and never stopped: an open microphone nobody may own. */
+async function liveRecognisers(page: Page): Promise<number> {
+  return page.evaluate(() => ((window as unknown as { __recs?: Array<{ live: boolean }> }).__recs ?? []).filter((r) => r.live).length);
+}
+
+async function slowEngine(page: Page, ms: number): Promise<void> {
+  await page.addInitScript((d) => {
+    (window as unknown as { __audioStartDelay: number }).__audioStartDelay = d;
+  }, ms);
+}
 
 /** Say something into the fake engine as a FINAL result, the way openMic reads it. */
 async function say(page: Page, text: string): Promise<void> {
@@ -199,6 +217,22 @@ test('Test this route ends its plan: the held mic is stopped and the declaration
   expect(await page.evaluate(() => (window as unknown as { __session: { type: string } }).__session.type)).toBe('auto');
 });
 
+test('Leaving Settings while Test this route opens the mic leaves no microphone open (review H2)', async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.setViewportSize(PHONE);
+  await withFakePhone(page, CAR);
+  await slowEngine(page, 2500);
+  await page.goto('/?e2e=1');
+  await openInTheCar(page);
+  await page.getByTestId('audio-route-test').click();
+  await page.waitForTimeout(500);
+  await page.locator('.tab-bar').getByRole('button', { name: 'Home', exact: true }).click();
+  await expect(page.getByTestId('audio-route')).toHaveCount(0);
+  // Past the engine's slow start, the trial's settle wait and its play.
+  await page.waitForTimeout(8000);
+  expect(await liveRecognisers(page)).toBe(0);
+});
+
 test('A tapped answer that misses the route says what was expected', async ({ page }) => {
   test.setTimeout(60_000);
   await page.setViewportSize(PHONE);
@@ -246,6 +280,35 @@ test('Auto changes nothing a drill did before', async ({ page }) => {
   await page.waitForTimeout(500);
   expect(await page.evaluate(() => (window as unknown as { __session: { type: string } }).__session.type)).toBe('auto');
   expect(await page.evaluate(() => (window as unknown as { __asked: string[] }).__asked)).not.toContain('mic-car');
+});
+
+test('Stop during a Route kit trial closes the mic, and the abandoned step neither asks nor saves (review H2)', async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.setViewportSize(PHONE);
+  await withFakePhone(page, CAR);
+  await slowEngine(page, 2500);
+  await page.goto('/?e2e=1');
+  await page.getByTestId('testkit-open').click();
+  await page.getByRole('button', { name: /Route: car Bluetooth/ }).click();
+  const kit = page.getByTestId('testkit-screen');
+  await kit.getByRole('button', { name: 'Start', exact: true }).click();
+  await expect(page.getByTestId('routekit-snapshot')).toBeVisible();
+  await kit.getByRole('button', { name: 'Next', exact: true }).click();
+  await expect(page.locator('[data-step="auto-webaudio"]')).toBeVisible();
+  await page.waitForTimeout(500);
+  await kit.getByRole('button', { name: 'Stop', exact: true }).click();
+  await page.waitForTimeout(8000);
+  // Still on the kit menu (the screen is mounted), and no engine is live.
+  await expect(page.getByTestId('testkit-screen')).toBeVisible();
+  expect(await liveRecognisers(page)).toBe(0);
+  // An answer spoken now goes nowhere: no answer logged, no progress saved.
+  await say(page, 'car');
+  await page.waitForTimeout(500);
+  expect(await page.evaluate(() => localStorage.getItem('bjtrainer.testkit.progress.v1'))).toBeNull();
+  const all = await events(page);
+  const stoppedAt = all.findIndex((e) => e.event === 'kit-abandoned');
+  expect(stoppedAt).toBeGreaterThan(-1);
+  expect(all.slice(stoppedAt).filter((e) => e.event === 'kit-answer' || e.event === 'kit-route-play')).toEqual([]);
 });
 
 test('The car Route kit runs every step by voice and logs one summary line', async ({ page }) => {

@@ -62,12 +62,15 @@ export function AudioRouteSettings({
   const [test, setTest] = useState<TestState>({ phase: 'idle' });
   const mic = useRef<HeldMic | null>(null);
   const cancelListen = useRef<(() => void) | null>(null);
+  /** The running test's token, aborted on leaving Settings (review H2). */
+  const trial = useRef<{ aborted: boolean }>({ aborted: true });
 
   useEffect(() => {
     let live = true;
     void detectRoute().then((r) => live && setRoute(r));
     return () => {
       live = false;
+      trial.current.aborted = true;
       cancelListen.current?.();
       void mic.current?.close();
       mic.current = null;
@@ -79,16 +82,24 @@ export function AudioRouteSettings({
   const plan = planRoute(pref, strategy, route);
 
   const ensureMic = async (want: 'open' | 'closed'): Promise<string | null> => {
+    const token = trial.current;
     await mic.current?.close();
     mic.current = null;
     if (want === 'closed') return null;
     const held = await openMic();
     if ('error' in held) return held.error;
+    if (token.aborted) {
+      // Settings went away while it opened: nobody owns it, so close it.
+      await held.close();
+      return 'released';
+    }
     mic.current = held;
     return null;
   };
 
   const finish = (answer: RouteAnswer, via: 'voice' | 'tap', heard?: string) => {
+    if (trial.current.aborted) return;
+    trial.current.aborted = true;
     cancelListen.current?.();
     cancelListen.current = null;
     const r = lastDetectedRoute();
@@ -114,8 +125,12 @@ export function AudioRouteSettings({
   };
 
   const runTest = async () => {
+    trial.current.aborted = true;
+    const token = { aborted: false };
+    trial.current = token;
     setTest({ phase: 'working', note: 'Opening the microphone…' });
     const fresh = await detectRoute();
+    if (token.aborted) return;
     setRoute(fresh);
     const p = planRoute(pref, strategy, fresh);
     const { played, micError } = await runRouteTrial({
@@ -124,14 +139,16 @@ export function AudioRouteSettings({
       path: p.strategy === 'speaker-sink' ? 'element' : 'webaudio',
       mic: 'open',
       ensureMic,
+      signal: token,
     });
+    if (token.aborted) return;
     setRoute(lastDetectedRoute());
     setTest({ phase: 'asking', note: played === 'ended' ? '' : `The line did not play (${played}).` });
     if (micError || !mic.current) return; // taps only
     const l = listenForRouteAnswer(mic.current, 'settings-test');
     cancelListen.current = l.cancel;
     const got = await l.result;
-    if (got) finish(got.answer, 'voice', got.heard);
+    if (got && !token.aborted) finish(got.answer, 'voice', got.heard);
   };
 
   return (

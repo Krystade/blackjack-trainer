@@ -115,6 +115,8 @@ export function TestKit({ onNavigate }: { onNavigate: (s: Screen) => void }) {
 
   /** Every microphone this screen holds: the recogniser and the chosen-input stream. */
   const releaseAll = async (): Promise<void> => {
+    // A mic still opening now belongs to nobody: ensureMic closes it (H2).
+    micGen.current += 1;
     const m = mic.current;
     const i = input.current;
     mic.current = null;
@@ -124,6 +126,9 @@ export function TestKit({ onNavigate }: { onNavigate: (s: Screen) => void }) {
     endCaptureRoute('testkit-release');
     await Promise.all([m?.close(), i?.close()]);
   };
+
+  /** Bumped by releaseAll; a mic that resolves under an older value is closed. */
+  const micGen = useRef(0);
 
   /** The chosen phone input, opened once and held until releaseAll. */
   const ensureInput = async (): Promise<HeldInput | { error: string }> => {
@@ -201,11 +206,17 @@ export function TestKit({ onNavigate }: { onNavigate: (s: Screen) => void }) {
     }
     // Always a fresh session: a step that follows a trip to the Settings app
     // cannot trust one that was open before it.
+    const gen = micGen.current;
     await mic.current?.close();
     const held = await openMic();
     if ('error' in held) {
-      mic.current = null;
+      if (gen === micGen.current) mic.current = null;
       return held.error;
+    }
+    if (gen !== micGen.current) {
+      // Released (Stop, leaving the kit) while it opened: never store it.
+      await held.close();
+      return 'released';
     }
     mic.current = held;
     return null;

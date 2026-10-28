@@ -34,22 +34,39 @@ export interface TrialOptions {
   mic: TrialMic;
   /** The screen's mic holder: opens a fresh recogniser, or closes it. */
   ensureMic: (want: 'open' | 'closed') => Promise<string | null>;
+  /**
+   * Set when the step is answered, left or replayed (review H2/M3). Checked
+   * after every await: an abandoned trial touches nothing shared again -- no
+   * plan, no mic, no sound -- because by then the mic and the plan may
+   * already belong to the next step.
+   */
+  signal?: { aborted: boolean };
 }
+
+/** What an abandoned trial resolves with. */
+export const TRIAL_ABORTED = 'aborted';
 
 /**
  * Play the route clip under a plan. Resolves with how the play went; the
  * microphone is OPEN again when it resolves, ready for the spoken answer.
  */
 export async function runRouteTrial(o: TrialOptions): Promise<{ played: string; micError: string | null }> {
+  const gone = () => o.signal?.aborted === true;
+  const abandoned = { played: TRIAL_ABORTED, micError: null };
   unlockWebAudio();
   // A fresh start per trial: a plan from the step before must not leak in.
   await o.ensureMic('closed');
+  if (gone()) return abandoned;
   endCaptureRoute('trial-reset');
   beginCaptureRoute(`trial:${o.id}`, o.plan);
   await captureRouteSettled();
+  if (gone()) return abandoned;
   let micError = await o.ensureMic('open');
+  if (gone()) return abandoned;
   await waitForRouteQuiet(1500, 4000);
+  if (gone()) return abandoned;
   await logRouteSnapshot(`trial:${o.id}`);
+  if (gone()) return abandoned;
 
   if (o.mic === 'quiet-close') {
     // Everything this page plays, stopped: the recogniser, the focus loop,
@@ -57,6 +74,7 @@ export async function runRouteTrial(o: TrialOptions): Promise<{ played: string; 
     // mic closes while anything is still playing (MediaSessionManagerCocoa
     // updateSessionState), so this is the only honest "mic closed" state.
     await o.ensureMic('closed');
+    if (gone()) return abandoned;
     endCaptureRoute(`trial:${o.id}:quiet`);
     releaseAllAudioFocus();
     try {
@@ -65,9 +83,11 @@ export async function runRouteTrial(o: TrialOptions): Promise<{ played: string; 
       /* logged below as the context state */
     }
     await wait(QUIET_MS);
+    if (gone()) return abandoned;
   }
 
   const url = await routeClipUrl();
+  if (gone()) return abandoned;
   let played = 'no-clip';
   if (url) {
     const ctxState = getSharedAudioContext()?.state ?? 'none';
@@ -83,6 +103,7 @@ export async function runRouteTrial(o: TrialOptions): Promise<{ played: string; 
     played = o.path === 'element' && o.plan.strategy === 'speaker-sink' ? await playElementWithSink(url) : await playThrough(o.path, url);
   }
 
+  if (gone()) return abandoned;
   if (o.mic === 'quiet-close') {
     // Back on, for the answer. The question below then plays as drills do.
     beginCaptureRoute(`trial:${o.id}:answer`, { ...o.plan, hold: 'none' });

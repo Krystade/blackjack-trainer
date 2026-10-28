@@ -86,6 +86,8 @@ export function RouteVoiceStep({
   const cancel = useRef<(() => void) | null>(null);
   const played = useRef('');
   const answered = useRef(false);
+  /** The running trial's token: set on answer, unmount and Play again (review H2/M3). */
+  const trial = useRef<{ aborted: boolean }>({ aborted: false });
 
   const extra = (): Record<string, unknown> => ({
     strategy: step.strategy,
@@ -96,13 +98,17 @@ export function RouteVoiceStep({
   });
 
   const answer = (a: RouteAnswer, via: 'voice' | 'tap', said?: string) => {
-    if (answered.current) return;
+    if (answered.current || trial.current.aborted) return;
     answered.current = true;
+    trial.current.aborted = true;
     cancel.current?.();
     onAnswer(a, { ...extra(), via, heard: said ?? '' });
   };
 
   const run = async () => {
+    trial.current.aborted = true;
+    const token = { aborted: false };
+    trial.current = token;
     answered.current = false;
     cancel.current?.();
     setPhase('working');
@@ -112,6 +118,7 @@ export function RouteVoiceStep({
       // The trial would quietly fall back to Web Audio, which is a different
       // question; skip it instead and say why in the log.
       const r = await logRouteSnapshot(`trial:${step.id}:check`);
+      if (token.aborted) return;
       if (!(r.sinkIdSupported && pickSpeakerOutput(r))) {
         answered.current = true;
         diag('test', 'kit-route-skip', { step: step.id, why: r.sinkIdSupported ? 'no-speaker-output' : 'no-setSinkId' });
@@ -121,7 +128,8 @@ export function RouteVoiceStep({
     }
     const plan: RoutePlan = { strategy: step.strategy, hold: step.hold, evidence: 'drive-decides', why: `kit ${step.id}` };
     setNote(step.mic === 'quiet-close' ? 'Mic on, then off and silent for a moment…' : 'Playing…');
-    const res = await runRouteTrial({ id: step.id, plan, path: step.path, mic: step.mic, ensureMic });
+    const res = await runRouteTrial({ id: step.id, plan, path: step.path, mic: step.mic, ensureMic, signal: token });
+    if (token.aborted) return;
     played.current = res.played;
     if (answered.current) return;
     setNote(res.played === 'ended' ? '' : `The line did not play (${res.played}).`);
@@ -133,20 +141,22 @@ export function RouteVoiceStep({
     const l = listenForRouteAnswer(mic.current, step.id);
     cancel.current = l.cancel;
     const got = await l.result;
-    if (got) {
+    if (got && !token.aborted) {
       setHeard(got.answer);
       setPhase('done');
       answer(got.answer, 'voice', got.heard);
     }
   };
 
-  const started = useRef(false);
   useEffect(() => {
-    // Once per step, StrictMode's rehearsal mount included.
-    if (started.current) return;
-    started.current = true;
+    // Every mount runs and every unmount aborts, so StrictMode's rehearsal
+    // mount starts a trial that the cleanup abandons at its next await, and
+    // the real mount runs the one that counts (review H2).
     void run();
-    return () => cancel.current?.();
+    return () => {
+      trial.current.aborted = true;
+      cancel.current?.();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
