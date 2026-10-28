@@ -286,6 +286,11 @@ test('A voice drill applies the route plan while voice is on and undoes it after
 
   await page.getByRole('checkbox', { name: 'Voice answers' }).uncheck();
   await expect.poll(sessionType).toBe('auto');
+  // "Undoes it" includes the held mic: its track was stopped (review T3).
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { __live?: Record<string, number> }).__live?.['mic-car'] ?? -1))
+    .toBe(0);
+  expect(await page.evaluate(() => (window as unknown as { __stops?: string[] }).__stops ?? [])).toContain('mic-car');
 });
 
 test('Auto changes nothing a drill did before', async ({ page }) => {
@@ -296,9 +301,20 @@ test('Auto changes nothing a drill did before', async ({ page }) => {
   await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
   await page.getByRole('checkbox', { name: 'Voice answers' }).check();
   await expect(page.locator('.voice-status')).toHaveAttribute('data-voice-state', 'listening');
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(1000);
   expect(await page.evaluate(() => (window as unknown as { __session: { type: string } }).__session.type)).toBe('auto');
-  expect(await page.evaluate(() => (window as unknown as { __asked: string[] }).__asked)).not.toContain('mic-car');
+  // No capture on ANY named device -- car or phone -- and no hold of any
+  // kind, not just "not the car" (review T2). Main's own listen-on capture,
+  // if any, asks for no deviceId and shows up here as 'default'.
+  const asked = await page.evaluate(() => (window as unknown as { __asked: string[] }).__asked);
+  expect(asked.filter((id) => id !== 'default')).toEqual([]);
+  const all = await events(page);
+  expect(all.filter((e) => e.event === 'route-hold' || e.event === 'route-plan-revised')).toEqual([]);
+  expect(all.find((e) => e.event === 'route-plan')?.detail).toMatchObject({ strategy: 'web-audio', hold: 'none' });
+  // And voice-off leaves nothing to undo.
+  await page.getByRole('checkbox', { name: 'Voice answers' }).uncheck();
+  await page.waitForTimeout(300);
+  expect(await page.evaluate(() => (window as unknown as { __session: { type: string } }).__session.type)).toBe('auto');
 });
 
 test('Stop during a Route kit trial closes the mic, and the abandoned step neither asks nor saves (review H2)', async ({ page }) => {
