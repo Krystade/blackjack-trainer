@@ -254,7 +254,10 @@ export async function detectRoute(): Promise<DetectedRoute> {
 /** One line with everything the app can see about the route. */
 export async function logRouteSnapshot(reason: string): Promise<DetectedRoute> {
   const route = await detectRoute();
-  const plan = planRoute(prefs.pref, prefs.strategy, route);
+  // The plan IN FORCE when there is one (a drill's, or a kit trial's), so
+  // the line agrees with route-plan; the Settings plan only when idle (M1/L7).
+  const active = activePlan;
+  const plan = active ?? planRoute(prefs.pref, prefs.strategy, route);
   diag('route', 'route-snapshot', {
     reason,
     kind: route.kind,
@@ -269,6 +272,7 @@ export async function logRouteSnapshot(reason: string): Promise<DetectedRoute> {
     plan: plan.strategy,
     hold: plan.hold,
     evidence: plan.evidence,
+    planSource: active ? 'in-force' : 'settings',
   });
   return route;
 }
@@ -304,14 +308,43 @@ export function beginCaptureRoute(reason: string, planOverride?: RoutePlan): Rou
     why: plan.why,
     session: readAudioSessionType() ?? 'unsupported',
   });
-  holdSettled = plan.hold !== 'none' ? holdInput(plan.hold, gen) : Promise.resolve();
+  if (!planOverride && prefs.pref !== 'auto') {
+    // The cached route may be hours old (read at home, the car connected
+    // since): the hold is decided again from a fresh read (review M1).
+    holdSettled = replanHold(plan, gen);
+  } else {
+    holdSettled = plan.hold !== 'none' ? holdInput(plan.hold, gen) : Promise.resolve();
+  }
   return plan;
 }
 
-async function holdInput(which: Exclude<HoldInput, 'none'>, gen: number): Promise<void> {
+/**
+ * The asynchronous half of a settings-driven plan: read the devices, plan the
+ * hold from that, and say so when it differs from the synchronous guess. The
+ * strategy (and any declaration) stays as begun: it had to be in force before
+ * the recogniser started.
+ */
+async function replanHold(begun: RoutePlan, gen: number): Promise<void> {
+  const route = await detectRoute();
+  if (gen !== captureGen) return;
+  const fresh = planRoute(prefs.pref, prefs.strategy, route);
+  if (fresh.hold !== begun.hold || fresh.evidence !== begun.evidence) {
+    activePlan = { ...begun, hold: fresh.hold, evidence: fresh.evidence, why: fresh.why };
+    diag('route', 'route-plan-revised', {
+      from: begun.hold,
+      hold: fresh.hold,
+      evidence: fresh.evidence,
+      route: route.kind,
+      why: fresh.why,
+    });
+  }
+  if (fresh.hold !== 'none') await holdInput(fresh.hold, gen, route);
+}
+
+async function holdInput(which: Exclude<HoldInput, 'none'>, gen: number, readNow?: DetectedRoute): Promise<void> {
   // A fresh read: the labels may only now exist (permission), and the
   // Bluetooth device may have come or gone since the last one.
-  const route = await detectRoute();
+  const route = readNow ?? (await detectRoute());
   // Voice went off (or another plan began) during the read: open nothing.
   // Opening a capture is the event that flips the route (review L1).
   if (gen !== captureGen) return;

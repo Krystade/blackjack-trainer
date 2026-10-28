@@ -217,8 +217,8 @@ describe('the runtime', () => {
     install([CAR, PHONE]);
     let land: () => void = () => {};
     const gate = new Promise<void>((r) => (land = r));
-    const inner = getUserMedia.getMockImplementation()!;
-    getUserMedia.mockImplementation(async (c) => {
+    const inner = getUserMedia.getMockImplementation() as (c: unknown) => Promise<unknown>;
+    getUserMedia.mockImplementation(async (c: unknown) => {
       await gate;
       return inner(c);
     });
@@ -231,6 +231,35 @@ describe('the runtime', () => {
     await captureRouteSettled();
     expect(stopped).toEqual(['mic-car']);
     expect(readDiagnosticLog().some((e) => e.event === 'route-hold' && e.detail?.state === 'held')).toBe(false);
+  });
+
+  it('Bluetooth chosen, the route read at home, the car connected since: the hold is decided from a fresh read (review M1)', async () => {
+    install([PHONE]);
+    setRoutePreferences('bluetooth', 'auto');
+    await detectRoute(); // at home: phone only
+    install([CAR, PHONE]); // the car connects; nothing re-reads
+    const begun = beginCaptureRoute('voice-on');
+    expect(begun.hold).toBe('none'); // the synchronous guess, from the stale read
+    await captureRouteSettled();
+    expect(getUserMedia).toHaveBeenCalledWith({ audio: { deviceId: { exact: 'mic-car' } } });
+    expect(activeRoutePlan()?.hold).toBe('bluetooth');
+    expect(readDiagnosticLog().find((e) => e.event === 'route-plan-revised')?.detail).toMatchObject({ from: 'none', hold: 'bluetooth' });
+    // The snapshot agrees with the plan in force.
+    await logRouteSnapshot('after');
+    expect(readDiagnosticLog().filter((e) => e.event === 'route-snapshot').at(-1)?.detail).toMatchObject({
+      hold: 'bluetooth',
+      planSource: 'in-force',
+    });
+  });
+
+  it('Phone speaker chosen, the car connected since the last read: the phone mic is held', async () => {
+    install([PHONE]);
+    setRoutePreferences('phone', 'auto');
+    await detectRoute();
+    install([CAR, PHONE]);
+    beginCaptureRoute('voice-on');
+    await captureRouteSettled();
+    expect(getUserMedia).toHaveBeenCalledWith({ audio: { deviceId: { exact: 'mic-phone' } } });
   });
 
   it('a new begin releases the previous hold and drops its declaration (review H1)', async () => {
@@ -315,6 +344,8 @@ describe('a phone-mic hold with no Bluetooth', () => {
     beginCaptureRoute('t');
     await captureRouteSettled();
     expect(getUserMedia).not.toHaveBeenCalled();
-    expect(readDiagnosticLog().find((e) => e.event === 'route-hold')?.detail).toMatchObject({ state: 'not-needed' });
+    // The fresh read finds no Bluetooth, so the plan holds nothing, and says so.
+    expect(readDiagnosticLog().find((e) => e.event === 'route-plan-revised')?.detail).toMatchObject({ from: 'phone', hold: 'none' });
+    expect(activeRoutePlan()?.hold).toBe('none');
   });
 });
