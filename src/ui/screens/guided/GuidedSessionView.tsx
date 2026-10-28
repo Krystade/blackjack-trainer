@@ -235,6 +235,8 @@ export function GuidedSessionView({
       if (t.answers === 0 && t.right === 0) return;
       const next = addTally(s, t);
       setSession(next);
+      // Each answer is a resume point: a reload or a killed tab keeps it.
+      saveActive(withActiveMs(next, activeMsNow(next)));
       const seg = current(next);
       if (seg && endsOnAnswer(seg, next.progress[next.index]!, activeMsNow(next))) endSoon();
     });
