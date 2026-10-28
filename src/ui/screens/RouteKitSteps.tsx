@@ -90,6 +90,8 @@ export function RouteVoiceStep({
   const [phase, setPhase] = useState<'paused' | 'working' | 'asking' | 'done'>(waitForTap ? 'paused' : 'working');
   const [note, setNote] = useState('Opening the microphone…');
   const [heard, setHeard] = useState<string | null>(null);
+  /** Voice has stopped listening (answer window over, or no mic): taps only (L6). */
+  const [tapOnly, setTapOnly] = useState(false);
   const cancel = useRef<(() => void) | null>(null);
   const played = useRef('');
   const holdState = useRef('none');
@@ -122,6 +124,7 @@ export function RouteVoiceStep({
     answered.current = false;
     cancel.current?.();
     setPhase('working');
+    setTapOnly(false);
     setHeard(null);
     setNote('Opening the microphone…');
     if (step.strategy === 'speaker-sink') {
@@ -146,16 +149,20 @@ export function RouteVoiceStep({
     setNote(res.played === 'ended' ? '' : `The line did not play (${res.played}).`);
     setPhase('asking');
     if (res.micError || !mic.current) {
-      setNote(`The microphone did not open (${res.micError ?? 'none'}). Tap the answer.`);
+      setNote(`The microphone did not open (${res.micError ?? 'none'}).`);
+      setTapOnly(true);
       return;
     }
     const l = listenForRouteAnswer(mic.current, step.id);
     cancel.current = l.cancel;
     const got = await l.result;
-    if (got && !token.aborted) {
+    if (token.aborted) return;
+    if (got) {
       setHeard(got.answer);
       setPhase('done');
       answer(got.answer, 'voice', got.heard);
+    } else {
+      setTapOnly(true);
     }
   };
 
@@ -186,7 +193,7 @@ export function RouteVoiceStep({
   return (
     <>
       <p className="testkit-instruction">
-        {phase === 'working' ? 'Listen.' : 'Where did it come from? Say it, or tap.'}
+        {phase === 'working' ? 'Listen.' : tapOnly ? 'Voice has stopped listening. Tap your answer.' : 'Where did it come from? Say it, or tap.'}
       </p>
       {note && <p className="testkit-note">{note}</p>}
       {heard && <p className="routekit-heard">{heard}</p>}

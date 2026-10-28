@@ -39,7 +39,7 @@ const STRATEGIES: Array<{ value: RouteStrategySetting; label: string; note: stri
 type TestState =
   | { phase: 'idle' }
   | { phase: 'working'; note: string }
-  | { phase: 'asking'; note: string }
+  | { phase: 'asking'; note: string; tapOnly?: boolean }
   | { phase: 'done'; answer: RouteAnswer; via: 'voice' | 'tap'; heard?: string; expected: RouteAnswer };
 
 /**
@@ -144,11 +144,17 @@ export function AudioRouteSettings({
     if (token.aborted) return;
     setRoute(lastDetectedRoute());
     setTest({ phase: 'asking', note: played === 'ended' ? '' : `The line did not play (${played}).` });
-    if (micError || !mic.current) return; // taps only
+    if (micError || !mic.current) {
+      setTest({ phase: 'asking', note: 'The microphone did not open.', tapOnly: true });
+      return;
+    }
     const l = listenForRouteAnswer(mic.current, 'settings-test');
     cancelListen.current = l.cancel;
     const got = await l.result;
-    if (got && !token.aborted) finish(got.answer, 'voice', got.heard);
+    if (token.aborted) return;
+    if (got) finish(got.answer, 'voice', got.heard);
+    // The answer window is over: say so, rather than invite speech (L6).
+    else setTest((t) => (t.phase === 'asking' ? { ...t, tapOnly: true } : t));
   };
 
   return (
@@ -218,7 +224,8 @@ export function AudioRouteSettings({
       {test.phase === 'asking' && (
         <div className="audio-route-ask" data-testid="audio-route-ask">
           <p className="u-note audio-route-status">
-            {test.note && `${test.note} `}Where did it come from? Say it, or tap.
+            {test.note && `${test.note} `}
+            {test.tapOnly ? 'Voice has stopped listening. Tap your answer.' : 'Where did it come from? Say it, or tap.'}
           </p>
           <div className="audio-route-answers">
             {ROUTE_ANSWERS.map((a) => (

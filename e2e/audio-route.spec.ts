@@ -250,6 +250,34 @@ test('Leaving Settings while Test this route opens the mic leaves no microphone 
   expect(await liveRecognisers(page)).toBe(0);
 });
 
+test('When the answer window closes, the prompt says to tap (review L6)', async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.setViewportSize(PHONE);
+  await withFakePhone(page, CAR);
+  await page.goto('/?e2e=1');
+  // Settings: Test this route, no answer spoken.
+  await openInTheCar(page);
+  await page.getByTestId('audio-route-test').click();
+  const ask = page.getByTestId('audio-route-ask');
+  await expect(ask).toContainText('Say it, or tap', { timeout: 15_000 });
+  await expect(ask).toContainText('Voice has stopped listening. Tap your answer.', { timeout: 20_000 });
+  await expect(ask).not.toContainText('Say it');
+  await ask.getByRole('button', { name: 'Car speakers' }).click();
+  await expect(page.getByTestId('audio-route-result')).toBeVisible();
+
+  // A Route kit step, the same.
+  await page.locator('.tab-bar').getByRole('button', { name: 'Home', exact: true }).click();
+  await page.getByTestId('testkit-open').click();
+  await page.getByRole('button', { name: /Route: car Bluetooth/ }).click();
+  const kit = page.getByTestId('testkit-screen');
+  await kit.getByRole('button', { name: 'Start', exact: true }).click();
+  await expect(page.getByTestId('routekit-snapshot')).toBeVisible();
+  await kit.getByRole('button', { name: 'Next', exact: true }).click();
+  await expect(kit).toContainText('Say it, or tap', { timeout: 15_000 });
+  await expect(kit).toContainText('Voice has stopped listening. Tap your answer.', { timeout: 20_000 });
+  await expect(kit).not.toContainText('Say it, or tap');
+});
+
 test('A tapped answer that misses the route says what was expected', async ({ page }) => {
   test.setTimeout(60_000);
   await page.setViewportSize(PHONE);
