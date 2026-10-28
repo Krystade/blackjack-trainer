@@ -41,7 +41,7 @@
   background: var(--bg-sunken);
   color: var(--ink);
   font: inherit;
-  font-size: 16px;
+  font-size: var(--fs-md);
 }
 
 .scl-input:focus-visible {
