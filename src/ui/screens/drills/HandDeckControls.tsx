@@ -4,8 +4,11 @@ import type { Settings } from '../../../store/types';
 import { saveSettings } from '../../../store/persist';
 import { DECK_SOURCES, deckOf } from '../../../drills/deckSource';
 import type { DeckSource } from '../../../drills/deckSource';
+import { listById, matchingList, sortedLists, unsavedPainting, withListLoaded } from '../../../drills/customLists';
+import { useCustomLists } from '../../useCustomLists';
 import './handDeckControls.css';
 import './deckSelectFit.css';
+import './deckSelectList.css';
 
 const CHIP_LABEL: Record<HandScope, string> = { hard: 'Hard', soft: 'Soft', pairs: 'Pairs' };
 const DECK_LABEL: Record<DeckSource, string> = {
@@ -30,6 +33,8 @@ const DECK_LABEL: Record<DeckSource, string> = {
  */
 /** The Deck select's last entry when the screen can open the Custom editor. */
 const CUSTOMIZE = '__customize';
+/** Wave W: a saved Custom list, picked straight from the Deck select. */
+const LIST = 'list:';
 
 export function HandDeckControls({
   settings,
@@ -49,6 +54,9 @@ export function HandDeckControls({
   const scopes = scopesFrom(settings.drill);
   const all = isAllScopes(scopes);
   const deck = deckOf(settings.drill);
+  // Wave W: the saved lists, and the one the Custom deck is now (if any).
+  const lists = useCustomLists();
+  const current = deck === 'custom' && settings.drill.custom ? matchingList(lists, settings.drill.custom, settings.drill.customListId) : undefined;
   const commit = (next: Settings) => {
     saveSettings(next);
     onChange(next);
@@ -76,20 +84,29 @@ export function HandDeckControls({
         {chip('all', 'All', all)}
         {ALL_SCOPES.map((s) => chip(s, CHIP_LABEL[s], !all && scopes.includes(s)))}
       </div>
-      <label className="deck-select deck-select-fit">
+      <label className={`deck-select deck-select-fit${current ? ' deck-select-list' : ''}`}>
         <span className="deck-select-caption">Deck</span>
         {/* Wave M: the pill is as wide as the CHOSEN deck's name, not the
             longest option's (a native select sizes to its longest option, and
             "Customize…" pushed it over the Pairs chip at 320). */}
-        <span className="deck-select-sizer" aria-hidden="true">
-          {DECK_LABEL[deck]}
+        <span className="deck-select-sizer" aria-hidden="true" data-testid="deck-label">
+          {current ? current.name : DECK_LABEL[deck]}
         </span>
         <select
           aria-label="Deck"
-          value={deck}
+          value={current ? `${LIST}${current.id}` : deck}
           onChange={(e) => {
             if (e.target.value === CUSTOMIZE) {
               onCustomize?.();
+              return;
+            }
+            if (e.target.value.startsWith(LIST)) {
+              const list = listById(lists, e.target.value.slice(LIST.length));
+              if (!list) return;
+              // Painting that is in no list would be lost: ask (a native
+              // select has no room for an inline question).
+              if (unsavedPainting(settings.drill, lists) && !window.confirm(`Replace your unsaved Custom painting with “${list.name}”?`)) return;
+              commit(withListLoaded(settings, list, true));
               return;
             }
             const next = e.target.value as DeckSource;
@@ -101,6 +118,15 @@ export function HandDeckControls({
               {DECK_LABEL[d]}
             </option>
           ))}
+          {lists.lists.length > 0 && (
+            <optgroup label="Saved lists">
+              {sortedLists(lists).map((l) => (
+                <option key={l.id} value={`${LIST}${l.id}`}>
+                  {l.name}
+                </option>
+              ))}
+            </optgroup>
+          )}
           {onCustomize && <option value={CUSTOMIZE}>Customize…</option>}
         </select>
       </label>

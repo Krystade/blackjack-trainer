@@ -19,6 +19,7 @@ import {
 } from '../../drills/cellSelection';
 import type { Brush } from '../../drills/cellSelection';
 import { CellPaintGrid } from './CellPaintGrid';
+import { SavedCustomLists } from './SavedCustomLists';
 
 /**
  * B2 (#9): the Custom drill editor -- paint tiers on the chart grid, set the
@@ -32,6 +33,9 @@ import { CellPaintGrid } from './CellPaintGrid';
  * With no saved selection the editor shows every cell Regular -- which draws
  * exactly like no selection at all -- and nothing is written until something
  * changes.
+ *
+ * Wave W: named lists of it (Save as, Load, Overwrite, Rename, Delete) in
+ * SavedCustomLists, under Start.
  */
 
 type Mode = 'flashcards' | 'mastery' | 'mixed';
@@ -171,6 +175,8 @@ export function CustomDrillEditor({
               : 'Every cell is Off. Paint some cells to start.'}
           </p>
         </section>
+
+        <SavedCustomLists settings={settings} selection={selection} onSettingsChange={onSettingsChange} />
 
         <section className="cde-panel" aria-labelledby="cde-mix-title">
           <h2 className="u-section-title" id="cde-mix-title">

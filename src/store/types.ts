@@ -82,6 +82,10 @@ export interface Settings {
     // cells carrying a marker.
     deck?: 'chart' | 'custom' | 'indexes' | 'marked';
     custom?: CustomSelection;
+    // Wave W: the saved list (drills/customLists.ts) `custom` was last loaded
+    // from or saved as. Absent = none. A hint only: the list is "current"
+    // while `custom` still deals exactly like it.
+    customListId?: string;
     // #31: a coloured dot per chart cell, set by long-pressing a card.
     markers?: Record<string, MarkerColour>;
     // #27: deal 3-card versions of double/surrender cells (~15%) so the

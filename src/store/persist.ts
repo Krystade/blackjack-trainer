@@ -486,6 +486,9 @@ const EXTRA_KEYS: { key: string; field: string }[] = [
   // backed up like the SR decks. The variant being studied
   // (bjtrainer.variant.v1) is a device preference and stays out.
   { key: 'bjtrainer.variantTally.v1', field: 'variantTally' },
+  // Wave W: the Custom deck's saved lists (drills/customLists.ts) -- painted
+  // by hand, so as unrecoverable as a profile.
+  { key: 'bjtrainer.customLists.v1', field: 'customLists' },
 ];
 
 /**

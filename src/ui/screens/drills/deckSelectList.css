@@ -1,0 +1,37 @@
+/* Wave W: the Deck pill when a saved Custom list is dealt. Its name can be
+   long, and a native select clips its text without an ellipsis, so the
+   sizer becomes the visible label (cut with an ellipsis at a width the 320
+   row has room for) and the select over it stays the tap target, its own
+   text transparent. The option list is unaffected. */
+.deck-select-list .deck-select-sizer {
+  visibility: visible;
+  /* A block, not the flex box it is otherwise: text-overflow does nothing
+     to a flex container's text. Same padding, so the text sits where the
+     select's own would. */
+  display: inline-block;
+  /* No wider than "Custom" is at 320 (beside All Hard Soft Pairs). */
+  max-width: 6.25rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-radius: 999px;
+  border-color: var(--line);
+  background: var(--surface);
+  color: var(--ink);
+}
+
+@media (min-width: 370px) {
+  .deck-select-list .deck-select-sizer {
+    max-width: 8.5rem;
+  }
+}
+
+.deck-select-list select {
+  color: transparent;
+  background: transparent;
+}
+
+.deck-select-list select option,
+.deck-select-list select optgroup {
+  color: var(--ink);
+  background: var(--surface);
+}

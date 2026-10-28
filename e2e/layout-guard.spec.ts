@@ -120,7 +120,8 @@ const SCREENS: { name: string; open: (page: Page) => Promise<void> }[] = [
   { name: 'Stats Drills', open: async (p) => { await p.locator('.home-stats-link').click(); await statsTab(p, 'Drills'); } },
   { name: 'Stats Over time', open: async (p) => { await p.locator('.home-stats-link').click(); await statsTab(p, 'Over time'); } },
   // Wave W: the You tab's other half, which has the same sticky bar now.
-  { name: 'You Progress', open: async (p) => { await tab(p, 'You'); await expect(p.getByTestId('progress-screen')).toBeVisible(); } },
+  // (The tab opens the half seen last, and Stats was just shown above.)
+  { name: 'You Progress', open: async (p) => { await tab(p, 'You'); await p.getByTestId('you-seg-progress').click(); await expect(p.getByTestId('progress-screen')).toBeVisible(); } },
   { name: 'Settings', open: (p) => openSettingsScreen(p) },
   { name: 'Profiles', open: async (p) => { await p.locator('.home-profile-chip').click(); } },
   { name: 'Profile editor', open: async (p) => { await p.locator('.home-profile-chip').click(); await p.getByRole('button', { name: 'Edit', exact: true }).first().click(); } },

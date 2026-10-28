@@ -1,0 +1,133 @@
+/* Wave W: the Custom editor's saved lists (SavedCustomLists.tsx). Inside a
+   `.cde-panel`, so it takes the editor's card. */
+
+.scl-status {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--ink);
+}
+
+.scl-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.scl-btns > .u-btn {
+  min-height: 44px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.scl-form,
+.scl-ask {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.scl-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* 16px: iOS zooms the page into any smaller input. */
+.scl-input {
+  min-height: 44px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--bg-sunken);
+  color: var(--ink);
+  font: inherit;
+  font-size: 16px;
+}
+
+.scl-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.scl-problem {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--bad);
+}
+
+.scl-message {
+  margin: 0;
+}
+
+.scl-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.scl-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--line);
+}
+
+.scl-row-main {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.scl-row-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.scl-row-name {
+  font-weight: 650;
+  color: var(--ink);
+  overflow-wrap: break-word;
+}
+
+.scl-row-meta {
+  font-size: var(--fs-xs);
+  color: var(--ink-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.scl-badge {
+  display: inline-block;
+  margin-left: var(--space-2);
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-size: var(--fs-2xs);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  vertical-align: 2px;
+}
+
+.scl-load,
+.scl-more {
+  flex: 0 0 auto;
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.scl-more {
+  padding: 0 var(--space-3);
+  font-weight: 700;
+}
+
+.scl-ask-q {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--ink);
+}

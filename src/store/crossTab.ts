@@ -62,6 +62,9 @@ export const OWNED_KEYS = [
   'bjtrainer.casinoSideBets.v1',
   // Wave N: the habit tracker's whole blob (habits/progressStore.ts).
   'bjtrainer.progress.v1',
+  // Wave W: the Custom deck's saved lists, one blob (drills/customLists.ts);
+  // every change there re-reads before it writes, and the screens re-read.
+  'bjtrainer.customLists.v1',
 ] as const;
 
 export interface ExternalWrite {
