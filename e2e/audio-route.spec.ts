@@ -321,6 +321,25 @@ test('A voice drill applies the route plan while voice is on and undoes it after
   expect(await page.evaluate(() => (window as unknown as { __stops?: string[] }).__stops ?? [])).toContain('mic-car');
 });
 
+test('pagehide ends the route plan and releases the held mic (review L2)', async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.setViewportSize(PHONE);
+  await withFakePhone(page, CAR);
+  await withSettings(page, { audio: { audioRoute: 'bluetooth', routeStrategy: 'play-and-record' } });
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
+  await page.getByRole('checkbox', { name: 'Voice answers' }).check();
+  const liveCar = () => page.evaluate(() => (window as unknown as { __live?: Record<string, number> }).__live?.['mic-car'] ?? 0);
+  await expect.poll(liveCar).toBe(1);
+  await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true })));
+  await expect.poll(liveCar).toBe(0);
+  expect(await page.evaluate(() => (window as unknown as { __session: { type: string } }).__session.type)).toBe('auto');
+  await expect
+    .poll(async () => (await events(page)).find((e) => e.event === 'route-plan-end')?.detail?.reason, { timeout: 5_000 })
+    .toBe('pagehide');
+});
+
 test('Auto changes nothing a drill did before', async ({ page }) => {
   await page.setViewportSize(PHONE);
   await withFakePhone(page, CAR);

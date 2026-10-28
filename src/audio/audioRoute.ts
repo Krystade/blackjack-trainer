@@ -318,7 +318,22 @@ export async function logRouteSnapshot(reason: string): Promise<DetectedRoute> {
  *
  * `planOverride` is for the test kit, which compares strategies on purpose.
  */
+let pageHideWatched = false;
+
+/**
+ * The page is going (closed, navigated, or into the back-forward cache): the
+ * held mic and any declared type go with it, whoever began the plan -- a
+ * drill, a Route kit or Settings (review L2). `pagehide`, not hidden: a
+ * glance at the notification shade must not end voice.
+ */
+function watchPageHide(): void {
+  if (pageHideWatched || typeof window === 'undefined' || typeof window.addEventListener !== 'function') return;
+  pageHideWatched = true;
+  window.addEventListener('pagehide', () => endCaptureRoute('pagehide'));
+}
+
 export function beginCaptureRoute(reason: string, planOverride?: RoutePlan): RoutePlan {
+  watchPageHide();
   const plan = planOverride ?? planRoute(prefs.pref, prefs.strategy, lastRoute);
   // NO BEGIN INHERITS AN EARLIER PLAN, whoever forgot to end it: a mic held
   // for a Settings test must not still be open in the next drill, and an
