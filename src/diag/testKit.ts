@@ -28,8 +28,9 @@
  */
 
 import { matchVoiceAction, type VoiceAction } from '../audio/voiceRecognition';
+import { ROUTE_KITS, type RouteKitId, type RouteKitStep } from './routeKit';
 
-export type KitId = 'speaker' | 'desk' | 'car-bt' | 'car-no-bt' | 'bt-phone-mic' | 'words-at-speed';
+export type KitId = 'speaker' | 'desk' | 'car-bt' | 'car-no-bt' | 'bt-phone-mic' | 'words-at-speed' | RouteKitId;
 
 /** How a sound is made. The two paths are routed by different parts of WebKit. */
 export type PlayPath = 'element' | 'webaudio';
@@ -89,7 +90,9 @@ export type KitStep =
     }
   | { kind: 'phone-recognise'; id: string; title: string; why: string }
   | { kind: 'wheel-press'; id: string; title: string; seconds: number; why: string }
-  | { kind: 'phone-summary'; id: string; title: string; why: string };
+  | { kind: 'phone-summary'; id: string; title: string; why: string }
+  // Wave U: the Route kits (routeKit.ts).
+  | RouteKitStep;
 
 const DESK_ROUTE = ['Loud speaker', 'Earpiece', 'Heard nothing', 'Not sure'] as const;
 const CAR_ROUTE = ['Car speakers', 'Phone loud speaker', 'Earpiece', 'Heard nothing', 'Not sure'] as const;
@@ -370,7 +373,10 @@ export const KITS: Record<KitId, { label: string; where: string; steps: readonly
     label: 'Bluetooth: phone mic?',
     where: 'In the car, Bluetooth connected, parked with the engine running. About 3 minutes.',
     steps: PHONE_MIC_STEPS,
-  },
+  },  // Wave U: one per route, answered by voice. Their own data, in routeKit.ts.
+  'route-phone': ROUTE_KITS['route-phone'],
+  'route-car': ROUTE_KITS['route-car'],
+  'route-headset': ROUTE_KITS['route-headset'],
 };
 
 /**

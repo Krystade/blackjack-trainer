@@ -21,6 +21,7 @@ import {
   type ClipVoiceInfo,
 } from '../../audio/clips';
 import { micSessionCostPaid } from '../../audio/micSessionCost';
+import { AudioRouteSettings } from './AudioRouteSettings';
 import { TEST_AUDIO_LINE } from '../../audio/narrate';
 import { DEFAULT_CHIME_LEVEL, MAX_VOLUME, effectiveVolume } from '../../audio/volume';
 import {
@@ -363,6 +364,8 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
           Two tones: the press, then the microphone going live. The second one is when to
           speak &mdash; if it never sounds, the microphone never opened.
         </div>
+        {/* Wave U: where sound and the microphone go while voice is on. */}
+        <AudioRouteSettings audio={settings.audio} onChange={updateAudio} disabled={audioDisabled} />
       </CollapsibleSection>
 
       <CollapsibleSection

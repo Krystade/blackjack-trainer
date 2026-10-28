@@ -27,7 +27,8 @@ const opensMic = (s: KitStep) =>
   (s.kind === 'route' && s.mic === 'open') ||
   s.kind === 'route-blind' ||
   s.kind === 'calibrate' ||
-  s.kind === 'phone-inputs';
+  s.kind === 'phone-inputs' ||
+  s.kind === 'route-voice';
 
 const sample = (say: string, heard: string[]): CalibrationSample => {
   const word = calibrationSchedule().find((w) => w.say === say)!;
@@ -41,6 +42,15 @@ describe('test kit', () => {
       expect(firstOpen).toBeGreaterThanOrEqual(0);
       const lastBaseline = kit.steps.map((s) => s.kind === 'route' && s.mic === 'never-opened').lastIndexOf(true);
       expect(lastBaseline).toBeLessThan(firstOpen);
+    }
+  });
+
+  it('Route kits say the answer words before any step opens the mic', () => {
+    // The intro names car, phone, headset, earpiece and nothing; said into an
+    // open recogniser it would answer the first question by itself.
+    for (const id of ['route-phone', 'route-car', 'route-headset'] as const) {
+      const steps = KITS[id].steps;
+      expect(steps.findIndex((s) => s.kind === 'route-snapshot')).toBeLessThan(steps.findIndex(opensMic));
     }
   });
 

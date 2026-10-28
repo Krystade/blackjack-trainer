@@ -31,6 +31,7 @@ import { reachableReasons, drillSentences, indexTestUtterances } from './spokenP
 import { FIELD_TEST_STEPS } from '../src/diag/fieldTest';
 import { betMissFeedback } from '../src/ui/betFeedback';
 import { DC_LINES, QUEUE_TTS_LINE } from '../src/diag/driveChecks';
+import { ROUTE_LINES } from '../src/diag/routeKit';
 import {
   narrateNotATag,
   narrateReadback,
@@ -411,6 +412,12 @@ describe('shipped clip coverage', () => {
       const manifest = manifestFor(voice);
       expect(Object.values(DC_LINES).filter((t) => segmentForClips(t, manifest) === null)).toEqual([]);
       expect(segmentForClips(QUEUE_TTS_LINE, manifest)).toBeNull();
+    });
+
+    /** Wave U: the Route kits and Test this route ask by voice, with the mic open. */
+    it(`resolves every route-test line (${voice})`, () => {
+      const manifest = manifestFor(voice);
+      expect(Object.values(ROUTE_LINES).filter((t) => segmentForClips(t, manifest) === null)).toEqual([]);
     });
 
     /** "Correct." was covered and "Wrong." was not, for a long time. */

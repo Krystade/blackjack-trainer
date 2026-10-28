@@ -162,6 +162,12 @@ export function planRoute(pref: RoutePref, strategy: RouteStrategySetting, route
     hold = 'bluetooth';
     holdWhy = `${route.bluetooth?.label ?? 'Bluetooth'} mic held so the route stays on it`;
   }
+  else if (pref !== 'auto' && route.kind === 'unknown') {
+    // Nothing named yet (no permission, or not read yet): hold what the
+    // setting asks for, and let the hold itself look once the mic is open.
+    hold = pref;
+    holdWhy = `${pref} mic held once the inputs are named`;
+  }
 
   let chosen: RouteStrategy;
   let evidence: RoutePlan['evidence'];
@@ -298,6 +304,11 @@ async function holdInput(which: Exclude<HoldInput, 'none'>, gen: number): Promis
   // A fresh read: the labels may only now exist (permission), and the
   // Bluetooth device may have come or gone since the last one.
   const route = await detectRoute();
+  if (which === 'phone' && route.kind !== 'bluetooth') {
+    // Nothing to steer away from: the phone mic is the route already.
+    diag('route', 'route-hold', { which, state: 'not-needed', inputs: route.inputs.join(' | ') || 'none' });
+    return;
+  }
   const target = which === 'phone' ? route.phone : route.bluetooth;
   if (!target) {
     diag('route', 'route-hold', { which, state: 'no-such-input', inputs: route.inputs.join(' | ') || 'none' });

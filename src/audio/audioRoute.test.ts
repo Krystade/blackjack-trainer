@@ -246,3 +246,38 @@ describe('the runtime', () => {
     });
   });
 });
+
+describe('a route not yet named', () => {
+  it('holds what the setting asks for, to be resolved once the mic is open', () => {
+    const unknown = classifyInputs([]);
+    expect(planRoute('bluetooth', 'auto', unknown).hold).toBe('bluetooth');
+    expect(planRoute('phone', 'auto', unknown).hold).toBe('phone');
+    expect(planRoute('auto', 'auto', unknown).hold).toBe('none');
+  });
+});
+
+describe('a phone-mic hold with no Bluetooth', () => {
+  const realNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  afterEach(() => {
+    endCaptureRoute('t');
+    if (realNavigator) Object.defineProperty(globalThis, 'navigator', realNavigator);
+    else delete (globalThis as { navigator?: unknown }).navigator;
+  });
+
+  it('opens nothing: the phone mic is the route already', async () => {
+    clearDiagnosticLog();
+    _resetAudioRouteForTest();
+    const getUserMedia = vi.fn();
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { mediaDevices: { enumerateDevices: async () => [PHONE], getUserMedia } },
+      configurable: true,
+      writable: true,
+    });
+    setRoutePreferences('phone', 'auto');
+    // Planned before the inputs were named, as at a cold voice-on.
+    beginCaptureRoute('t');
+    await captureRouteSettled();
+    expect(getUserMedia).not.toHaveBeenCalled();
+    expect(readDiagnosticLog().find((e) => e.event === 'route-hold')?.detail).toMatchObject({ state: 'not-needed' });
+  });
+});

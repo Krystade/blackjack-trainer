@@ -24,6 +24,7 @@
 
 import { CALIBRATION_INTRO, CALIBRATION_RETRY, calibrationOrderLine } from '../src/diag/testKit';
 import { DC_LINES } from '../src/diag/driveChecks';
+import { ROUTE_LINES } from '../src/diag/routeKit';
 import { correctPlay } from '../src/engine/strategy';
 import { DEFAULT_RULES } from '../src/engine/ruleset';
 import type { RuleSet } from '../src/engine/ruleset';
@@ -338,6 +339,8 @@ export function drillSentences(): string[] {
   // one clip, so splitting it would ask for sentences nobody says alone.
   // QUEUE_TTS_LINE is left out on purpose: check 4 needs it live.
   for (const line of Object.values(DC_LINES)) sentences.add(line);
+  // Wave U: the route question and the Route kits' intro, whole.
+  for (const line of Object.values(ROUTE_LINES)) sentences.add(line);
   return [...sentences];
 }
 

@@ -47,6 +47,9 @@ import {
 } from '../../diag/phoneMic';
 import { setMediaSessionProbe } from '../../audio/mediaSession';
 import { readAudioSessionType } from '../../audio/audioSession';
+import { endCaptureRoute } from '../../audio/audioRoute';
+import { ROUTE_ANSWERS, isRouteKitId, routeKitSummary, type RouteAnswer, type RouteStepResult } from '../../diag/routeKit';
+import { RouteSnapshotStep, RouteVoiceStep } from './RouteKitSteps';
 import { diag, formatDiagnosticLog, readDiagnosticLog } from '../../diag/diagnosticLog';
 import { listMicrophones, probeMicSpectrum, type MicProbeResult } from '../../diag/micSpectrum';
 import { FIELD_TEST_STEPS } from '../../diag/fieldTest';
@@ -98,6 +101,7 @@ export function TestKit({ onNavigate }: { onNavigate: (s: Screen) => void }) {
   // what the steps measured, for the summary.
   const input = useRef<HeldInput | null>(null);
   const phoneRun = useRef<PhoneRun>({ answers: {} });
+  const routeResults = useRef<RouteStepResult[]>([]);
   const [fieldRun, setFieldRun] = useState(() => readFieldTestRun());
   useEffect(() => subscribeFieldTestRun(() => setFieldRun(readFieldTestRun())), []);
 
@@ -116,6 +120,8 @@ export function TestKit({ onNavigate }: { onNavigate: (s: Screen) => void }) {
     mic.current = null;
     input.current = null;
     setMediaSessionProbe(null);
+    // A Route kit's plan (declared session type, held input) goes with them.
+    endCaptureRoute('testkit-release');
     await Promise.all([m?.close(), i?.close()]);
   };
 
@@ -148,6 +154,7 @@ export function TestKit({ onNavigate }: { onNavigate: (s: Screen) => void }) {
       /* the copy falls back to the whole log */
     }
     diag('test', 'kit-start', { kit: id });
+    routeResults.current = [];
     setKit(id);
     setIndex(0);
     setDone(false);
@@ -160,6 +167,10 @@ export function TestKit({ onNavigate }: { onNavigate: (s: Screen) => void }) {
     if (next >= steps.length) {
       void releaseAll();
       clearProgress();
+      if (isRouteKitId(kit)) {
+        endCaptureRoute('route-kit-done');
+        diag('test', 'kit-route-summary', { kit, ...routeKitSummary(kit, routeResults.current) });
+      }
       diag('test', 'kit-finished', { kit });
       setDone(true);
       return;
@@ -171,6 +182,13 @@ export function TestKit({ onNavigate }: { onNavigate: (s: Screen) => void }) {
   const answer = (value: string, extra: Record<string, unknown> = {}) => {
     if (!step) return;
     diag('test', 'kit-answer', { kit, step: step.id, answer: value, ...extra });
+    if (step.kind === 'route-voice') {
+      routeResults.current.push({
+        step: step.id,
+        answer: (ROUTE_ANSWERS as readonly string[]).includes(value) ? (value as RouteAnswer) : 'skipped',
+        via: extra.via === 'voice' ? 'voice' : extra.via === 'tap' ? 'tap' : 'skip',
+      });
+    }
     phoneRun.current.answers[step.id] = value;
     advance();
   };
@@ -378,6 +396,10 @@ function StepView(props: StepProps) {
       return <WheelPressStep {...props} step={step} />;
     case 'phone-summary':
       return <PhoneSummaryStep {...props} />;
+    case 'route-snapshot':
+      return <RouteSnapshotStep onAnswer={props.onAnswer} />;
+    case 'route-voice':
+      return <RouteVoiceStep step={step} ensureMic={props.ensureMic} mic={props.mic} onAnswer={props.onAnswer} />;
   }
 }
 
