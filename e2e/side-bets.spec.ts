@@ -295,6 +295,8 @@ test.describe('the casino stats card', () => {
     }, JSON.stringify(LOG));
     await page.goto('/?e2e=1');
     await page.locator('.tab-bar').getByRole('button', { name: 'Casino', exact: true }).click();
+    // Wave W: the ranking is Casino's second part.
+    await page.getByTestId('casino-seg-ranked').click();
     await page.getByTestId('games-ranked').getByTestId('rank-row').first().click();
     const card = page.getByTestId('gs-side-bets');
     await expect(card).toBeVisible();
@@ -326,6 +328,8 @@ test.describe('the casino stats card', () => {
     }, JSON.stringify(log));
     await page.goto('/?e2e=1');
     await page.locator('.tab-bar').getByRole('button', { name: 'Casino', exact: true }).click();
+    // Wave W: the ranking is Casino's second part.
+    await page.getByTestId('casino-seg-ranked').click();
     const row = page.getByTestId('games-ranked').getByTestId('rank-row').first();
     await expect(row.getByTestId('rank-ev')).toHaveText('not modelled');
     await expect(row.getByTestId('side-bet-badge')).toHaveCount(0);
@@ -356,6 +360,8 @@ test.describe('the casino stats card', () => {
     );
     await page.goto('/?e2e=1');
     await page.locator('.tab-bar').getByRole('button', { name: 'Casino', exact: true }).click();
+    // Wave W: the ranking is Casino's second part.
+    await page.getByTestId('casino-seg-ranked').click();
     await page.getByTestId('games-ranked').getByTestId('rank-row').first().click();
     test.setTimeout(90_000);
     // Wave Q: the open card's game is worked out on its own.

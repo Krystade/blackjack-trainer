@@ -158,9 +158,15 @@ test('a casino game can be a variant: the card shows its house edge and says cou
   await page.goto('/?e2e=1');
   await setHidden(true);
   await tab(page, 'Casino');
+  // Wave W: the directory row opens Rio's page; Edit opens the form; Save comes back to the page.
   await page.getByTestId('casino-row').filter({ hasText: 'Rio' }).click();
+  await page.getByRole('button', { name: 'Edit casino', exact: true }).click();
   await page.getByTestId('game-variant').selectOption('freebet');
   await page.getByRole('button', { name: 'Save casino' }).click();
+  await expect(page.getByTestId('detail-rules')).toContainText('Free Bet');
+  await expect(page.getByTestId('detail-figures')).toHaveText('Not modelled: the simulator does not deal this game');
+  await page.getByRole('button', { name: /Back$/ }).click();
+  await page.getByTestId('casino-seg-ranked').click();
 
   const row = page.getByTestId('games-ranked').getByTestId('rank-row');
   await expect(row.getByTestId('rank-ev')).toHaveText('not modelled');
@@ -208,6 +214,7 @@ test('a variant game at a card room: commission added, assumed only for that; lo
   }, JSON.stringify(log));
   await page.goto('/?e2e=1');
   await tab(page, 'Casino');
+  await page.getByTestId('casino-seg-ranked').click();
   const rows = page.getByTestId('games-ranked').getByTestId('rank-row');
   // Both rows drawn first, so "no badge" is about the rows and not an empty list.
   await expect(rows.getByTestId('rank-ev')).toHaveText(['not modelled', 'not modelled']);

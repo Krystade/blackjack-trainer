@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { setLeaveGuard } from '../../leaveGuard';
 import { useActivityLive } from '../../activityLive';
 import { useCasinoLog } from './useCasinoLog';
-import { CasinoHome } from './CasinoHome';
+import { CasinoHome, type CasinoSegment } from './CasinoHome';
+import { CasinoDetail } from './CasinoDetail';
+import { casinoById, loadCasinoLog, runningSession } from '../../../store/casinoLog';
 import { CasinoForm } from './CasinoForm';
 import { StartSession } from './StartSession';
 import { EndSession } from './EndSession';
@@ -13,6 +15,7 @@ import { AutoSim } from './AutoSim';
 import './casino.css';
 import './casinoGames.css';
 import './casinoKinds.css';
+import './casinoDirectory.css';
 
 /**
  * WAVE J (lane C): THE CASINO TAB. The real-play notebook -- casinos, their
@@ -27,11 +30,14 @@ import './casinoKinds.css';
 
 export type CasinoView =
   | { kind: 'home' }
-  | { kind: 'casino'; id: string | null }
+  /** Wave W: one casino's page, to read (the directory's row opens it). */
+  | { kind: 'detail'; id: string }
+  /** The form; `from` is where Save, Cancel and Back return (the casino's page when opened there). */
+  | { kind: 'casino'; id: string | null; from?: CasinoView }
   | { kind: 'start' }
   | { kind: 'end'; sessionId: string }
   | { kind: 'session'; sessionId: string; from: CasinoView }
-  | { kind: 'game'; casinoId: string; gameId: string }
+  | { kind: 'game'; casinoId: string; gameId: string; from?: CasinoView }
   | { kind: 'settings' };
 
 const DISCARD_PROMPT = 'Discard what you entered on this form?';
@@ -40,6 +46,16 @@ export function Casino() {
   const { log, commit, saveFailed } = useCasinoLog();
   const [view, setView] = useState<CasinoView>({ kind: 'home' });
   const [dirty, setDirty] = useState(false);
+  // Wave W: which part of home shows. Kept here so Back from a casino, a game
+  // or a session lands on the part it was opened from. A running session
+  // opens on Sessions, and a session starting switches there.
+  const liveId = runningSession(log)?.id ?? null;
+  const [segment, setSegment] = useState<CasinoSegment>(() => (liveId ? 'sessions' : 'casinos'));
+  const seenLive = useRef(liveId);
+  useEffect(() => {
+    if (liveId !== null && liveId !== seenLive.current) setSegment('sessions');
+    seenLive.current = liveId;
+  }, [liveId]);
 
   // A half-filled form survives a stray tab tap (it asks), and an update
   // reload waits while one is open: the end-of-session form is typed in the
@@ -57,14 +73,32 @@ export function Casino() {
   }, []);
   const home = useCallback(() => go({ kind: 'home' }), [go]);
 
-  const back = view.kind === 'session' ? () => go(view.from) : home;
+  const back =
+    view.kind === 'session'
+      ? () => go(view.from)
+      : (view.kind === 'casino' || view.kind === 'game') && view.from
+        ? () => go(view.from!)
+        : home;
+  // The form returns where it was opened from -- unless that was the page of
+  // the casino it just deleted (read fresh: the delete has just been saved).
+  const formFrom = view.kind === 'casino' ? view.from : undefined;
+  const formGo = useCallback(
+    (next: CasinoView) => {
+      if (next.kind === 'home' && formFrom?.kind === 'detail' && casinoById(loadCasinoLog(), formFrom.id)) go(formFrom);
+      else go(next);
+    },
+    [go, formFrom],
+  );
+  const detailName = view.kind === 'detail' ? casinoById(log, view.id)?.name : undefined;
   // A game's stats card goes back to the ranking it was opened from (home).
   const title =
     view.kind === 'home'
       ? 'Casino'
-      : view.kind === 'casino'
+      : view.kind === 'detail'
+        ? (detailName ?? 'Casino')
+        : view.kind === 'casino'
         ? view.id
-          ? 'Casino details'
+          ? 'Edit casino'
           : 'New casino'
         : view.kind === 'start'
           ? 'Start a session'
@@ -79,10 +113,13 @@ export function Casino() {
   let body;
   switch (view.kind) {
     case 'home':
-      body = <CasinoHome log={log} commit={commit} go={go} />;
+      body = <CasinoHome log={log} commit={commit} go={go} segment={segment} onSegment={setSegment} />;
+      break;
+    case 'detail':
+      body = <CasinoDetail key={view.id} log={log} id={view.id} commit={commit} go={go} />;
       break;
     case 'casino':
-      body = <CasinoForm key={view.id ?? 'new'} log={log} id={view.id} commit={commit} go={go} onDirty={setDirty} />;
+      body = <CasinoForm key={view.id ?? 'new'} log={log} id={view.id} commit={commit} go={formGo} onDirty={setDirty} />;
       break;
     case 'start':
       body = <StartSession log={log} commit={commit} go={go} onDirty={setDirty} />;

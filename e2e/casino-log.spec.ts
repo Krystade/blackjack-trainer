@@ -22,6 +22,8 @@ const LEGACY_KEY = 'bjtrainer.casinoLog.v1';
 const T0 = new Date(2026, 9, 18, 19, 0, 0).getTime();
 
 const openCasino = (page: Page) => page.locator('.tab-bar').getByRole('button', { name: 'Casino', exact: true }).click();
+/** Wave W: Casino's home is in three parts: Casinos (the directory), Ranked and Sessions. */
+const seg = (page: Page, part: 'casinos' | 'ranked' | 'sessions') => page.getByTestId(`casino-seg-${part}`).click();
 const stored = (page: Page) => page.evaluate((k) => localStorage.getItem(k), KEY);
 
 /** The live card's clock as seconds. */
@@ -59,7 +61,7 @@ test('a real session: casino, buy-ins, reload, back-off, burn, figures, and the 
   await noFileShare(page);
   await page.goto('/?e2e=1');
   await openCasino(page);
-  await expect(page.getByRole('heading', { name: 'Your real-play notebook' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Your casinos and their rules' })).toBeVisible();
   // Review N6: from here the clock is paused, so real time cannot leak into
   // the session's length: only the fast-forwards and runFor below move it.
   await page.clock.pauseAt(T0 + 60_000);
@@ -80,6 +82,7 @@ test('a real session: casino, buy-ins, reload, back-off, burn, figures, and the 
   await expect(row).toContainText('6D H17 DAS LS 3:2 · cut 1.5');
 
   // --- Start a session there; the card asks for the buy-in at once.
+  await seg(page, 'sessions');
   await page.getByRole('button', { name: 'Start session' }).click();
   await page.getByTestId('start-at').filter({ hasText: 'Golden Nugget' }).click();
   const live = page.getByTestId('casino-live');
@@ -146,12 +149,15 @@ test('a real session: casino, buy-ins, reload, back-off, burn, figures, and the 
   await expect(page.getByTestId('casino-live')).toHaveCount(0);
   await expect(page.getByTestId('casino-tab-live')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Casino', exact: true })).toHaveAccessibleDescription('');
+  // Wave W: the casino is in the directory; the session under Sessions.
+  await seg(page, 'casinos');
   const burned = page.locator('.cas-group[data-group="burned"]').getByTestId('casino-row');
   await expect(burned).toHaveCount(1);
   await expect(burned).toContainText('Golden Nugget');
   await expect(burned.getByTestId('burned-badge')).toHaveText('Burned until 18 Apr 2027');
   await expect(burned.getByTestId('heat-badge')).toHaveText('Worst: Back-off');
   await expect(burned).toContainText('today');
+  await seg(page, 'sessions');
   const hist = page.getByTestId('history-row');
   await expect(hist).toHaveCount(1);
   await expect(hist).toContainText('Sun 18 Oct');
@@ -175,6 +181,7 @@ test('a real session: casino, buy-ins, reload, back-off, burn, figures, and the 
   // --- Never exported, with data: the nudge is up. Export clears it.
   await expect(page.getByTestId('casino-export-nudge')).toBeVisible();
   const before_export = JSON.parse((await stored(page))!) as { casinos: unknown[]; sessions: unknown[]; settings: unknown };
+  await seg(page, 'casinos');
   const downloading = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export JSON' }).click();
   const download = await downloading;
@@ -186,7 +193,7 @@ test('a real session: casino, buy-ins, reload, back-off, burn, figures, and the 
   await page.evaluate((k) => localStorage.removeItem(k), KEY);
   await page.reload();
   await openCasino(page);
-  await expect(page.getByRole('heading', { name: 'Your real-play notebook' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Your casinos and their rules' })).toBeVisible();
   await page.getByTestId('casino-import-file').setInputFiles({
     name: 'casino-log-2026-10-18.json',
     mimeType: 'application/json',
@@ -195,6 +202,7 @@ test('a real session: casino, buy-ins, reload, back-off, burn, figures, and the 
   await expect(page.locator('.cas-message')).toHaveText(
     'Imported: 1 casino added, 0 updated, 1 session added, 0 updated.',
   );
+  await seg(page, 'sessions');
   await expect(page.getByTestId('casino-bankroll')).toHaveText('$10,600');
   await expect(page.getByTestId('history-row')).toContainText('+$600');
   const after = JSON.parse((await stored(page))!) as typeof before_export;
@@ -203,6 +211,7 @@ test('a real session: casino, buy-ins, reload, back-off, burn, figures, and the 
   expect(after.settings).toEqual(before_export.settings);
 
   // --- Importing the same file again changes nothing.
+  await seg(page, 'casinos');
   await page.getByTestId('casino-import-file').setInputFiles({
     name: 'again.json',
     mimeType: 'application/json',
@@ -222,6 +231,7 @@ test('a trespass offers an indefinite burn, and leaving it unticked leaves the c
   await page.clock.install({ time: T0 });
   await page.goto('/?e2e=1');
   await openCasino(page);
+  await seg(page, 'sessions');
   await page.getByRole('button', { name: 'Start session' }).click();
   await page.locator('input[name="newCasinoName"]').fill('Bellagio');
   await page.getByRole('button', { name: 'Add and start' }).click();
@@ -238,12 +248,15 @@ test('a trespass offers an indefinite burn, and leaving it unticked leaves the c
   await expect(offer.locator('input[name="burnUntil"]')).toHaveCount(0);
   await offer.getByRole('checkbox').uncheck();
   await end.getByRole('button', { name: 'End session' }).click();
+  await seg(page, 'casinos');
   await expect(page.locator('.cas-group[data-group="playable"]').getByTestId('casino-row')).toContainText('Bellagio');
+  await seg(page, 'sessions');
   await expect(page.getByTestId('history-row').getByTestId('heat-badge')).toHaveText('Trespass');
   await expect(page.getByTestId('casino-net')).toHaveText('−$500');
   await expect(page.getByTestId('casino-per-hour')).toHaveText('−$250');
 
   // The same, ticked: burned indefinitely.
+  await seg(page, 'sessions');
   await page.getByRole('button', { name: 'Start session' }).click();
   await page.getByTestId('start-at').filter({ hasText: 'Bellagio' }).click();
   await page.getByRole('button', { name: 'Later' }).click();
@@ -251,6 +264,7 @@ test('a trespass offers an indefinite burn, and leaving it unticked leaves the c
   await end.locator('input[name="cashOut"]').fill('0');
   await end.getByRole('button', { name: /^Trespass/ }).click();
   await end.getByRole('button', { name: 'End session' }).click();
+  await seg(page, 'casinos');
   await expect(page.locator('.cas-group[data-group="burned"]').getByTestId('burned-badge')).toHaveText('Burned indefinitely');
 });
 
@@ -281,6 +295,7 @@ test('a finished session can be edited and deleted, and the figures follow', asy
   await expect(page.getByTestId('casino-row').getByTestId('warn-badge')).toHaveText('No mid-shoe');
   await expect(page.getByTestId('casino-export-nudge')).toHaveCount(0);
   await expect(page.getByTestId('casino-row')).toContainText('3 days ago');
+  await seg(page, 'sessions');
   await expect(page.getByTestId('casino-net')).toHaveText('+$300');
 
   await page.getByTestId('history-row').click();
@@ -326,6 +341,7 @@ test('a half-filled end-of-session form asks before a stray tab tap throws it aw
   await page.clock.install({ time: T0 });
   await page.goto('/?e2e=1');
   await openCasino(page);
+  await seg(page, 'sessions');
   await page.getByRole('button', { name: 'Start session' }).click();
   await page.locator('input[name="newCasinoName"]').fill('Wynn');
   await page.getByRole('button', { name: 'Add and start' }).click();
@@ -376,6 +392,7 @@ test('export by the share sheet counts only when a file was actually handed over
   });
   await page.goto('/?e2e=1');
   await openCasino(page);
+  await seg(page, 'sessions');
   await page.getByRole('button', { name: 'Start session' }).click();
   await page.locator('input[name="newCasinoName"]').fill('Wynn');
   await page.getByRole('button', { name: 'Add and start' }).click();
@@ -400,6 +417,7 @@ test("a second tab sees the first tab's buy-in, and ending there keeps it", asyn
   const a = await context.newPage();
   await a.goto('/?e2e=1');
   await openCasino(a);
+  await seg(a, 'sessions');
   await a.getByRole('button', { name: 'Start session' }).click();
   await a.locator('input[name="newCasinoName"]').fill('Aria');
   await a.getByRole('button', { name: 'Add and start' }).click();
@@ -434,7 +452,7 @@ test('an unreadable stored log does not crash the tab, and is kept aside', async
   await page.goto('/?e2e=1');
   await openCasino(page);
   await expect(page.getByTestId('casino-screen')).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Your real-play notebook' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Your casinos and their rules' })).toBeVisible();
   await expect(page.getByText('An earlier copy of this log could not be read')).toBeVisible();
   expect(await page.evaluate((k) => localStorage.getItem(`${k}.corrupt`), KEY)).toContain('"name":"Trunc');
 });
@@ -497,16 +515,30 @@ for (const theme of ['midnight-felt', 'bone-ink', 'amoled-night', 'slate-copper'
     await page.goto('/?e2e=1');
     await openCasino(page);
     await expect(page.getByTestId('casino-live')).toBeVisible();
+    const bad: string[] = [];
+    // Wave W: the directory is under Casinos, the money and the live card under Sessions.
+    await seg(page, 'casinos');
     // Every tone of badge is on screen, so none is measured by its absence.
     for (const tone of ['warn', 'bad', 'good']) await expect(page.locator(`.cas-badge[data-tone="${tone}"]`).first()).toBeVisible();
-    const bad: string[] = [];
     for (const sel of [
       '.cas-badge[data-tone="warn"]',
       '.cas-badge[data-tone="bad"]',
       '.cas-badge[data-tone="good"]',
       '.cas-row-meta',
       '.cas-row-game',
+      '.cas-dir-extras',
       '.cas-group-title',
+      '.cas-note',
+      '.cas-live-strip-go',
+      '.casino-screen [data-sign="1"]',
+      '.casino-screen [data-sign="-1"]',
+      '.segmented-btn:not(.segmented-btn-active)',
+    ]) {
+      const ratio = await worstContrast(page, sel);
+      if (ratio < 4.5) bad.push(`${sel} ${ratio.toFixed(2)}`);
+    }
+    await seg(page, 'sessions');
+    for (const sel of [
       '.cas-stat-label',
       '.cas-note',
       '.cas-hist-date',

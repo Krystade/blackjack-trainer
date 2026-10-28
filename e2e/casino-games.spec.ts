@@ -56,7 +56,26 @@ async function seed(page: Page, budget = 4000, log: unknown = LOG): Promise<void
   );
 }
 
-const openCasino = (page: Page) => page.locator('.tab-bar').getByRole('button', { name: 'Casino', exact: true }).click();
+type Part = 'casinos' | 'ranked' | 'sessions';
+/** Wave W: Casino's home is in three parts; most of this file reads the ranking, so that is the default. */
+const seg = (page: Page, part: Part) => page.getByTestId(`casino-seg-${part}`).click();
+async function openCasino(page: Page, part: Part = 'ranked'): Promise<void> {
+  await page.locator('.tab-bar').getByRole('button', { name: 'Casino', exact: true }).click();
+  await seg(page, part);
+}
+/** From home: the casino's page (the directory row), then its form. */
+async function editCasino(page: Page, name: string): Promise<void> {
+  await seg(page, 'casinos');
+  await page.getByTestId('casino-row').filter({ hasText: name }).click();
+  await page.getByRole('button', { name: 'Edit casino', exact: true }).click();
+}
+/** Save the form (back on the casino's page), then home to the ranking. */
+async function saveToRanked(page: Page): Promise<void> {
+  await page.getByRole('button', { name: 'Save casino' }).click();
+  await expect(page.getByTestId('casino-detail')).toBeVisible();
+  await back(page);
+  await seg(page, 'ranked');
+}
 const back = (page: Page) => page.getByRole('button', { name: /Back$/ }).click();
 const ranked = (page: Page) => page.getByTestId('games-ranked');
 
@@ -202,8 +221,8 @@ test('figures appear on their own, the ranking follows them, and the cards say w
 test('Wave T: the editor says which way an unlogged split cap or double-on leans', async ({ page }) => {
   await seed(page);
   await page.goto('/?e2e=1');
-  await openCasino(page);
-  await page.getByTestId('casino-row').filter({ hasText: 'El Cortez' }).click();
+  await openCasino(page, 'casinos');
+  await editCasino(page, 'El Cortez');
   const editor = page.getByTestId('game-editor').first();
   await expect(editor).toContainText('? = 4, the best case: the figures may be too high.');
   await expect(editor).toContainText('? = any two, the best case: the figures may be too high.');
@@ -326,11 +345,11 @@ test('editing a rule: the old figures are marked Updating, and the new ones land
   // Hidden, nothing runs, so the in-between state holds still to be read.
   await setHidden(page, true);
   // Open Golden Nugget, two games in its editor; switch the first to S17.
-  await page.getByTestId('casino-row').filter({ hasText: 'Golden Nugget' }).click();
+  await editCasino(page, 'Golden Nugget');
   const editors = page.getByTestId('game-editor');
   await expect(editors).toHaveCount(2);
   await editors.nth(0).getByRole('group', { name: 'Dealer soft 17' }).getByRole('button', { name: 'Stands (S17)' }).click();
-  await page.getByRole('button', { name: 'Save casino' }).click();
+  await saveToRanked(page);
 
   // The old figures still shown, marked as on their way out; the line says it is waiting to run.
   await expect(goodRow).toHaveAttribute('data-state', 'stale');
@@ -358,9 +377,9 @@ test('editing a rule: the old figures are marked Updating, and the new ones land
   await expect(goodRow.getByTestId('stale-badge')).toHaveCount(0);
 
   // Rounds per hour is applied when shown, not simulated: changing it keeps the result current.
-  await page.getByTestId('casino-row').filter({ hasText: 'Golden Nugget' }).click();
+  await editCasino(page, 'Golden Nugget');
   await page.locator('input[name="roundsPerHour-0"]').fill('120');
-  await page.getByRole('button', { name: 'Save casino' }).click();
+  await saveToRanked(page);
   await expect(goodRow).toHaveAttribute('data-state', 'current');
 });
 
@@ -554,8 +573,11 @@ test('a casino session running: every game gets its estimate, the open card firm
   // A budget big enough that a refine would show in the stored rounds.
   await seed(page, 30_000_000, { ...LOG, sessions: [session] });
   await page.goto('/?e2e=1');
-  await openCasino(page);
+  // Wave W: a running session opens on Sessions; the ranking is a tap away.
+  await page.locator('.tab-bar').getByRole('button', { name: 'Casino', exact: true }).click();
+  await expect(page.getByTestId('casino-seg-sessions')).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByTestId('casino-live')).toBeVisible();
+  await seg(page, 'ranked');
   await expect(rows(page).and(page.locator('[data-state="current"]'))).toHaveCount(3, { timeout: 30_000 });
   await expect(rows(page).getByTestId('estimate-badge')).toHaveCount(3);
   // Review N6: an estimate names no best method, and its edge carries its interval.
@@ -588,8 +610,11 @@ test('re-review R4: a session left open with nothing logged for 12 h holds nothi
   const session = { id: 's1', casinoId: 'c1', start: started, end: null, buyIns: [500], cashOut: null, avgBet: null, maxBet: null, maxTc: null, heat: 'none', notes: '', createdAt: started, updatedAt: started };
   await seed(page, 30_000_000, { ...LOG, sessions: [session] });
   await page.goto('/?e2e=1');
-  await openCasino(page);
+  // Wave W: a running session opens on Sessions; the ranking is a tap away.
+  await page.locator('.tab-bar').getByRole('button', { name: 'Casino', exact: true }).click();
+  await expect(page.getByTestId('casino-seg-sessions')).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByTestId('casino-live')).toBeVisible();
+  await seg(page, 'ranked');
   await expect(rows(page).and(page.locator('[data-state="current"]'))).toHaveCount(3, { timeout: 30_000 });
   await expect(ranked(page).getByTestId('rank-auto')).toHaveAttribute('data-phase', 'refining');
   await expect(ranked(page).getByTestId('rank-held')).toHaveCount(0);
@@ -614,8 +639,10 @@ test('an import: every game gets its figures on its own, and two games dealt ali
     sessions: [],
     settings: { startingBankroll: null, updatedAt: null },
   };
+  await seg(page, 'casinos');
   await page.getByTestId('casino-import-file').setInputFiles({ name: 'casino.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(file)) });
   await expect(page.getByRole('status').filter({ hasText: 'Imported' })).toBeVisible();
+  await seg(page, 'ranked');
   await expect(rows(page)).toHaveCount(5);
   await noComputeButtons(page);
   // Every standard game ends with its figures; the variant is not modelled.
@@ -639,13 +666,21 @@ test.describe('distance', () => {
     const nugget = rows(page).and(page.locator('[data-game="g-good"]'));
     const cortez = rows(page).and(page.locator('[data-game="g-deep"]'));
     await expect(nugget).toContainText('20 min drive');
+    await seg(page, 'casinos');
     await expect(page.getByTestId('casino-row').filter({ hasText: 'El Cortez' })).toContainText('1 h 30 min drive');
+    await seg(page, 'ranked');
 
     // Review N1: turning it on says the position is read each time Casino opens.
     await expect(ranked(page).getByTestId('use-location-hint')).toContainText('each time you open Casino');
     await ranked(page).getByTestId('use-location').check();
     await expect(nugget).toContainText('0.7 mi');
+    await seg(page, 'casinos');
     await expect(page.getByTestId('casino-row').filter({ hasText: 'Golden Nugget' })).toContainText('0.7 mi');
+    // And on the casino's own page.
+    await page.getByTestId('casino-row').filter({ hasText: 'Golden Nugget' }).click();
+    await expect(page.getByTestId('casino-detail-meta')).toContainText('0.7 mi');
+    await back(page);
+    await seg(page, 'ranked');
     // No saved spot at El Cortez: still its drive time.
     await expect(cortez).toContainText('1 h 30 min drive');
 
@@ -665,15 +700,16 @@ test.describe('distance', () => {
   test('"Save this spot" stores where you are; Clear forgets it', async ({ page }) => {
     await seed(page);
     await page.goto('/?e2e=1');
-    await openCasino(page);
-    await page.getByTestId('casino-row').filter({ hasText: 'El Cortez' }).click();
+    await openCasino(page, 'casinos');
+    await editCasino(page, 'El Cortez');
     await page.getByTestId('save-spot').click();
     await expect(page.getByTestId('spot-saved')).toBeVisible();
     await page.getByRole('button', { name: 'Save casino' }).click();
     const saved = await page.evaluate((k) => JSON.parse(localStorage.getItem(k)!).casinos[1].location, KEY);
     expect(saved).toEqual({ lat: 36.1, lon: -115.17 });
 
-    await page.getByTestId('casino-row').filter({ hasText: 'El Cortez' }).click();
+    // Saving went back to the casino's page.
+    await page.getByRole('button', { name: 'Edit casino', exact: true }).click();
     await page.getByTestId('casino-spot').getByRole('button', { name: 'Clear' }).click();
     await page.getByRole('button', { name: 'Save casino' }).click();
     expect(await page.evaluate((k) => JSON.parse(localStorage.getItem(k)!).casinos[1].location ?? null, KEY)).toBeNull();
@@ -683,7 +719,7 @@ test.describe('distance', () => {
 test('casino notes save as you type, survive a reload, and head the casino row', async ({ page }) => {
   await seed(page);
   await page.goto('/?e2e=1');
-  await openCasino(page);
+  await openCasino(page, 'casinos');
   await page.getByTestId('casino-row').filter({ hasText: 'El Cortez' }).click();
   const box = page.locator('textarea[name="casinoNotes"]');
   await box.click();
@@ -697,7 +733,7 @@ test('casino notes save as you type, survive a reload, and head the casino row',
   expect(stored.updatedAt).not.toBe(AT);
 
   await page.reload();
-  await openCasino(page);
+  await openCasino(page, 'casinos');
   await expect(page.getByTestId('casino-row').filter({ hasText: 'El Cortez' }).getByTestId('casino-row-note')).toHaveText(
     'Swing shift 2am, pit boss Ray watches',
   );
@@ -713,7 +749,7 @@ test('review S5: tapping into the notes and out again without typing keeps what 
   );
   const a = await context.newPage();
   await a.goto('/?e2e=1');
-  await openCasino(a);
+  await openCasino(a, 'casinos');
   await a.getByTestId('casino-row').filter({ hasText: 'El Cortez' }).click();
   const boxA = a.locator('textarea[name="casinoNotes"]');
   await boxA.click();
@@ -721,7 +757,7 @@ test('review S5: tapping into the notes and out again without typing keeps what 
 
   const b = await context.newPage();
   await b.goto('/?e2e=1');
-  await openCasino(b);
+  await openCasino(b, 'casinos');
   await b.getByTestId('casino-row').filter({ hasText: 'El Cortez' }).click();
   const boxB = b.locator('textarea[name="casinoNotes"]');
   await boxB.fill('Written in tab B');
@@ -741,7 +777,7 @@ test('review S6: typing is saved when the page is hidden or closed, before the p
   await seed(page);
   await page.clock.install();
   await page.goto('/?e2e=1');
-  await openCasino(page);
+  await openCasino(page, 'casinos');
   await page.getByTestId('casino-row').filter({ hasText: 'El Cortez' }).click();
   // Paused: the 700 ms save-after-a-pause can never fire, so only the page events can save.
   await page.clock.pauseAt(new Date(Date.now() + 3_600_000));
@@ -769,7 +805,7 @@ test('review S6: typing is saved when the page is hidden or closed, before the p
 test('review N9: a notes save that does not land says "Not saved"', async ({ page }) => {
   await seed(page);
   await page.goto('/?e2e=1');
-  await openCasino(page);
+  await openCasino(page, 'casinos');
   await page.getByTestId('casino-row').filter({ hasText: 'El Cortez' }).click();
   await page.evaluate((k) => {
     const orig = Storage.prototype.setItem;
@@ -800,8 +836,18 @@ for (const theme of ['midnight-felt', 'bone-ink'] as const) {
       }
     };
     const fits = () => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-    await check(['.cas-rank-row:not([data-greyed]) .cas-rank-meta', '.cas-rank-place', '.cas-rank-row [data-testid="best-style"]', '.cas-row-note', '.cas-rank-controls .cas-note', '.cas-rank-row:not([data-greyed]) [data-testid="assumed-badge"]', '.cas-auto p', '.cas-rank-row [data-testid="partial-badge"]']);
+    await check(['.cas-rank-row:not([data-greyed]) .cas-rank-meta', '.cas-rank-place', '.cas-rank-row [data-testid="best-style"]', '.cas-rank-controls .cas-note', '.cas-rank-row:not([data-greyed]) [data-testid="assumed-badge"]', '.cas-auto p', '.cas-rank-row [data-testid="partial-badge"]']);
     expect(await fits()).toBeLessThanOrEqual(0);
+    // Wave W: the directory, and a casino's page with its rules.
+    await seg(page, 'casinos');
+    await check(['.cas-row-note', '.cas-row-meta', '.cas-dir-game .cas-row-game', '.cas-dir-extras', '.cas-dir-controls .cas-note', '.cas-group-title']);
+    expect(await fits()).toBeLessThanOrEqual(0);
+    await page.getByTestId('casino-row').filter({ hasText: 'Golden Nugget' }).click();
+    await expect(page.getByTestId('detail-figures').first()).not.toHaveText('Figures being worked out…');
+    await check(['.cas-detail-meta', '.cas-rule dt', '.cas-rule dd', '.cas-rule[data-unknown] dd', '.cas-dir-figures-text', '.cas-dir-sub-title', '.cas-dir-card .cas-note']);
+    expect(await fits()).toBeLessThanOrEqual(0);
+    await back(page);
+    await seg(page, 'ranked');
     await rows(page).and(page.locator('[data-game="g-good"]')).click();
     await check(['.cas-gs-sub', '.cas-gs-fig dt', '.cas-gs-fig-sub', '.cas-gs-fig dd[data-sign="1"]', '.cas-gs-fig dd[data-sign="-1"]', '.cas-gs-notes', '.cas-gs-state', '.cas-gs-state [data-testid="partial-badge"]']);
     expect(await fits()).toBeLessThanOrEqual(0);

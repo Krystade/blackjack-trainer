@@ -1,0 +1,276 @@
+/* Wave W: the Casino tab's three parts, the directory and a casino's page. */
+
+/* ---------- Casinos | Ranked | Sessions ---------- */
+.cas-seg-wrap {
+  padding-top: var(--space-3);
+}
+
+.cas-seg {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: 100%;
+}
+
+.cas-seg .segmented-btn {
+  min-height: 44px;
+  white-space: nowrap;
+}
+
+.cas-seg-dot {
+  margin-left: 0.3em;
+  color: var(--bad);
+  font-size: var(--fs-2xs);
+  vertical-align: 0.15em;
+}
+
+/* The way back to a running session, from Casinos. */
+.cas-live-strip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 48px;
+  box-sizing: border-box;
+  padding: var(--space-2) var(--space-3);
+  border: 2px solid var(--accent);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--fs-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.cas-live-strip-dot {
+  flex: none;
+  color: var(--bad);
+}
+
+.cas-live-strip-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.cas-live-strip-go {
+  flex: none;
+  font-weight: 650;
+  color: var(--accent);
+}
+
+/* ---------- The directory ---------- */
+.cas-dir-controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-bottom: var(--space-2);
+}
+
+.cas-dir-search {
+  position: relative;
+}
+
+.cas-dir-search-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding-right: 44px;
+}
+
+/* The browser's own clear cross is replaced by one big enough to hit. */
+.cas-dir-search-input::-webkit-search-cancel-button {
+  appearance: none;
+}
+
+.cas-dir-clear {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  width: 44px;
+  height: 44px;
+  transform: translateY(-50%);
+  border: 0;
+  background: transparent;
+  color: var(--ink-dim);
+  font: inherit;
+  font-size: var(--fs-xl);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.cas-dir-controls .cas-choice {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.cas-dir-controls .cas-choice .segmented-btn {
+  min-height: 40px;
+  padding-left: 0;
+  padding-right: 0;
+  white-space: nowrap;
+}
+
+.cas-dir-games {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cas-dir-game {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: var(--space-2);
+  row-gap: 0;
+  align-items: baseline;
+}
+
+.cas-dir-game .cas-row-game {
+  color: var(--ink);
+}
+
+.cas-dir-extras {
+  font-size: var(--fs-xs);
+  color: var(--ink-dim);
+}
+
+/* ---------- One casino's page ---------- */
+.cas-detail-head {
+  gap: var(--space-2);
+}
+
+.cas-detail-meta,
+.cas-detail-totals {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--ink-dim);
+}
+
+.cas-detail-totals > span {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.cas-detail-totals > span[data-sign='1'] {
+  color: var(--cas-good);
+}
+
+.cas-detail-totals > span[data-sign='-1'] {
+  color: var(--bad);
+}
+
+.cas-dir-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.cas-dir-card-title {
+  margin: 0;
+  font-size: var(--fs-md);
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.cas-dir-card-summary {
+  margin: 0;
+  color: var(--ink);
+}
+
+.cas-dir-figures {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.cas-dir-figures-text {
+  margin: 0;
+  min-width: 0;
+  font-size: var(--fs-sm);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.cas-dir-figures .cas-head-btn {
+  flex: none;
+}
+
+.cas-rules {
+  display: grid;
+  margin: 0;
+  border-top: 1px solid var(--line);
+}
+
+.cas-rule {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: var(--space-2);
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: var(--fs-sm);
+  line-height: 1.35;
+}
+
+.cas-rule dt {
+  color: var(--ink-dim);
+}
+
+.cas-rule dd {
+  margin: 0;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.cas-rule[data-unknown] dd {
+  font-weight: 400;
+  font-style: italic;
+  color: var(--ink-dim);
+}
+
+.cas-rule-unsure {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.cas-dir-sub {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.cas-dir-sub-title {
+  margin: 0;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.cas-dir-sides {
+  margin: 0;
+  padding-left: 1.1em;
+  font-size: var(--fs-sm);
+  line-height: 1.4;
+}
+
+.cas-dir-game-notes {
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- Import and export ---------- */
+.cas-paste-text {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--fs-xs);
+}
