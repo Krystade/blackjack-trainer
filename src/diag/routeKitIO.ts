@@ -63,9 +63,13 @@ export async function runRouteTrial(
   if (gone()) return abandoned;
   endCaptureRoute('trial-reset');
   beginCaptureRoute(`trial:${o.id}`, o.plan);
-  await captureRouteSettled();
-  if (gone()) return abandoned;
+  // THE DRILL'S ORDER (review M2): the recogniser starts, then the held
+  // input lands -- useVoiceControl starts the controller in the same tick as
+  // the plan begins, and the hold arrives after its device read. A kit that
+  // held first would measure a route the drill never makes.
   let micError = await o.ensureMic('open');
+  if (gone()) return abandoned;
+  await captureRouteSettled();
   if (gone()) return abandoned;
   await waitForRouteQuiet(1500, 4000);
   if (gone()) return abandoned;
@@ -108,6 +112,9 @@ export async function runRouteTrial(
       appliedHold: activeRoutePlan()?.hold ?? 'none',
       holdState: hold.state,
       holdGot: hold.got ?? 'none',
+      // Did the held track survive the recogniser starting? (M2)
+      holdReadyState: hold.readyState ?? 'none',
+      holdMuted: hold.muted ?? 'none',
       mic: o.mic,
       session: readAudioSessionType() ?? 'unsupported',
       audioContext: ctxState,

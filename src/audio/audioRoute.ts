@@ -414,6 +414,16 @@ async function holdInput(which: Exclude<HoldInput, 'none'>, gen: number, readNow
     held = stream;
     heldTrack = track;
     holdState = 'held';
+    // iOS may end or mute the held capture when the recogniser (re)starts or
+    // the route changes; nothing else would notice (review M2).
+    const label = track.label || '(unlabelled)';
+    const note = (event: string) => () => {
+      if (heldTrack !== track) return;
+      diag('route', 'route-hold-track', { which, event, got: label, readyState: track.readyState ?? 'unknown' });
+    };
+    track.addEventListener?.('ended', note('ended'));
+    track.addEventListener?.('mute', note('mute'));
+    track.addEventListener?.('unmute', note('unmute'));
     const settings = (track.getSettings?.() ?? {}) as MediaTrackSettings;
     diag('route', 'route-hold', {
       which,

@@ -269,6 +269,34 @@ describe('the runtime', () => {
     expect(getUserMedia).toHaveBeenCalledWith({ audio: { deviceId: { exact: 'mic-phone' } } });
   });
 
+  it('logs the held track ending or muting, and only while it is the hold (review M2)', async () => {
+    install([CAR, PHONE]);
+    const handlers: Record<string, () => void> = {};
+    const track = {
+      label: 'TOYOTA Corolla',
+      readyState: 'live',
+      muted: false,
+      stop: () => {},
+      getSettings: () => ({ sampleRate: 8000 }),
+      addEventListener: (type: string, h: () => void) => (handlers[type] = h),
+    };
+    getUserMedia.mockImplementation(async () => ({ getTracks: () => [track], getAudioTracks: () => [track] }));
+    setRoutePreferences('bluetooth', 'auto');
+    await detectRoute();
+    beginCaptureRoute('t');
+    await captureRouteSettled();
+    track.muted = true;
+    handlers.mute();
+    track.readyState = 'ended';
+    handlers.ended();
+    const rows = readDiagnosticLog().filter((e) => e.event === 'route-hold-track').map((e) => e.detail?.event);
+    expect(rows).toEqual(['mute', 'ended']);
+    expect(holdStatus()).toMatchObject({ state: 'held', readyState: 'ended', muted: true });
+    endCaptureRoute('t');
+    handlers.unmute();
+    expect(readDiagnosticLog().filter((e) => e.event === 'route-hold-track')).toHaveLength(2);
+  });
+
   describe('holds with no labels (review M4)', () => {
     const A: DeviceLike = { kind: 'audioinput', label: '', deviceId: 'id-a' };
     const B: DeviceLike = { kind: 'audioinput', label: '', deviceId: 'id-b' };

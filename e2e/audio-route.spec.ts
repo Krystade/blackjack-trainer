@@ -33,6 +33,7 @@ async function withFakePhone(page: Page, devices: Array<{ kind: string; label: s
       }
       start(): void {
         this.live = true;
+        ((window as unknown as { __order?: string[] }).__order ??= []).push('start');
         // A test can slow the engine down, to stop or leave mid-open.
         const delay = (window as unknown as { __audioStartDelay?: number }).__audioStartDelay ?? 0;
         setTimeout(() => {
@@ -41,11 +42,13 @@ async function withFakePhone(page: Page, devices: Array<{ kind: string; label: s
         }, delay);
       }
       stop(): void {
+        if (this.live) ((window as unknown as { __order?: string[] }).__order ??= []).push('stop');
         this.live = false;
         this.onerror?.({ error: 'aborted' });
         this.onend?.();
       }
       abort(): void {
+        if (this.live) ((window as unknown as { __order?: string[] }).__order ??= []).push('stop');
         this.live = false;
         this.onerror?.({ error: 'aborted' });
         this.onend?.();
@@ -65,6 +68,7 @@ async function withFakePhone(page: Page, devices: Array<{ kind: string; label: s
     md.getUserMedia = async (c: { audio?: { deviceId?: { exact?: string } } | boolean }) => {
       const id = typeof c.audio === 'object' ? (c.audio.deviceId?.exact ?? 'default') : 'default';
       asked.push(id);
+      ((w as { __order?: string[] }).__order ??= []).push(`gum:${id}`);
       const label = list.find((d) => d.deviceId === id)?.label ?? 'iPhone Microphone';
       const stops = ((w as { __stops?: string[] }).__stops ??= []);
       const live = ((w as { __live?: Record<string, number> }).__live ??= {});
@@ -104,6 +108,19 @@ async function slowEngine(page: Page, ms: number): Promise<void> {
   await page.addInitScript((d) => {
     (window as unknown as { __audioStartDelay: number }).__audioStartDelay = d;
   }, ms);
+}
+
+/**
+ * What ran just before the held input's getUserMedia: 'start' when the
+ * recogniser was started first (the drill's order), 'stop' when the hold was
+ * taken with the recogniser closed.
+ */
+async function beforeHold(page: Page, id: string): Promise<string | undefined> {
+  return page.evaluate((d) => {
+    const order = (window as unknown as { __order?: string[] }).__order ?? [];
+    const at = order.indexOf(`gum:${d}`);
+    return at > 0 ? order[at - 1] : undefined;
+  }, id);
 }
 
 /** Say something into the fake engine as a FINAL result, the way openMic reads it. */
@@ -264,6 +281,8 @@ test('A voice drill applies the route plan while voice is on and undoes it after
   await expect
     .poll(async () => (await events(page)).find((e) => e.event === 'route-hold')?.detail, { timeout: 5_000 })
     .toMatchObject({ which: 'bluetooth', state: 'held', got: 'TOYOTA Corolla' });
+  // The drill starts the recogniser, then the hold lands (review M2).
+  expect(await beforeHold(page, 'mic-car')).toBe('start');
 
   await page.getByRole('checkbox', { name: 'Voice answers' }).uncheck();
   await expect.poll(sessionType).toBe('auto');
@@ -391,4 +410,12 @@ test('The car Route kit runs every step by voice and logs one summary line', asy
   const asked = await page.evaluate(() => (window as unknown as { __asked: string[] }).__asked);
   expect(asked).toContain('mic-car');
   expect(asked).toContain('mic-phone');
+  // The kit measures the drill's order: recogniser first, then the hold (M2).
+  expect(await beforeHold(page, 'mic-car')).toBe('start');
+  expect(await beforeHold(page, 'mic-phone')).toBe('start');
+  // And says whether the held track was still live as the line played.
+  const holdPlays = all
+    .filter((e) => e.event === 'kit-route-play' && String(e.detail?.step).startsWith('hold-'))
+    .map((e) => `${e.detail?.step}:${e.detail?.holdState}:${e.detail?.holdGot}:${e.detail?.holdReadyState}`);
+  expect(holdPlays).toEqual(['hold-bt:held:TOYOTA Corolla:live', 'hold-phone:held:iPhone Microphone:live']);
 });
