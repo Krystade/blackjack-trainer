@@ -88,9 +88,12 @@ async function answersIn(page: Page) {
  * Open the field test, optionally with the spoken channel armed BEFORE the
  * run starts -- which is where the switch lives, and deliberately so.
  */
-async function openTest(page: Page, { byVoice }: { byVoice: boolean }): Promise<void> {
+async function openTest(
+  page: Page,
+  { byVoice, audio }: { byVoice: boolean; audio?: Record<string, unknown> },
+): Promise<void> {
   await withFakeEngine(page);
-  await withSettings(page, {});
+  await withSettings(page, audio ? { audio } : {});
   // The routing protocol, named rather than inherited. This spec walks to
   // `route-1`/`mic-route`/`mic-heard`, which are routing steps: the gate's
   // default is the drill leg now, and `onPath` drops a step whose protocol
@@ -238,6 +241,17 @@ test('the read-aloud instruction echoed back is heard as the app, not stamped as
     'the echo went to the matcher and chimed not-understood',
   ).toHaveLength(0);
   await expect(page.getByTestId('fieldtest-title')).toHaveAttribute('data-step', 'wheel-with-mic');
+});
+
+test('the field test runs under Auto whatever the Audio route setting says, and logs that (Wave U L11)', async ({ page }) => {
+  await openTest(page, { byVoice: true, audio: { audioRoute: 'bluetooth', routeStrategy: 'play-and-record' } });
+  await goToStep(page, 'mic-route');
+  await answerable(page, 'mic-route');
+  const all = await entries(page);
+  const plans = all.filter((e) => e.event === 'route-plan' && e.detail.reason === 'voice-on');
+  expect(plans.length).toBeGreaterThan(0);
+  for (const p of plans) expect(p.detail).toMatchObject({ strategy: 'web-audio', hold: 'none' });
+  expect(all.find((e) => e.event === 'route-forced-auto')?.detail).toMatchObject({ pref: 'bluetooth', strategySetting: 'play-and-record' });
 });
 
 test('a spoken answer stamps the step, and says it was spoken', async ({ page }) => {

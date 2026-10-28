@@ -2557,6 +2557,8 @@ function RunningTest({
   const { status: voiceStatus } = useVoiceControl({
     enabled: voiceWanted,
     context: `field-test:${step.id}`,
+    // The field test measures Auto; the Audio route setting must not change that.
+    forceAutoRoute: true,
     onAction: (action) => {
       diag('test', 'heard-action', { step: step.id, action });
       setHeard((prev) => [...prev, action]);

@@ -340,6 +340,30 @@ test('pagehide ends the route plan and releases the held mic (review L2)', async
     .toBe('pagehide');
 });
 
+test('Drive checks run under Auto whatever the route setting says, and log that (review L11)', async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.setViewportSize(PHONE);
+  await withFakePhone(page, CAR);
+  await withSettings(page, { audio: { audioRoute: 'bluetooth', routeStrategy: 'play-and-record' } });
+  await page.goto('/?e2e=1');
+  await openSettingsScreen(page);
+  await page.getByTestId('settings-testkit-open').click();
+  await page.getByTestId('fieldtest-open').click();
+  await page.getByTestId('fieldtest-drive-checks').click();
+  await page.getByTestId('drive-check-run-voice-timing').click();
+  await expect
+    .poll(async () => (await events(page)).find((e) => e.event === 'route-plan')?.detail, { timeout: 20_000 })
+    .toMatchObject({ reason: 'voice-on', strategy: 'web-audio', hold: 'none' });
+  expect((await events(page)).find((e) => e.event === 'route-forced-auto')?.detail).toMatchObject({
+    context: 'drive-checks',
+    pref: 'bluetooth',
+    strategySetting: 'play-and-record',
+  });
+  await page.waitForTimeout(500);
+  expect(await page.evaluate(() => (window as unknown as { __session: { type: string } }).__session.type)).toBe('auto');
+  expect(await page.evaluate(() => (window as unknown as { __asked: string[] }).__asked)).not.toContain('mic-car');
+});
+
 test('Auto changes nothing a drill did before', async ({ page }) => {
   await page.setViewportSize(PHONE);
   await withFakePhone(page, CAR);

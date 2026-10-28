@@ -312,6 +312,24 @@ export async function logRouteSnapshot(reason: string): Promise<DetectedRoute> {
 }
 
 /**
+ * The plan for a screen that must run under Auto whatever the setting says:
+ * the older field-test runs (FieldTest, DriveChecks) measure what Auto does,
+ * so a Phone or Bluetooth setting would quietly change what they measure
+ * (review L11). Logged, so a log read back can see the override.
+ */
+export function forcedAutoPlan(context: string): RoutePlan {
+  const plan = planRoute('auto', 'auto', lastRoute);
+  diag('route', 'route-forced-auto', {
+    context,
+    pref: prefs.pref,
+    strategySetting: prefs.strategy,
+    strategy: plan.strategy,
+    hold: plan.hold,
+  });
+  return { ...plan, why: `${plan.why}; forced to Auto for ${context}` };
+}
+
+/**
  * Apply a plan as capture opens. SYNCHRONOUS up to the declaration, so a
  * caller inside a tap can still start the recogniser in the same gesture; the
  * held input opens in the background. Returns the plan applied.

@@ -18,7 +18,7 @@ import { reassertAudioFocus } from '../audio/audioFocus';
 import { markMicSessionOpened, setVoiceCaptureActive } from '../audio/micSessionCost';
 import { markInputDeviceChanged } from '../diag/deviceChurn';
 import { audioSessionSupported, readAudioSessionType } from '../audio/audioSession';
-import { beginCaptureRoute, endCaptureRoute, logRouteSnapshot } from '../audio/audioRoute';
+import { beginCaptureRoute, endCaptureRoute, forcedAutoPlan, logRouteSnapshot } from '../audio/audioRoute';
 import { logAudioInputs, logHardwareRate, logMicPermission } from '../diag/environment';
 import {
   micHasWorked,
@@ -91,6 +91,7 @@ export function useVoiceControl({
   biasPhrases,
   context,
   escalation,
+  forceAutoRoute = false,
 }: {
   enabled: boolean;
   onAction: (action: VoiceAction) => void;
@@ -147,6 +148,11 @@ export function useVoiceControl({
    * Without it, every miss is the tone, as before.
    */
   escalation?: { promptKey: unknown; reask: () => void };
+  /**
+   * Run under the Auto route plan whatever Settings says (Wave U, review
+   * L11): the field-test screens measure Auto, and must keep doing so.
+   */
+  forceAutoRoute?: boolean;
 }): { status: VoiceStatus; cycleIfStale: () => void } {
   const [status, setStatus] = useState<VoiceStatus>(IDLE);
 
@@ -533,7 +539,7 @@ export function useVoiceControl({
     // Wave U: the audio-route plan (declare the session type, hold an input)
     // goes in BEFORE the recogniser starts, synchronously, so the start stays
     // inside whatever gesture began it. Auto changes nothing that shipped.
-    beginCaptureRoute('voice-on');
+    beginCaptureRoute('voice-on', forceAutoRoute ? forcedAutoPlan(contextRef.current) : undefined);
     controller.start();
     void logRouteSnapshot('voice-on');
 

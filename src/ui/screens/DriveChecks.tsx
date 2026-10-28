@@ -184,6 +184,8 @@ export function DriveChecks({
   const { status: voiceStatus } = useVoiceControl({
     enabled: voiceOn || pttOpen,
     context: DRIVE_CHECKS_CONTEXT,
+    // These checks measure Auto; the Audio route setting must not change that.
+    forceAutoRoute: true,
     onAction: (action) => voiceWaiter.current?.(`action:${action}`),
     onNotUnderstood: () => chime('again'),
     // The same "your turn" tone every drill gives; check 2 reads it back.
