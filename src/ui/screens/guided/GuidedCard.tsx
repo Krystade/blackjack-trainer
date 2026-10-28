@@ -110,7 +110,7 @@ export function GuidedCard({
       </div>
       <div className="guided-card-buttons">
         <button type="button" className="u-btn guided-card-go" onClick={() => start(false)}>
-          Start guided session
+          Start<span className="guided-card-go-more"> guided session</span>
         </button>
         <button type="button" className="u-btn guided-card-alt" onClick={() => start(true)}>
           Drive

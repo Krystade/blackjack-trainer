@@ -100,14 +100,21 @@
   min-width: 6rem;
 }
 
-/* 320: the presets drop under the text rather than squeezing it to three
-   words a line, and the two buttons stack rather than wrap their labels. */
+/* 320: the card gives up its description and the tail of its Start label
+   (kept for screen readers) so it stays one short row of presets and one of
+   buttons: at full height it pushed Next step's Start, Home's one gold
+   button, under the fold of a 320x693 phone (layout-320.spec.ts). */
 @media (max-width: 360px) {
-  .guided-card-head {
-    flex-wrap: wrap;
+  .guided-card-why {
+    display: none;
   }
 
-  .guided-card-buttons {
-    grid-template-columns: 1fr;
+  .guided-card-go-more {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 }

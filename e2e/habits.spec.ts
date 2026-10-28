@@ -210,8 +210,8 @@ test('Wave T: the mastery tiers are one tile per achievement, earned tiers dated
   await expect(page.getByTestId('ach-accuracy-pairs')).toHaveAttribute('data-tier', 'none');
   // Five ladders, one tile each; the count is of tiers.
   await expect(page.locator('.ach.is-ladder')).toHaveCount(5);
-  await expect(page.locator('.ach-grid > li')).toHaveCount(41);
-  await expect(page.getByTestId('achievements-count')).toHaveText('7/51');
+  await expect(page.locator('.ach-grid > li')).toHaveCount(43);
+  await expect(page.getByTestId('achievements-count')).toHaveText('7/53');
   await page.getByTestId('ach-accuracy-hard').scrollIntoViewIfNeeded();
   await shot(page, 'progress-tiers');
   await page.getByTestId('ach-index-i18').evaluate((el) => el.scrollIntoView({ block: 'center' }));
