@@ -274,6 +274,10 @@ def build_vocabulary() -> list[str]:
     # then the streak sentence, one clip per streak length up to one hundred.
     phrases.extend(moment_sentences())
 
+    # Wave L: the guided session's transitions, pauses and summary
+    # (src/guided/lines.ts); guidedClips.test.ts holds the two together.
+    phrases.extend(guided_sentences())
+
     # De-dupe while preserving order (e.g. "True count <tc>." appears once
     # from the quiz section and once from the true-count drill's own helper —
     # they mirror the identical wording, so only one clip is generated).
@@ -306,6 +310,25 @@ def moment_sentences() -> list[str]:
     for n in range(2, 101):
         out.append(f"{capitalize(streak_number_word(n))} days in a row.")
     return out
+
+
+GUIDED_SPOKEN = ["warm-up", "speed", "running count", "true count", "deviations", "bet sizing"]
+
+
+def guided_sentences() -> list[str]:
+    """Mirror of allGuidedSentences() in src/guided/lines.ts."""
+    out = ["Guided session.", "Guided session done.", "Guided session ended.", "Paused.", "Skipped.",
+           "No answers this time."]
+    for m in range(1, 31):
+        out.append("One minute." if m == 1 else f"{capitalize(streak_number_word(m))} minutes.")
+    for a in range(5, 101, 5):
+        out.append(f"{capitalize(streak_number_word(a))} answers.")
+    for name in GUIDED_SPOKEN:
+        out += [f"First: {name}.", f"Next: {name}.", f"Resuming {name}.", f"Best: {name}.",
+                f"Most improved: {name}."]
+    for p in range(0, 101, 5):
+        out.append(f"Overall, {'zero' if p == 0 else streak_number_word(p)} percent.")
+    return list(dict.fromkeys(out))
 
 
 # Terminal punctuation, encoded into the slug rather than thrown away.
