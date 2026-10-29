@@ -149,6 +149,9 @@ for (const width of [375, 320]) {
     await deck(page).selectOption({ label: 'Eights v ace, a long list name' });
     await expect(deck(page)).toHaveValue('list:cl-pairs');
     await expect(page.getByTestId('deck-label')).toHaveText('Eights v ace, a long list name');
+    // Review S8: the pill cuts the name ("Eights v a…"); the full name is its title and the select's description.
+    await expect(page.locator('.deck-select')).toHaveAttribute('title', 'Deck: Eights v ace, a long list name');
+    await expect(deck(page)).toHaveAccessibleDescription('Saved list: Eights v ace, a long list name');
     const d = await drill(page);
     expect(d.deck).toBe('custom');
     expect(d.customListId).toBe('cl-pairs');

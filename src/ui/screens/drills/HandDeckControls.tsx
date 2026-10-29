@@ -84,7 +84,8 @@ export function HandDeckControls({
         {chip('all', 'All', all)}
         {ALL_SCOPES.map((s) => chip(s, CHIP_LABEL[s], !all && scopes.includes(s)))}
       </div>
-      <label className={`deck-select deck-select-fit${current ? ' deck-select-list' : ''}`}>
+      {/* Review S8: the pill cuts a long list name; the full name is its title and the select's description. */}
+      <label className={`deck-select deck-select-fit${current ? ' deck-select-list' : ''}`} title={current ? `Deck: ${current.name}` : undefined}>
         <span className="deck-select-caption">Deck</span>
         {/* Wave M: the pill is as wide as the CHOSEN deck's name, not the
             longest option's (a native select sizes to its longest option, and
@@ -94,6 +95,7 @@ export function HandDeckControls({
         </span>
         <select
           aria-label="Deck"
+          aria-description={current ? `Saved list: ${current.name}` : undefined}
           value={current ? `${LIST}${current.id}` : deck}
           onChange={(e) => {
             if (e.target.value === CUSTOMIZE) {
