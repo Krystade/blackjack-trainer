@@ -184,3 +184,27 @@ describe('a versionless file changing a game’s rules', () => {
     expect(r.report.ruleChanges).toEqual([]);
   });
 });
+
+/*
+ * Re-review R4: the owner edits a casino's notes in the app (adds a line,
+ * the text re-flowed), then pastes his older file again. The notes here
+ * already hold the file's text: it is not appended a second time.
+ */
+describe('re-import after an in-app notes edit', () => {
+  it('the file’s notes, already in the notes here (whitespace aside), are not appended again', () => {
+    const fileText = 'Pit boss Ray. Good pen on T3.';
+    const local = logOf([casino('c1', 'Pala', { notes: 'Pit boss Ray.\nGood pen on T3.\n\nAsk for Maria on days.', updatedAt: LATER })]);
+    for (const updatedAt of [AT, '2026-10-20T00:00:00.000Z']) {
+      const r = mergeImport(local, JSON.stringify({ app: 'bjtrainer-casino-log', version: 2, casinos: [casino('c1', 'Pala', { notes: fileText, updatedAt })], sessions: [] }));
+      if (!r.ok) throw new Error(r.error);
+      expect(r.log.casinos[0]!.notes).toBe('Pit boss Ray.\nGood pen on T3.\n\nAsk for Maria on days.');
+    }
+  });
+
+  it('a note that only shares letters is still kept beside', () => {
+    const local = logOf([casino('c1', 'Pala', { notes: 'Raymond on nights' })]);
+    const r = mergeImport(local, file([casino('c1', 'Pala', { notes: 'Ray', updatedAt: LATER })]));
+    if (!r.ok) throw new Error(r.error);
+    expect(r.log.casinos[0]!.notes).toBe('Ray\n\nRaymond on nights');
+  });
+});

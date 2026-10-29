@@ -1410,11 +1410,25 @@ function bothNotes(win: string, other: string): string {
   return `${win.trimEnd()}\n\n${o}`.slice(0, NOTES_MAX);
 }
 
-/** Whether `big` is `small` with words added before or after it ("Ray" -> "Ray. Maria on days"), not merely holding its letters. */
+/**
+ * Whether `big` already says `small`: its text, whitespace aside, whole
+ * words at either end ("Ray" is in "Pit boss Ray.", not in "Raymond").
+ * Re-review R4: an edit here that added to the notes, or only re-flowed
+ * them, holds the file's older text -- so a re-import does not append it
+ * again.
+ */
 function covers(big: string, small: string): boolean {
-  if (big === small) return true;
-  if (big.startsWith(small) && /^[\s.,;:!?)]/.test(big.slice(small.length))) return true;
-  return big.endsWith(small) && /\s$/.test(big.slice(0, big.length - small.length));
+  const b = big.replace(/\s+/g, ' ').trim();
+  const s = small.replace(/\s+/g, ' ').trim();
+  if (s === '') return true;
+  const edge = /[\s.,;:!?()[\]"'\u2018\u2019\u201c\u201d-]/;
+  for (let i = b.indexOf(s); i >= 0; i = b.indexOf(s, i + 1)) {
+    const before = i === 0 || edge.test(b[i - 1]!) || edge.test(s[0]!);
+    const j = i + s.length;
+    const after = j === b.length || edge.test(b[j]!) || edge.test(s[s.length - 1]!);
+    if (before && after) return true;
+  }
+  return false;
 }
 
 /** Casinos merged by id (`mergeCasino`); one is counted updated when the merge changed it here. */
