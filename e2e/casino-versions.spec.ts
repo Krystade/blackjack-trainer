@@ -47,7 +47,7 @@ const V2 = {
   lastExportAt: AT,
 };
 
-async function seedV2(page: Page): Promise<void> {
+async function seedV2(page: Page, log: unknown = V2): Promise<void> {
   await page.addInitScript(
     ([k, l]) => {
       (window as unknown as { __bjCasinoSimBudget: number }).__bjCasinoSimBudget = 2000;
@@ -56,7 +56,7 @@ async function seedV2(page: Page): Promise<void> {
         sessionStorage.setItem('seeded', '1');
       }
     },
-    [PREV_KEY, JSON.stringify(V2)],
+    [PREV_KEY, JSON.stringify(log)],
   );
 }
 
@@ -213,11 +213,11 @@ test('a session records its game and version: one tap at a casino of one game, w
  * figures kept in the archive under their spec key.
  */
 test('a game with figures but no sessions is fixed in place without asking; its old figures stay archived', async ({ page }) => {
-  await seedV2(page);
+  // Two Pits without its session: the double deck holds only figures, once worked out.
+  await seedV2(page, { ...V2, sessions: V2.sessions.filter((s) => s.casinoId !== 'c2') });
   await page.goto('/?e2e=1');
   await openCasino(page);
   await openPage(page, 'Two Pits');
-  // The v2 session at Two Pits is casino-level, so the double deck holds no session -- only figures, once worked out.
   const dd = page.locator('[data-testid="detail-game"][data-game="g-dd"]');
   await expect(dd.getByTestId('detail-figures')).not.toHaveText('Figures being worked out…', { timeout: 30_000 });
   const cache = () => page.evaluate(() => JSON.parse(localStorage.getItem('bjtrainer.casinoGameStats.v1') ?? '{}'));
@@ -278,4 +278,34 @@ test('Paste of a v2 file that changes Pala from 6 to 8 decks: listed, a new vers
     [false, 8],
   ]);
   expect((await stored(page)).sessions.map((s: { versionId: string }) => s.versionId)).toEqual(['g-import-pala-1-v1', 'g-import-pala-1-v1']);
+});
+
+/*
+ * Re-review R3: a session at a casino of several games that never said which
+ * (Two Pits' v2 session) may have been at any of them: a rule change on
+ * either game asks, and New version keeps the old rules.
+ */
+test('a casino-level session counts for every game there: changing either game’s rules asks', async ({ page }) => {
+  await seedV2(page);
+  await page.goto('/?e2e=1');
+  await openCasino(page);
+  await openPage(page, 'Two Pits');
+  for (const id of ['g-shoe', 'g-dd']) {
+    await page.locator(`[data-testid="detail-game"][data-game="${id}"]`).getByTestId('edit-rules').click();
+    const editor = page.locator(`[data-testid="game-editor"][data-game="${id}"]`);
+    await editor.locator('input[name^="minBet"]').fill('100');
+    await page.getByRole('button', { name: 'Save casino' }).click();
+    const prompt = page.getByTestId('version-prompt');
+    await expect(prompt).toBeVisible();
+    await expect(prompt.getByTestId('version-new')).toHaveAttribute('aria-pressed', 'true');
+    await expect(prompt.getByTestId('version-fix')).toContainText('The session stays, with the rules corrected.');
+    await prompt.getByRole('button', { name: 'Save casino' }).click();
+    await expect(page.getByTestId('casino-detail')).toBeVisible();
+  }
+  const games = (await stored(page)).casinos[1].games;
+  for (const g of games) {
+    expect(g.versions).toHaveLength(2);
+    expect(g.versions[0].rules.minBet ?? null).toBeNull();
+    expect(g.minBet).toBe(100);
+  }
 });

@@ -13,6 +13,8 @@ import {
   saveCasino,
   saveCasinoLog,
   serializeExport,
+  sessionsAtGameVersion,
+  currentVersionId,
   startSession,
   versionAt,
   type Casino,
@@ -276,5 +278,22 @@ describe('merging two copies: every version either has', () => {
     if (!r.ok) throw new Error(r.error);
     expect(r.log.casinos).toEqual(migrated().casinos);
     expect(r.log.sessions).toEqual(migrated().sessions);
+  });
+});
+
+describe('re-review R3: a session that never said which game', () => {
+  it('holds the version of every game at its casino that was current when it was played', () => {
+    const log = migrated();
+    const two = log.casinos.find((c) => c.id === 'c2')!;
+    for (const g of two.games) expect(sessionsAtGameVersion(log, 'c2', g, currentVersionId(g)).map((s) => s.id)).toEqual(['s3']);
+    // After a new version of g-a, s3 (played before it) holds version 1 only.
+    const r = saveCasino(log, draftWith(two, { minBet: 100 }, 0), T1, 'c2', { 'g-a': 'new' })!;
+    const ga = r.casino.games[0]!;
+    expect(sessionsAtGameVersion(r.log, 'c2', ga, currentVersionId(ga))).toEqual([]);
+    expect(sessionsAtGameVersion(r.log, 'c2', ga, 'g-a-v1').map((s) => s.id)).toEqual(['s3']);
+    // A session recorded at another game is not this one's.
+    const one = c1(log);
+    expect(sessionsAtGameVersion(log, 'c1', one.games[0]!, 'g-one-v1').map((s) => s.id)).toEqual(['s1', 's2']);
+    expect(sessionsAtGameVersion(log, 'c1', { ...one.games[0]!, id: 'g-other' }, 'g-one-v1')).toEqual([]);
   });
 });

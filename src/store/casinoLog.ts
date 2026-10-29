@@ -1616,9 +1616,19 @@ function withV1Fields(here: CasinoGame, v1: CasinoGame): CasinoGame {
   return next;
 }
 
-/** The sessions at a game's version (re-review R3 widens this). */
+/**
+ * The sessions that hold a game's version: those recorded at it, and
+ * (re-review R3) the casino's sessions that never said which game -- a v2
+ * session at a casino of several, or one started at "several" -- played
+ * while that version was current. Such a session may have been at this
+ * game, so its rules are kept like any other's.
+ */
 export function sessionsAtGameVersion(log: CasinoLog, casinoId: string, game: CasinoGame, versionId: string): CasinoSession[] {
-  return log.sessions.filter((s) => s.casinoId === casinoId && s.gameId === game.id && s.versionId === versionId);
+  return log.sessions.filter(
+    (s) =>
+      s.casinoId === casinoId &&
+      (s.gameId === game.id ? s.versionId === versionId : s.gameId === undefined && versionAt(game, s.start).versionId === versionId),
+  );
 }
 
 /** The held rules landed on each game's current version: a new version, a fix, or kept, as chosen. */

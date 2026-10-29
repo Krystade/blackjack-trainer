@@ -2,6 +2,7 @@ import {
   currentVersionId,
   earlierVersions,
   gameAtVersion,
+  sessionsAtGameVersion,
   versionsOf,
   type Casino,
   type CasinoGame,
@@ -58,7 +59,8 @@ export function currentVersionData(
   results: Readonly<Record<string, GameResult>>,
   archive: Readonly<Record<string, GameResult>>,
 ): VersionData {
-  const sessions = sessionsAtVersion(log, casino.id, game.id, currentVersionId(game)).length;
+  // Re-review R3: with the casino's sessions that never said which game, played at these rules.
+  const sessions = sessionsAtGameVersion(log, casino.id, game, currentVersionId(game)).length;
   const figures = game.variant === undefined && resultForKey(results, archive, game.id, simInputFor(game, profile, log.settings.methods ?? [], casino.kind).key) !== undefined;
   return { sessions, figures };
 }
