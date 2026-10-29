@@ -99,3 +99,88 @@ describe('a casino named as one here, under another id', () => {
     expect(mergeImport(emptyCasinoLog(), serializeExport(log, 0, null)).ok).toBe(true);
   });
 });
+
+/*
+ * Re-review R2: Jack keeps his casinos in a JSON file (v2, no versions) and
+ * pastes it. Pala, two sessions at 6 decks; the file says 8. The change is
+ * a rule change on the current version -- never a write into version 1,
+ * which would say the two sessions were played at 8 decks.
+ */
+describe('a versionless file changing a game’s rules', () => {
+  const PALA_GAME = { id: 'g-import-pala-1', decks: 6, s17: false, das: true, surrender: true, payout: '3:2', cutDecksLeft: null, minBet: null, maxBet: null, midShoeEntry: 'unknown', csm: false, roundsPerHour: null, doubleOn: 'any2', rsa: false, doubleSplitAces: false, maxSplitHands: 4, commissionPer100: 0 };
+  const PALA = { id: 'c-import-pala', name: 'Pala', kind: 'casino', miles: 74, games: [PALA_GAME], driveMinutes: null, location: null, status: 'ok', burnedUntil: null, notes: 'Pit boss Ray. Good pen on T3.', createdAt: '2026-10-21T12:00:00.000Z', updatedAt: '2026-10-21T12:00:00.000Z' };
+  const palaSess = (id: string, day: number) => ({ id, casinoId: 'c-import-pala', start: `2026-10-${day}T19:00:00.000Z`, end: `2026-10-${day}T22:00:00.000Z`, buyIns: [500], cashOut: 820, heat: 'none', notes: '', createdAt: `2026-10-${day}T19:00:00.000Z`, updatedAt: `2026-10-${day}T22:00:00.000Z` });
+  const SESSIONS = [palaSess('s-pala-1', 22), palaSess('s-pala-2', 24)];
+  /** The v2 log migrated: Pala's two sessions at its version 1. */
+  const here = () => migrateCasinoLog({ version: 2, casinos: [PALA], sessions: SESSIONS, settings: { startingBankroll: null, updatedAt: null }, lastExportAt: null })!.log;
+  const v2file = (game: Record<string, unknown>, updatedAt = '2026-10-28T12:00:00.000Z', sessions: unknown[] = SESSIONS) =>
+    JSON.stringify({ app: 'bjtrainer-casino-log', version: 2, casinos: [{ ...PALA, games: [{ ...PALA_GAME, ...game }], updatedAt }], sessions });
+  const pala = (log: CasinoLog) => log.casinos[0]!.games[0]!;
+
+  it('lists the change; a game with sessions defaults to a new version, which keeps version 1 and its sessions at 6 decks', () => {
+    const log = here();
+    expect(pala(log).versions!.map((v) => [v.versionId, v.rules.decks])).toEqual([['g-import-pala-1-v1', 6]]);
+    const r = mergeImport(log, v2file({ decks: 8 }));
+    if (!r.ok) throw new Error(r.error);
+    expect(r.report.ruleChanges).toHaveLength(1);
+    const ch = r.report.ruleChanges[0]!;
+    expect(ch).toMatchObject({ key: 'c-import-pala/g-import-pala-1', casinoName: 'Pala', sessions: 2, choice: 'new' });
+    expect(ch.prev.decks).toBe(6);
+    expect(ch.next.decks).toBe(8);
+    const g = pala(r.log);
+    expect(g.decks).toBe(8);
+    expect(g.versions!.map((v) => v.rules.decks)).toEqual([6, 8]);
+    expect(g.versions![0]!.versionId).toBe('g-import-pala-1-v1');
+    expect(g.versionId).toBe(g.versions![1]!.versionId);
+    expect(r.log.sessions.map((s) => s.versionId)).toEqual(['g-import-pala-1-v1', 'g-import-pala-1-v1']);
+    // The same file again: nothing more.
+    const again = mergeImport(r.log, v2file({ decks: 8 }));
+    if (!again.ok) throw new Error(again.error);
+    expect(again.report.ruleChanges).toEqual([]);
+    expect(pala(again.log)).toEqual(g);
+  });
+
+  it('"Fix this version" corrects the current version in place; "Keep" takes none of the file’s rules', () => {
+    const fix = mergeImport(here(), v2file({ decks: 8 }), {}, { 'c-import-pala/g-import-pala-1': 'fix' });
+    if (!fix.ok) throw new Error(fix.error);
+    expect(pala(fix.log).versions!.map((v) => [v.versionId, v.rules.decks])).toEqual([['g-import-pala-1-v1', 8]]);
+    const keep = mergeImport(here(), v2file({ decks: 8 }), {}, { 'c-import-pala/g-import-pala-1': 'keep' });
+    if (!keep.ok) throw new Error(keep.error);
+    expect(pala(keep.log).decks).toBe(6);
+    expect(pala(keep.log).versions!.map((v) => v.rules.decks)).toEqual([6]);
+    // The casino's own fields still came in (the record is newer).
+    expect(keep.log.casinos[0]!.updatedAt).toBe('2026-10-28T12:00:00.000Z');
+  });
+
+  it('never writes an earlier version: after a new version here, a file with version 1’s old rules changes only the current one', () => {
+    const r = mergeImport(here(), v2file({ decks: 8 }));
+    if (!r.ok) throw new Error(r.error);
+    // The file now says surrender off (and still 8 decks): one change, on the current version.
+    const r2 = mergeImport(r.log, v2file({ decks: 8, surrender: false }, '2026-10-29T12:00:00.000Z'), {}, { 'c-import-pala/g-import-pala-1': 'fix' });
+    if (!r2.ok) throw new Error(r2.error);
+    const g = pala(r2.log);
+    expect(g.versions!.map((v) => [v.rules.decks, v.rules.surrender])).toEqual([
+      [6, true],
+      [8, false],
+    ]);
+  });
+
+  it('a game with no sessions defaults to a fix; a file older than the record here defaults to keep', () => {
+    const none = migrateCasinoLog({ version: 2, casinos: [PALA], sessions: [], settings: { startingBankroll: null, updatedAt: null }, lastExportAt: null })!.log;
+    const r = mergeImport(none, v2file({ decks: 8 }, undefined, []));
+    if (!r.ok) throw new Error(r.error);
+    expect(r.report.ruleChanges[0]!.choice).toBe('fix');
+    expect(pala(r.log).versions!.map((v) => v.rules.decks)).toEqual([8]);
+    const old = mergeImport(here(), v2file({ decks: 8 }, '2026-10-01T00:00:00.000Z'));
+    if (!old.ok) throw new Error(old.error);
+    expect(old.report.ruleChanges[0]!.choice).toBe('keep');
+    expect(pala(old.log).decks).toBe(6);
+  });
+
+  it('a v3 file (the app’s own export, with versions) asks nothing: its versions merge by id as before', () => {
+    const log = here();
+    const r = mergeImport(log, serializeExport(log, 0, null));
+    if (!r.ok) throw new Error(r.error);
+    expect(r.report.ruleChanges).toEqual([]);
+  });
+});

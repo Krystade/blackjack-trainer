@@ -237,3 +237,45 @@ test('a game with figures but no sessions is fixed in place without asking; its 
   await expect.poll(async () => (await cache()).results?.['g-dd']?.key, { timeout: 30_000 }).not.toBe(oldKey);
   expect(Object.keys((await cache()).archive ?? {})).toContain(oldKey);
 });
+
+/*
+ * Re-review R2, the reviewer's Pala case: Jack's v2 file says 8 decks where
+ * Pala, with two sessions, has 6. The preview lists the change with New
+ * version (the default, Pala has sessions), Fix or Keep; New version keeps
+ * version 1 -- and the two sessions -- at 6 decks.
+ */
+test('Paste of a v2 file that changes Pala from 6 to 8 decks: listed, a new version by default, version 1 kept', async ({ page }) => {
+  const palaGame = { id: 'g-import-pala-1', decks: 6, s17: false, das: true, surrender: true, payout: '3:2', cutDecksLeft: null, minBet: null, maxBet: null, midShoeEntry: 'unknown', csm: false, roundsPerHour: null, doubleOn: 'any2', rsa: false, doubleSplitAces: false, maxSplitHands: 4, commissionPer100: 0 };
+  const pala = { id: 'c-import-pala', name: 'Pala', kind: 'casino', miles: 74, games: [palaGame], status: 'ok', notes: 'Pit boss Ray. Good pen on T3.', createdAt: '2026-10-21T12:00:00.000Z', updatedAt: '2026-10-21T12:00:00.000Z' };
+  const sessions = [sess('s-pala-1', 'c-import-pala', 2, 820), sess('s-pala-2', 'c-import-pala', 4, 0)];
+  const v2 = { version: 2, casinos: [pala], sessions, settings: { startingBankroll: null, updatedAt: null }, lastExportAt: AT };
+  await page.addInitScript(
+    ([k, l]) => {
+      if (!sessionStorage.getItem('seeded')) {
+        localStorage.setItem(k as string, l as string);
+        sessionStorage.setItem('seeded', '1');
+      }
+    },
+    [PREV_KEY, JSON.stringify(v2)],
+  );
+  await page.goto('/?e2e=1');
+  await openCasino(page);
+  const file = { app: 'bjtrainer-casino-log', version: 2, casinos: [{ ...pala, games: [{ ...palaGame, decks: 8 }], updatedAt: '2026-10-28T12:00:00.000Z' }], sessions };
+  await page.getByRole('button', { name: 'Paste JSON' }).click();
+  await page.getByTestId('casino-paste-text').fill(JSON.stringify(file));
+  await page.getByTestId('casino-paste-import').click();
+  const change = page.getByTestId('import-preview').getByTestId('import-rule-change');
+  await expect(change).toContainText('Pala: the file has other rules.');
+  await expect(change.getByTestId('import-rule-lines')).toHaveText('Decks: 6 → 8');
+  await expect(change.getByTestId('import-rule-new')).toHaveAttribute('aria-pressed', 'true');
+  await expect(change.getByTestId('import-rule-new')).toContainText('keep its 2 sessions');
+  await page.getByTestId('import-confirm').click();
+  await expect(page.getByRole('status').filter({ hasText: 'Imported' })).toBeVisible();
+  const g = (await stored(page)).casinos[0].games[0];
+  expect(g.decks).toBe(8);
+  expect(g.versions.map((v: { versionId: string; rules: { decks: number } }) => [v.versionId === 'g-import-pala-1-v1', v.rules.decks])).toEqual([
+    [true, 6],
+    [false, 8],
+  ]);
+  expect((await stored(page)).sessions.map((s: { versionId: string }) => s.versionId)).toEqual(['g-import-pala-1-v1', 'g-import-pala-1-v1']);
+});

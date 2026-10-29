@@ -416,6 +416,7 @@ describe('export and import', () => {
       extraRunning: 0,
       casinos: [{ id: log.casinos[0]!.id, name: log.casinos[0]!.name, outcome: 'added' }],
       nameMatches: [],
+      ruleChanges: [],
     });
   });
 

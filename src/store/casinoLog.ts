@@ -1266,7 +1266,36 @@ export interface MergeReport {
    * name: merged into it (`localId`) or added beside it, as `choice` says.
    */
   nameMatches: NameMatch[];
+  /**
+   * Re-review R2: games a versionless (v1/v2) file gives other rules than
+   * the current version's here. Each is a rule change on the current
+   * version -- a new version, or a fix -- as `choice` says; never a write
+   * into an earlier one.
+   */
+  ruleChanges: ImportRuleChange[];
 }
+
+/** Re-review R2: a game whose rules a versionless file changes. */
+export interface ImportRuleChange {
+  /** `<casino id>/<game id>`: what `mergeImport`'s `rules` answers by. */
+  key: string;
+  casinoName: string;
+  gameId: string;
+  /** The game here (its current version's rules). */
+  prev: CasinoGame;
+  /** The game with the file's rules. */
+  next: CasinoGame;
+  /** Sessions played at the current version here. */
+  sessions: number;
+  choice: ImportRuleChoice;
+}
+/**
+ * A new version or a fix, as the form asks; or keep the rules here. The
+ * default: kept when the file's record is not newer than the one here (a
+ * newer record wins, as always), else a new version when the current one
+ * has sessions, a fix when it has none.
+ */
+export type ImportRuleChoice = VersionChoice | 'keep';
 
 /** Wave W (review S3): a casino in a file named as one here, under another id. */
 export interface NameMatch {
@@ -1486,6 +1515,7 @@ export function mergeImport(
   local: CasinoLog,
   text: string,
   names: Readonly<Record<string, NameChoice>> = {},
+  rules: Readonly<Record<string, ImportRuleChoice>> = {},
 ): { ok: true; log: CasinoLog; report: MergeReport; unreadable: string | null } | { ok: false; error: string } {
   let parsed: unknown;
   try {
@@ -1503,7 +1533,23 @@ export function mergeImport(
   const migrated = migrateCasinoLog({ ...parsed, version: parsed.version ?? 1 });
   if (!migrated) return { ok: false, error: 'That file is not a casino log export.' };
   const matched = matchNames(local, migrated.log, names);
-  const { log, casinos, sessions } = mergeLogs(local, matched.inc, parsed.version !== 2 && parsed.version !== 3);
+  const versionless = parsed.version !== 3;
+  const fromV1 = parsed.version !== 2 && parsed.version !== 3;
+  const held = versionless ? holdRules(local, matched.inc, fromV1) : { inc: matched.inc, pending: [] };
+  const merged = mergeLogs(local, held.inc, fromV1);
+  const { casinos, sessions } = merged;
+  const applied = applyRules(merged.log, local, held.pending, rules);
+  const log = applied.log;
+  if (applied.changes.length > 0) {
+    // A casino whose rules changed only through a choice counts as updated.
+    for (const o of casinos.outcomes) {
+      if (o.outcome === 'unchanged' && applied.changes.some((c) => c.key.startsWith(`${o.id}/`) && c.choice !== 'keep')) {
+        o.outcome = 'updated';
+        casinos.kept -= 1;
+        casinos.updated += 1;
+      }
+    }
+  }
   const open = sessions.items.filter((s) => s.end === null).length;
   return {
     ok: true,
@@ -1520,6 +1566,87 @@ export function mergeImport(
       extraRunning: Math.max(0, open - 1),
       casinos: casinos.outcomes,
       nameMatches: matched.matches,
+      ruleChanges: applied.changes,
     },
   };
+}
+
+interface HeldRules {
+  key: string;
+  casinoId: string;
+  gameId: string;
+  rules: VersionRules;
+  /** The file's record was newer than the one here. */
+  newer: boolean;
+  at: string;
+}
+
+/**
+ * Re-review R2: a versionless record's games carry the file's rules on a
+ * made-up version 1 that could overwrite the version 1 here. Before the
+ * merge, each game the log already has takes the rules and versions here,
+ * so the merge never touches a version; the file's rules are held aside,
+ * to land on the current version afterwards (`applyRules`).
+ */
+function holdRules(local: CasinoLog, inc: CasinoLog, fromV1: boolean): { inc: CasinoLog; pending: HeldRules[] } {
+  const pending: HeldRules[] = [];
+  const casinos = inc.casinos.map((c) => {
+    const here = local.casinos.find((l) => l.id === c.id);
+    if (!here) return c;
+    const newer = Date.parse(c.updatedAt) > Date.parse(here.updatedAt);
+    return {
+      ...c,
+      games: c.games.map((g) => {
+        const lg = here.games.find((x) => x.id === g.id);
+        if (!lg) return g;
+        // A v1 record knows only v1's fields: the rest stay as they are here.
+        const theirs = fromV1 ? withV1Fields(lg, g) : g;
+        pending.push({ key: `${c.id}/${g.id}`, casinoId: c.id, gameId: g.id, rules: rulesOf(theirs), newer, at: c.updatedAt });
+        const { versions: _v, versionId: _id, ...rest } = withRules(g, rulesOf(lg));
+        return { ...rest, ...(lg.versionId !== undefined ? { versionId: lg.versionId } : {}), ...(lg.versions !== undefined ? { versions: lg.versions } : {}) };
+      }),
+    };
+  });
+  return { inc: { ...inc, casinos }, pending };
+}
+
+function withV1Fields(here: CasinoGame, v1: CasinoGame): CasinoGame {
+  const next: CasinoGame = { ...here };
+  for (const f of V1_GAME_FIELDS) (next as unknown as Record<string, unknown>)[f] = v1[f];
+  return next;
+}
+
+/** The sessions at a game's version (re-review R3 widens this). */
+export function sessionsAtGameVersion(log: CasinoLog, casinoId: string, game: CasinoGame, versionId: string): CasinoSession[] {
+  return log.sessions.filter((s) => s.casinoId === casinoId && s.gameId === game.id && s.versionId === versionId);
+}
+
+/** The held rules landed on each game's current version: a new version, a fix, or kept, as chosen. */
+function applyRules(
+  log: CasinoLog,
+  local: CasinoLog,
+  pending: HeldRules[],
+  choices: Readonly<Record<string, ImportRuleChoice>>,
+): { log: CasinoLog; changes: ImportRuleChange[] } {
+  const changes: ImportRuleChange[] = [];
+  let casinos = log.casinos;
+  for (const p of pending) {
+    const c = casinos.find((x) => x.id === p.casinoId);
+    const g = c?.games.find((x) => x.id === p.gameId);
+    if (!c || !g || sameRules(g, p.rules)) continue;
+    const next = withRules(g, p.rules);
+    const sessions = sessionsAtGameVersion(log, c.id, g, currentVersionId(g)).length;
+    const choice = choices[p.key] ?? (!p.newer ? 'keep' : sessions > 0 ? 'new' : 'fix');
+    changes.push({ key: p.key, casinoName: c.name, gameId: g.id, prev: g, next, sessions, choice });
+    if (choice === 'keep') continue;
+    // Later than anything the game holds, so the change is the current version on every copy merged after.
+    const last = versionsOf(g).reduce((t, v) => Math.max(t, Date.parse(v.createdAt), Date.parse(v.updatedAt)), 0);
+    const here = local.casinos.find((x) => x.id === c.id);
+    const atMs = Math.max(Date.parse(p.at), last + 1, here ? Date.parse(here.updatedAt) + 1 : 0);
+    const at = new Date(atMs).toISOString();
+    const game = versioned(g, next, choice, at);
+    const updatedAt = Date.parse(c.updatedAt) >= atMs ? c.updatedAt : at;
+    casinos = casinos.map((x) => (x.id === c.id ? { ...x, updatedAt, games: x.games.map((y) => (y.id === g.id ? game : y)) } : x));
+  }
+  return { log: { ...log, casinos }, changes };
 }

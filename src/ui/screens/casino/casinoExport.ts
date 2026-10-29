@@ -6,6 +6,7 @@ import {
   mergeImport,
   serializeExport,
   type CasinoLog,
+  type ImportRuleChoice,
   type NameChoice,
 } from '../../../store/casinoLog';
 
@@ -71,8 +72,13 @@ export type ImportPlan = Extract<ReturnType<typeof mergeImport>, { ok: true }>;
  * (store/casinoLog.ts `mergeImport`). `names` answers each casino named as
  * one here under another id (merged by default).
  */
-export function planImport(log: CasinoLog, text: string, names: Readonly<Record<string, NameChoice>> = {}): { ok: true; plan: ImportPlan } | { ok: false; message: string } {
-  const r = mergeImport(log, text, names);
+export function planImport(
+  log: CasinoLog,
+  text: string,
+  names: Readonly<Record<string, NameChoice>> = {},
+  rules: Readonly<Record<string, ImportRuleChoice>> = {},
+): { ok: true; plan: ImportPlan } | { ok: false; message: string } {
+  const r = mergeImport(log, text, names, rules);
   if (!r.ok) return { ok: false, message: `Import failed: ${r.error}` };
   return { ok: true, plan: r };
 }

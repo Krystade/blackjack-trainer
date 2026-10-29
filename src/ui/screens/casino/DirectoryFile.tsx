@@ -1,5 +1,5 @@
 import { useRef, useState, type ChangeEvent } from 'react';
-import { serializeExport, type CasinoLog, type NameChoice } from '../../../store/casinoLog';
+import { serializeExport, type CasinoLog, type ImportRuleChoice, type NameChoice } from '../../../store/casinoLog';
 import { agoText, daysBetween, localDateKey } from '../../casinoFigures';
 import { applyImport, exportLog, planImport, type ImportPlan } from './casinoExport';
 import { ImportPreview } from './ImportPreview';
@@ -22,11 +22,16 @@ export function DirectoryFile({ log, commit }: { log: CasinoLog; commit: (next: 
   const [pasted, setPasted] = useState('');
   const [copyText, setCopyText] = useState<string | null>(null);
   // Review S3: the import worked out and shown, waiting for Import; `from` is where its text came from.
-  const [pending, setPending] = useState<{ text: string; names: Record<string, NameChoice>; from: 'file' | 'paste' } | null>(null);
+  const [pending, setPending] = useState<{
+    text: string;
+    names: Record<string, NameChoice>;
+    rules: Record<string, ImportRuleChoice>;
+    from: 'file' | 'paste';
+  } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Worked out against the log as it is now, so a change made meanwhile (another tab) is in what Import saves.
-  const planned = pending ? planImport(log, pending.text, pending.names) : null;
+  const planned = pending ? planImport(log, pending.text, pending.names, pending.rules) : null;
   const plan: ImportPlan | null = planned?.ok ? planned.plan : null;
 
   const preview = (text: string, from: 'file' | 'paste') => {
@@ -37,7 +42,7 @@ export function DirectoryFile({ log, commit }: { log: CasinoLog; commit: (next: 
       return;
     }
     setMessage(null);
-    setPending({ text, names: {}, from });
+    setPending({ text, names: {}, rules: {}, from });
   };
 
   const onFile = (e: ChangeEvent<HTMLInputElement>) => {
@@ -185,6 +190,7 @@ export function DirectoryFile({ log, commit }: { log: CasinoLog; commit: (next: 
           <ImportPreview
             plan={plan}
             onName={(id, choice) => setPending((p) => (p ? { ...p, names: { ...p.names, [id]: choice } } : p))}
+            onRule={(key, choice) => setPending((p) => (p ? { ...p, rules: { ...p.rules, [key]: choice } } : p))}
             onCancel={() => setPending(null)}
             onImport={confirm}
           />
