@@ -259,3 +259,31 @@ test('every save, rename and delete re-reads storage: a list A has not heard of 
   await expect(row(page, 'Second')).toHaveCount(0);
   expect(await names()).toEqual(['Mine renamed', 'Planted 1', 'Planted 2', 'Planted 3', 'Planted 4']);
 });
+
+/* Review S6: "Save to" offered only while the painting is in no list, and a list gone meanwhile is said so. */
+test('"Save to" waits while the painting is another list, and a list deleted meanwhile is named, not blamed on storage', async ({ page }) => {
+  await page.goto('/?e2e=1');
+  await openEditor(page);
+  await paintOnly(page, 'soft-18-v-9');
+  await saveAs(page, 'Bee');
+  await paintOnly(page, 'hard-16-v-10');
+  await saveAs(page, 'Ay');
+  // Painted back to exactly Bee: the status names Bee, and nothing offers to overwrite Ay with it.
+  await paintOnly(page, 'soft-18-v-9');
+  await expect(status(page)).toHaveText('This is “Bee”.');
+  await expect(page.getByTestId('scl-save-origin')).toHaveCount(0);
+  // In no list: Save to Ay is back.
+  await cell(page, 'soft-17-v-9').click();
+  await expect(status(page)).toHaveText('Changed since “Ay”.');
+  await expect(page.getByTestId('scl-save-origin')).toHaveText('Save to “Ay”');
+
+  // Ay deleted behind this page's back, then Save to Ay.
+  await page.evaluate((k) => {
+    const doc = JSON.parse(localStorage.getItem(k)!);
+    doc.lists = doc.lists.filter((l: { name: string }) => l.name !== 'Ay');
+    localStorage.setItem(k, JSON.stringify(doc));
+  }, KEY);
+  await page.getByTestId('scl-save-origin').click();
+  await expect(panel(page).getByRole('status')).toHaveText('“Ay” is no longer a list (deleted, perhaps in another tab). Save as… to keep the painting.');
+  expect((await stored(page)).lists.map((l) => l.name)).toEqual(['Bee']);
+});

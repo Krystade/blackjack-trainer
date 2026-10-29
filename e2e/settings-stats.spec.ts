@@ -55,7 +55,12 @@ test('importing garbage shows an error and leaves the app navigable', async ({ p
   await page.goto('/?e2e=1');
   await page.locator('.home-stats-link').click();
 
-  page.once('dialog', (dialog) => dialog.accept());
+  // The warning names everything a backup replaces (Wave W review S6: the saved Custom lists too).
+  let warning = '';
+  page.once('dialog', (dialog) => {
+    warning = dialog.message();
+    void dialog.accept();
+  });
   const fileInput = page.locator('input.stats-file-input');
   await fileInput.setInputFiles({
     name: 'garbage.json',
@@ -64,6 +69,7 @@ test('importing garbage shows an error and leaves the app navigable', async ({ p
   });
 
   await expect(page.locator('.stats-message')).toContainText('Import failed');
+  expect(warning).toBe('Import replaces your stats, settings, profiles, both review schedules and saved Custom lists. Continue?');
   await shot(page, '25-stats-import-error');
 
   await page.locator('.tab-bar').getByRole('button', { name: 'Home', exact: true }).click();

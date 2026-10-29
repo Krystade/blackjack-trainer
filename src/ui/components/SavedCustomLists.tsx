@@ -63,7 +63,10 @@ export function SavedCustomLists({
   const lists = sortedLists(doc);
   const current = matchingList(doc, selection, settings.drill.customListId);
   const origin = listById(doc, settings.drill.customListId);
-  const changedFromOrigin = origin !== undefined && current?.id !== origin.id;
+  // Review S6: only while the painting is in no list. When it now matches
+  // another list, the status names that one, and a one-tap "Save to" the
+  // first would overwrite it with the second's cells unasked.
+  const changedFromOrigin = origin !== undefined && current === undefined;
 
   const [naming, setNaming] = useState<{ name: string; problem: NameProblem | null; existing?: SavedCustomList } | null>(null);
   const [row, setRow] = useState<Row | null>(null);
@@ -95,7 +98,17 @@ export function SavedCustomLists({
   };
 
   const doOverwrite = (target: SavedCustomList) => {
-    const r = updateCustomLists((d) => ({ doc: listById(d, target.id) ? overwriteList(d, target.id, selection, Date.now()) : null, result: null }));
+    const r = updateCustomLists((d) => {
+      const there = listById(d, target.id) !== undefined;
+      return { doc: there ? overwriteList(d, target.id, selection, Date.now()) : null, result: there };
+    });
+    if (!r.result) {
+      // Review S6: deleted meanwhile (another tab), which is not a full phone.
+      setNaming(null);
+      setRow(null);
+      setMessage(`“${target.name}” is no longer a list (deleted, perhaps in another tab). Save as… to keep the painting.`);
+      return;
+    }
     if (!r.saved) return failed();
     setNaming(null);
     setRow(null);

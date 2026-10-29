@@ -524,7 +524,8 @@ export function Stats({ activeProfile, settings, onSettingsChange, onNavigate }:
       // only warning shown before it is replaced.
       if (
         !window.confirm(
-          'Import replaces your stats, settings, profiles and both review schedules. Continue?',
+          // Wave W review S6: a backup carries the saved Custom lists too.
+          'Import replaces your stats, settings, profiles, both review schedules and saved Custom lists. Continue?',
         )
       )
         return;
