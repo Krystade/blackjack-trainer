@@ -209,3 +209,53 @@ test("a list saved in one tab shows in the other's editor, and the other's save 
   await expect(row(b, 'From A again')).toBeVisible();
   expect((await stored(a)).lists.map((l) => l.name)).toEqual(['From A', 'From B', 'From A again']);
 });
+
+/*
+ * Review S4: the test above cannot tell a save from stale memory, since A has
+ * already heard B's write when it saves. Here the list is written straight
+ * into storage from A's own page: a same-tab write fires no storage event, so
+ * A's copy is stale for sure. Every editor action must still keep it.
+ */
+test('every save, rename and delete re-reads storage: a list A has not heard of survives them', async ({ page }) => {
+  await page.goto('/?e2e=1');
+  await openEditor(page);
+  await paintOnly(page, 'hard-16-v-10');
+  await saveAs(page, 'Mine');
+  const plant = (name: string) =>
+    page.evaluate(
+      ([k, n]) => {
+        const doc = JSON.parse(localStorage.getItem(k)!);
+        doc.lists.push({ id: `cl-${n}`, name: n, selection: { tiers: { 'pair-8-v-A': 'focus' }, painted: {}, mix: { focus: 60, regular: 30, rare: 10 }, favourMissed: false }, savedAt: '2026-10-26T12:00:00.000Z' });
+        localStorage.setItem(k, JSON.stringify(doc));
+      },
+      [KEY, name] as const,
+    );
+  const names = async () => (await stored(page)).lists.map((l) => l.name).sort();
+
+  await plant('Planted 1');
+  await expect(row(page, 'Planted 1')).toHaveCount(0);
+  await paintOnly(page, 'soft-18-v-9');
+  await saveAs(page, 'Second');
+  expect(await names()).toEqual(['Mine', 'Planted 1', 'Second']);
+
+  await plant('Planted 2');
+  await page.getByTestId('scl-save-origin').waitFor({ state: 'detached' });
+  await cell(page, 'soft-17-v-9').click();
+  await page.getByTestId('scl-save-origin').click();
+  expect(await names()).toEqual(['Mine', 'Planted 1', 'Planted 2', 'Second']);
+
+  await plant('Planted 3');
+  await row(page, 'Mine').getByRole('button', { name: 'More for Mine' }).click();
+  await row(page, 'Mine').getByRole('button', { name: 'Rename', exact: true }).click();
+  await row(page, 'Mine').locator('input[name="renameList"]').fill('Mine renamed');
+  await row(page, 'Mine').getByRole('button', { name: 'Rename', exact: true }).click();
+  await expect(row(page, 'Mine renamed')).toBeVisible();
+  expect(await names()).toEqual(['Mine renamed', 'Planted 1', 'Planted 2', 'Planted 3', 'Second']);
+
+  await plant('Planted 4');
+  await row(page, 'Second').getByRole('button', { name: 'More for Second' }).click();
+  await row(page, 'Second').getByRole('button', { name: 'Delete', exact: true }).click();
+  await row(page, 'Second').getByRole('button', { name: 'Delete', exact: true }).click();
+  await expect(row(page, 'Second')).toHaveCount(0);
+  expect(await names()).toEqual(['Mine renamed', 'Planted 1', 'Planted 2', 'Planted 3', 'Planted 4']);
+});
