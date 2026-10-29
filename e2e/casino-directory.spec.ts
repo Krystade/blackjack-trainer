@@ -90,7 +90,8 @@ test('Casinos is the default part: every casino with every game rules line, sear
   await expect(page.getByTestId('casino-row-ev')).toHaveCount(3);
   await expect(page.getByTestId('casino-row').filter({ hasText: 'Bicycle' }).getByTestId('casino-row-ev')).toHaveText('—');
   await expect.poll(async () => (await names(page))[2], { timeout: 30_000 }).toBe('Bicycle');
-  await expect(page.getByTestId('casino-row').filter({ hasText: 'Golden Nugget' }).getByTestId('casino-row-ev')).toHaveText(/\/h$/, { timeout: 30_000 });
+  // Review S1: the figure carries its interval, as on Ranked.
+  await expect(page.getByTestId('casino-row').filter({ hasText: 'Golden Nugget' }).getByTestId('casino-row-ev')).toContainText(/[+−]\$[\d,]+ ±\$\d[\d,]*\/h/, { timeout: 30_000 });
 
   await page.reload();
   await openCasino(page);
@@ -122,7 +123,9 @@ test("a casino's page: every rule, the unknowns and ? marks, side bets, notes, f
   await expect(rule('midShoeEntry')).toHaveText('Not allowed');
   await expect(game.getByTestId('detail-side-bets')).toHaveText('Lucky Ladies (Table A (1000/125/19/9/4)) $5–$100');
   await expect(game).toContainText('Pit 3 deals deepest');
-  await expect(game.getByTestId('detail-figures')).toHaveText(/^[+−]\$[\d,]+\/h.* · edge −?\d+\.\d\d%/, { timeout: 30_000 });
+  // Review S1: the figure with its interval (a verdict only when all of it is one side of zero), the edge beside it.
+  await expect(game.getByTestId('detail-figures')).toHaveText(/^(about break-even, )?[+−]\$[\d,]+ ±\$\d[\d,]*\/h$/, { timeout: 30_000 });
+  await expect(game.getByTestId('detail-figures-sub')).toContainText(/edge −?\d+\.\d\d%/);
 
   // Figures opens the game's card; Back returns to this page.
   await game.getByRole('button', { name: 'Figures' }).click();
@@ -257,3 +260,28 @@ for (const width of [375, 320]) {
     expect(await fits()).toBeLessThanOrEqual(0);
   });
 }
+
+/*
+ * Review S1: at a continuous shuffler there is no count to play, so a short
+ * run's noise must never read as a profit. The runs are seeded from their
+ * inputs, so this run is the same every time; the wording is checked against
+ * the figures the page itself shows.
+ */
+test('a CSM game reads "No counting edge" with its interval, on its page and its directory row, never a bare +$', async ({ page }) => {
+  await seed(page);
+  await page.goto('/?e2e=1');
+  await openCasino(page);
+  await sortBy(page, 'EV/h');
+  const ev = page.getByTestId('casino-row').filter({ hasText: 'Aria' }).getByTestId('casino-row-ev');
+  await expect(ev).toContainText('No counting edge', { timeout: 30_000 });
+  const rowText = (await ev.locator('.cas-dir-ev-text').textContent())!;
+  expect(rowText).toMatch(/^No counting edge · (about break-even ±\$\d[\d,]*\/h|loses \$[\d,]+\/h( ±\$\d[\d,]*)?)$/);
+  // The run is short here: it is marked as such.
+  await expect(ev.getByTestId('figure-partial').or(ev.getByTestId('figure-estimate'))).toBeVisible();
+
+  await page.getByTestId('casino-row').filter({ hasText: 'Aria' }).click();
+  const line = page.getByTestId('detail-figures');
+  await expect(line).toHaveText(rowText);
+  expect(rowText).not.toContain('+$');
+  await expect(page.getByTestId('detail-figures-sub')).toContainText(/edge −?\d+\.\d\d% ±\d+\.\d\d%/);
+});

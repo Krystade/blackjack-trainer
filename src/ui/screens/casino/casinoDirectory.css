@@ -274,3 +274,42 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: var(--fs-xs);
 }
+
+/* ---------- Review S1: a figure with its interval and what it is ---------- */
+.cas-dir-ev {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  font-size: var(--fs-sm);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.cas-dir-ev[data-sign='1'] .cas-dir-ev-text,
+.cas-dir-figures-text[data-sign='1'] {
+  color: var(--cas-good);
+}
+
+.cas-dir-ev[data-sign='-1'] .cas-dir-ev-text,
+.cas-dir-figures-text[data-sign='-1'] {
+  color: var(--bad);
+}
+
+.cas-dir-figures-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cas-dir-figures-sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--ink-dim);
+  font-variant-numeric: tabular-nums;
+}

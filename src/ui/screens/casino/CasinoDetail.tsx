@@ -17,13 +17,13 @@ import {
   warnBadges,
   worstHeat,
 } from '../../casinoFigures';
-import { buildRanking, rankedEvHour, type RankRow } from '../../casinoRanking';
+import { buildRanking, type RankRow } from '../../casinoRanking';
 import { ruleLines, sideBetText } from '../../casinoDirectory';
-import { evHourText, n0Text, pctText } from '../../casinoStatsText';
-import { methodBadge } from '../../../engine/betMethods';
+import { figureLine } from '../../casinoFigureLine';
+import { FigureBadges } from './FigureBadges';
 import { HeatBadge } from './fields';
 import { NotesEditor } from './NotesEditor';
-import { useActiveProfile, useGameCache, useHere } from './useGameStats';
+import { useActiveProfile, useGameCache, useHere, useRunner } from './useGameStats';
 import type { CasinoView } from './Casino';
 import './casinoDirectory.css';
 
@@ -48,6 +48,7 @@ export function CasinoDetail({
   const here = useHere().state.here;
   const profile = useActiveProfile();
   const { results, archive } = useGameCache(log);
+  const runner = useRunner();
   const casino = casinoById(log, id);
   const now = Date.now();
   if (!casino) {
@@ -133,6 +134,7 @@ export function CasinoDetail({
               game={g}
               index={i}
               row={rows.find((r) => r.game.id === g.id)}
+              failed={(k) => runner.failed[k]}
               onFigures={() => go({ kind: 'game', casinoId: casino.id, gameId: g.id, from: self })}
             />
           ))}
@@ -185,35 +187,23 @@ export function CasinoDetail({
   );
 }
 
-function figuresText(row: RankRow | undefined): string {
-  if (!row) return 'No figures';
-  if (row.notModelled) return 'Not modelled: the simulator does not deal this game';
-  const f = row.figures;
-  const ev = rankedEvHour(row);
-  if (!f || ev === null) return 'Figures being worked out…';
-  return [
-    `${evHourText(ev)}${f.partial ? ' (estimate)' : ''}`,
-    `edge ${pctText(f.edge)}`,
-    f.best ? `N0 ${n0Text(f.n0Hours)}` : null,
-    f.best ? methodBadge(row.withSide?.method?.method ?? f.best.method) : 'flat bet',
-  ]
-    .filter(Boolean)
-    .join(' · ');
-}
-
 function GameCard({
   casino,
   game,
   index,
   row,
+  failed,
   onFigures,
 }: {
   casino: Casino;
   game: CasinoGame;
   index: number;
   row: RankRow | undefined;
+  failed: (key: string) => string | undefined;
   onFigures: () => void;
 }) {
+  // Review S1: the figure as Ranked says it, with its interval and what it is.
+  const line = row ? figureLine(row, failed(row.input.key)) : null;
   const lines = ruleLines(game);
   const warns = warnBadges(game);
   const title = game.label?.trim() || (casino.games.length === 1 ? 'The game' : `Game ${index + 1}`);
@@ -222,9 +212,18 @@ function GameCard({
       <h3 className="cas-dir-card-title">{title}</h3>
       <p className="cas-row-game cas-dir-card-summary">{game.label?.trim() ? gameSummary(game) : labelledSummary(game)}</p>
       <div className="cas-dir-figures">
-        <p className="cas-dir-figures-text" data-testid="detail-figures">
-          {figuresText(row)}
-        </p>
+        <div className="cas-dir-figures-main">
+          <p className="cas-dir-figures-text" data-testid="detail-figures" data-sign={line?.sign ?? 0}>
+            {line ? line.text : 'No figures'}
+          </p>
+          {line && (line.edge || line.extras.length > 0 || line.badges.length > 0) && (
+            <p className="cas-dir-figures-sub" data-testid="detail-figures-sub">
+              {[line.edge, ...line.extras].filter(Boolean).join(' · ')}
+              {line.badges.length > 0 && ' '}
+              <FigureBadges line={line} />
+            </p>
+          )}
+        </div>
         <button type="button" className="cas-head-btn" onClick={onFigures}>
           Figures
         </button>

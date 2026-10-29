@@ -18,9 +18,10 @@ import {
 } from '../../casinoFigures';
 import { bestGameOf, buildRanking, rankedEvHour, type RankRow } from '../../casinoRanking';
 import { gameExtras, matchesQuery, readDirectorySort, sortDirectory, writeDirectorySort, type DirectorySort } from '../../casinoDirectory';
-import { evHourText } from '../../casinoStatsText';
+import { FigureBadges } from './FigureBadges';
+import { figureLine } from '../../casinoFigureLine';
 import { Choice, HeatBadge } from './fields';
-import { useActiveProfile, useGameCache } from './useGameStats';
+import { useActiveProfile, useGameCache, useRunner } from './useGameStats';
 import type { CasinoView } from './Casino';
 import './casinoDirectory.css';
 
@@ -47,14 +48,20 @@ export function CasinoDirectory({ log, go, now, here }: { log: CasinoLog; go: (v
   const { results, archive } = useGameCache(log);
   const unburned = { ...log, casinos: log.casinos.map((c) => ({ ...c, status: 'ok' as const })) };
   const ranked = buildRanking(unburned, profile, results, now, null, 'ev', archive);
-  const bestEv = (c: Casino): number | null => {
-    let best: number | null = null;
+  const runner = useRunner();
+  /** The casino's game with the best figure (the row EV/h ranks and shows); null with none yet. */
+  const bestRow = (c: Casino): RankRow | null => {
+    let best: RankRow | null = null;
     for (const r of ranked) {
       if (r.casino.id !== c.id) continue;
       const v = rankedEvHour(r);
-      if (v !== null && (best === null || v > best)) best = v;
+      if (v !== null && (best === null || v > rankedEvHour(best)!)) best = r;
     }
     return best;
+  };
+  const bestEv = (c: Casino): number | null => {
+    const r = bestRow(c);
+    return r ? rankedEvHour(r) : null;
   };
   const found = log.casinos.filter((c) => matchesQuery(c, query, now));
   const shown = sortDirectory(log, found, sort, now, here, bestEv);
@@ -71,7 +78,8 @@ export function CasinoDirectory({ log, go, now, here }: { log: CasinoLog; go: (v
       now={now}
       here={here}
       ranked={ranked}
-      ev={sort === 'ev' ? bestEv(c) : undefined}
+      ev={sort === 'ev' ? bestRow(c) : undefined}
+      failed={(k) => runner.failed[k]}
       onOpen={() => go({ kind: 'detail', id: c.id })}
     />
   );
@@ -158,6 +166,7 @@ function DirectoryRow({
   here,
   ranked,
   ev,
+  failed,
   onOpen,
 }: {
   casino: Casino;
@@ -165,8 +174,10 @@ function DirectoryRow({
   now: number;
   here: GeoPoint | null;
   ranked: readonly RankRow[];
-  /** Under the EV order: the casino's best figure (null = none yet). */
-  ev: number | null | undefined;
+  /** Under the EV order: the casino's best game (null = no figure yet). */
+  ev: RankRow | null | undefined;
+  /** Why a run failed, by its input key. */
+  failed: (key: string) => string | undefined;
   onOpen: () => void;
 }) {
   const sessions = sessionsAt(log, casino.id);
@@ -182,18 +193,14 @@ function DirectoryRow({
       <button type="button" className="cas-row cas-dir-row" onClick={onOpen} data-testid="casino-row" data-casino={casino.name}>
         <span className="cas-row-top">
           <span className="cas-row-name">{casino.name}</span>
-          {ev !== undefined ? (
-            <span className="cas-row-net" data-sign={ev === null ? 0 : Math.sign(Math.round(ev))} data-testid="casino-row-ev">
-              {ev === null ? '—' : evHourText(ev)}
+          {ev === undefined && t.sessions > 0 && (
+            <span className="cas-row-net" data-sign={Math.sign(t.net)}>
+              {signedMoney(t.net)}
             </span>
-          ) : (
-            t.sessions > 0 && (
-              <span className="cas-row-net" data-sign={Math.sign(t.net)}>
-                {signedMoney(t.net)}
-              </span>
-            )
           )}
         </span>
+        {/* Review S1: under EV/h, the best game's figure as Ranked says it -- with its interval, marked when it is an estimate or stale. */}
+        {ev !== undefined && <RowFigure row={ev} failed={ev ? failed(ev.input.key) : undefined} />}
         <span className="cas-row-meta">
           {[casino.area, distance?.text, lastVisitText(sessions, now), t.sessions > 0 ? hoursText(t.hours) : null]
             .filter(Boolean)
@@ -242,5 +249,22 @@ function DirectoryRow({
         )}
       </button>
     </li>
+  );
+}
+
+function RowFigure({ row, failed }: { row: RankRow | null; failed: string | undefined }) {
+  if (!row) {
+    return (
+      <span className="cas-dir-ev" data-sign={0} data-testid="casino-row-ev">
+        —
+      </span>
+    );
+  }
+  const line = figureLine(row, failed);
+  return (
+    <span className="cas-dir-ev" data-testid="casino-row-ev" data-sign={line.sign}>
+      <span className="cas-dir-ev-text">{line.text}</span>
+      <FigureBadges line={line} />
+    </span>
   );
 }
