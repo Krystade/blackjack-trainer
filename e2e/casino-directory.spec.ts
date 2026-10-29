@@ -492,3 +492,39 @@ test.describe('at 320 wide', () => {
     expect((await nudge.locator('.cas-nudge-strip').boundingBox())!.height, 'one strip, not a card').toBeLessThanOrEqual(60);
   });
 });
+
+/*
+ * Re-review R5: a casino deleted in the app does not come back from an older
+ * file unasked; the preview lists it as "Deleted here", and a tick brings it back.
+ */
+test('Paste of an older file: a casino deleted here is listed as Deleted here and left out unless ticked', async ({ page }) => {
+  await seed(page);
+  await page.goto('/?e2e=1');
+  await openCasino(page);
+  await page.getByTestId('casino-row').filter({ hasText: 'Aria' }).click();
+  await page.getByRole('button', { name: 'Edit casino', exact: true }).click();
+  await page.getByRole('button', { name: 'Delete casino' }).click();
+  await page.getByRole('button', { name: 'Delete', exact: true }).click();
+  await expect(page.getByTestId('casino-row')).toHaveCount(2);
+  const text = JSON.stringify({ app: 'bjtrainer-casino-log', version: 2, exportedAt: AT, ...LOG });
+  const paste = async () => {
+    await page.getByRole('button', { name: 'Paste JSON' }).click();
+    await page.getByTestId('casino-paste-text').fill(text);
+    await page.getByTestId('casino-paste-import').click();
+  };
+  await paste();
+  const deleted = page.getByTestId('import-preview').getByTestId('import-deleted');
+  await expect(deleted).toContainText('Deleted here');
+  await expect(deleted.getByTestId('import-restore')).not.toBeChecked();
+  await expect(deleted).toContainText('Add Aria back');
+  await expect(page.getByTestId('import-preview').getByTestId('import-added')).toHaveCount(0);
+  await page.getByTestId('import-confirm').click();
+  await expect(page.getByTestId('casino-row')).toHaveCount(2);
+  expect((await stored(page)).casinos.map((c: { name: string }) => c.name)).not.toContain('Aria');
+  // Ticked: back.
+  await paste();
+  await page.getByTestId('import-restore').check();
+  await expect(page.getByTestId('import-preview').getByTestId('import-added')).toHaveText('Adds 1 casino: Aria');
+  await page.getByTestId('import-confirm').click();
+  await expect(page.getByTestId('casino-row')).toHaveCount(3);
+});

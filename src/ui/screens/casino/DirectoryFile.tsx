@@ -26,12 +26,13 @@ export function DirectoryFile({ log, commit }: { log: CasinoLog; commit: (next: 
     text: string;
     names: Record<string, NameChoice>;
     rules: Record<string, ImportRuleChoice>;
+    restore: Record<string, boolean>;
     from: 'file' | 'paste';
   } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Worked out against the log as it is now, so a change made meanwhile (another tab) is in what Import saves.
-  const planned = pending ? planImport(log, pending.text, pending.names, pending.rules) : null;
+  const planned = pending ? planImport(log, pending.text, pending.names, pending.rules, pending.restore) : null;
   const plan: ImportPlan | null = planned?.ok ? planned.plan : null;
 
   const preview = (text: string, from: 'file' | 'paste') => {
@@ -42,7 +43,7 @@ export function DirectoryFile({ log, commit }: { log: CasinoLog; commit: (next: 
       return;
     }
     setMessage(null);
-    setPending({ text, names: {}, rules: {}, from });
+    setPending({ text, names: {}, rules: {}, restore: {}, from });
   };
 
   const onFile = (e: ChangeEvent<HTMLInputElement>) => {
@@ -191,6 +192,7 @@ export function DirectoryFile({ log, commit }: { log: CasinoLog; commit: (next: 
             plan={plan}
             onName={(id, choice) => setPending((p) => (p ? { ...p, names: { ...p.names, [id]: choice } } : p))}
             onRule={(key, choice) => setPending((p) => (p ? { ...p, rules: { ...p.rules, [key]: choice } } : p))}
+            onRestore={(id, on) => setPending((p) => (p ? { ...p, restore: { ...p.restore, [id]: on } } : p))}
             onCancel={() => setPending(null)}
             onImport={confirm}
           />

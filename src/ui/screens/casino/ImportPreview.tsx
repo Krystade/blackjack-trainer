@@ -20,12 +20,14 @@ export function ImportPreview({
   plan,
   onName,
   onRule,
+  onRestore,
   onCancel,
   onImport,
 }: {
   plan: ImportPlan;
   onName: (id: string, choice: NameChoice) => void;
   onRule: (key: string, choice: ImportRuleChoice) => void;
+  onRestore: (id: string, on: boolean) => void;
   onCancel: () => void;
   onImport: () => void;
 }) {
@@ -85,6 +87,28 @@ export function ImportPreview({
           </div>
         </div>
       ))}
+      {r.deleted.length > 0 && (
+        <div className="cas-imp-match" data-testid="import-deleted">
+          <p className="cas-imp-match-text">
+            <span className="cas-badge" data-tone="warn">
+              Deleted here
+            </span>{' '}
+            The file still has {r.deleted.length === 1 ? 'a casino' : `${r.deleted.length} casinos`} you deleted. Left out unless ticked:
+          </p>
+          <ul className="cas-imp-deleted">
+            {r.deleted.map((d) => (
+              <li key={d.id}>
+                <label className="cas-imp-restore">
+                  <input type="checkbox" checked={d.restore} onChange={(e) => onRestore(d.id, e.target.checked)} data-testid="import-restore" data-id={d.id} />
+                  <span>
+                    Add <strong>{d.name}</strong> back, with its sessions in the file
+                  </span>
+                </label>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {r.ruleChanges.map((c) => (
         <RuleChangeCard key={c.key} change={c} onRule={onRule} />
       ))}

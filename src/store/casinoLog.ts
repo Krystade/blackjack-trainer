@@ -317,6 +317,20 @@ export interface CasinoLog {
   /** Wave W: the same pair for the v2 blob (PREV_CASINO_LOG_KEY). Storage bookkeeping, never exported. */
   prevSeen?: string;
   prevIds?: LegacyIds;
+  /**
+   * Re-review R5: casinos deleted in the app. An import of a file that
+   * still holds one does not bring it back unless asked. Storage
+   * bookkeeping, never exported.
+   */
+  deletedCasinos?: DeletedCasino[];
+}
+
+/** Re-review R5: a casino deleted here, remembered. */
+export interface DeletedCasino {
+  id: string;
+  name: string;
+  /** ISO. */
+  at: string;
 }
 
 export interface LegacyIds {
@@ -788,6 +802,12 @@ export function migrateCasinoLog(parsed: unknown): { log: CasinoLog; skipped: nu
   if ((v === 2 || v === 3) && isObj(parsed.legacyIds)) log.legacyIds = ids(parsed.legacyIds);
   if (v === 3 && typeof parsed.prevSeen === 'string') log.prevSeen = parsed.prevSeen;
   if (v === 3 && isObj(parsed.prevIds)) log.prevIds = ids(parsed.prevIds);
+  if (v === 3 && Array.isArray(parsed.deletedCasinos)) {
+    const gone = parsed.deletedCasinos.flatMap((d): DeletedCasino[] =>
+      isObj(d) && typeof d.id === 'string' && d.id !== '' ? [{ id: d.id, name: typeof d.name === 'string' ? d.name : '', at: iso(d.at) ?? EPOCH }] : [],
+    );
+    if (gone.length > 0) log.deletedCasinos = gone;
+  }
   return { log, skipped: casinos.skipped + sessions.skipped };
 }
 
@@ -1068,11 +1088,17 @@ export function saveCasino(
 }
 
 /** Remove a casino and every session played there (the UI says so first). */
-export function deleteCasino(log: CasinoLog, id: string): CasinoLog {
+export function deleteCasino(log: CasinoLog, id: string, now: number = Date.now()): CasinoLog {
+  const gone = log.casinos.find((c) => c.id === id);
+  // Re-review R5: remembered, so an older file does not bring it back unasked.
+  const deletedCasinos = gone
+    ? [...(log.deletedCasinos ?? []).filter((d) => d.id !== id), { id, name: gone.name, at: stamp(now) }]
+    : log.deletedCasinos;
   return {
     ...log,
     casinos: log.casinos.filter((c) => c.id !== id),
     sessions: log.sessions.filter((s) => s.casinoId !== id),
+    ...(deletedCasinos ? { deletedCasinos } : {}),
   };
 }
 
@@ -1273,6 +1299,11 @@ export interface MergeReport {
    * into an earlier one.
    */
   ruleChanges: ImportRuleChange[];
+  /**
+   * Re-review R5: casinos in the file that were deleted here. Left out
+   * unless `restore` names them; `restore` here says which are coming back.
+   */
+  deleted: { id: string; name: string; restore: boolean }[];
 }
 
 /** Re-review R2: a game whose rules a versionless file changes. */
@@ -1530,6 +1561,7 @@ export function mergeImport(
   text: string,
   names: Readonly<Record<string, NameChoice>> = {},
   rules: Readonly<Record<string, ImportRuleChoice>> = {},
+  restore: Readonly<Record<string, boolean>> = {},
 ): { ok: true; log: CasinoLog; report: MergeReport; unreadable: string | null } | { ok: false; error: string } {
   let parsed: unknown;
   try {
@@ -1546,13 +1578,14 @@ export function mergeImport(
   // A v1 file is migrated exactly as a v1 blob is (each casino's game -> games[0]).
   const migrated = migrateCasinoLog({ ...parsed, version: parsed.version ?? 1 });
   if (!migrated) return { ok: false, error: 'That file is not a casino log export.' };
-  const matched = matchNames(local, migrated.log, names);
+  const kept = keepDeleted(local, migrated.log, restore);
+  const matched = matchNames(kept.local, kept.inc, names);
   const versionless = parsed.version !== 3;
   const fromV1 = parsed.version !== 2 && parsed.version !== 3;
-  const held = versionless ? holdRules(local, matched.inc, fromV1) : { inc: matched.inc, pending: [] };
-  const merged = mergeLogs(local, held.inc, fromV1);
+  const held = versionless ? holdRules(kept.local, matched.inc, fromV1) : { inc: matched.inc, pending: [] };
+  const merged = mergeLogs(kept.local, held.inc, fromV1);
   const { casinos, sessions } = merged;
-  const applied = applyRules(merged.log, local, held.pending, rules);
+  const applied = applyRules(merged.log, kept.local, held.pending, rules);
   const log = applied.log;
   if (applied.changes.length > 0) {
     // A casino whose rules changed only through a choice counts as updated.
@@ -1581,7 +1614,33 @@ export function mergeImport(
       casinos: casinos.outcomes,
       nameMatches: matched.matches,
       ruleChanges: applied.changes,
+      deleted: kept.deleted,
     },
+  };
+}
+
+/**
+ * Re-review R5: a casino the file holds that was deleted here stays out,
+ * with its sessions, unless `restore` asks for it back -- then it is
+ * forgotten as deleted and taken in like any other.
+ */
+function keepDeleted(
+  local: CasinoLog,
+  inc: CasinoLog,
+  restore: Readonly<Record<string, boolean>>,
+): { local: CasinoLog; inc: CasinoLog; deleted: MergeReport['deleted'] } {
+  const gone = new Map((local.deletedCasinos ?? []).filter((d) => !local.casinos.some((c) => c.id === d.id)).map((d) => [d.id, d]));
+  const deleted: MergeReport['deleted'] = [];
+  for (const c of inc.casinos) if (gone.has(c.id)) deleted.push({ id: c.id, name: c.name || gone.get(c.id)!.name, restore: restore[c.id] === true });
+  if (deleted.length === 0) return { local, inc, deleted };
+  const out = new Set(deleted.filter((d) => !d.restore).map((d) => d.id));
+  const back = new Set(deleted.filter((d) => d.restore).map((d) => d.id));
+  const rest = (local.deletedCasinos ?? []).filter((d) => !back.has(d.id));
+  const { deletedCasinos: _d, ...base } = local;
+  return {
+    deleted,
+    local: rest.length > 0 ? { ...base, deletedCasinos: rest } : base,
+    inc: { ...inc, casinos: inc.casinos.filter((c) => !out.has(c.id)), sessions: inc.sessions.filter((s) => !out.has(s.casinoId)) },
   };
 }
 

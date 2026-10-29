@@ -77,8 +77,9 @@ export function planImport(
   text: string,
   names: Readonly<Record<string, NameChoice>> = {},
   rules: Readonly<Record<string, ImportRuleChoice>> = {},
+  restore: Readonly<Record<string, boolean>> = {},
 ): { ok: true; plan: ImportPlan } | { ok: false; message: string } {
-  const r = mergeImport(log, text, names, rules);
+  const r = mergeImport(log, text, names, rules, restore);
   if (!r.ok) return { ok: false, message: `Import failed: ${r.error}` };
   return { ok: true, plan: r };
 }

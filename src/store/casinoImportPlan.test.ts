@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { emptyCasinoLog, mergeImport, migrateCasinoLog, serializeExport, type CasinoLog } from './casinoLog';
+import { deleteCasino, emptyCasinoLog, mergeImport, migrateCasinoLog, serializeExport, type CasinoLog } from './casinoLog';
 
 /**
  * Wave W (review S3): an import or a paste never drops a game or a note
@@ -206,5 +206,46 @@ describe('re-import after an in-app notes edit', () => {
     const r = mergeImport(local, file([casino('c1', 'Pala', { notes: 'Ray', updatedAt: LATER })]));
     if (!r.ok) throw new Error(r.error);
     expect(r.log.casinos[0]!.notes).toBe('Ray\n\nRaymond on nights');
+  });
+});
+
+/*
+ * Re-review R5: a casino deleted in the app is remembered; an older file
+ * that still holds it lists it as "Deleted here" and leaves it out -- with
+ * its sessions -- unless ticked.
+ */
+describe('a casino deleted here, still in the file', () => {
+  const fileText = file([casino('c1', 'Pala'), casino('c2', 'Pauma')], [sess('s1', 'c1'), sess('s2', 'c2')]);
+  const local = () => deleteCasino(mergeImportOk(emptyCasinoLog(), fileText), 'c2', Date.parse(LATER));
+  function mergeImportOk(log: CasinoLog, text: string, restore: Record<string, boolean> = {}): CasinoLog {
+    const r = mergeImport(log, text, {}, {}, restore);
+    if (!r.ok) throw new Error(r.error);
+    return r.log;
+  }
+
+  it('is remembered when deleted, and survives a save and read (never exported)', () => {
+    const log = local();
+    expect(log.deletedCasinos).toEqual([{ id: 'c2', name: 'Pauma', at: LATER }]);
+    expect(migrateCasinoLog(JSON.parse(JSON.stringify(log)))!.log.deletedCasinos).toEqual(log.deletedCasinos);
+    expect(serializeExport(log, 0, null)).not.toContain('deletedCasinos');
+  });
+
+  it('is listed and left out, its sessions with it, unless ticked', () => {
+    const r = mergeImport(local(), fileText);
+    if (!r.ok) throw new Error(r.error);
+    expect(r.report.deleted).toEqual([{ id: 'c2', name: 'Pauma', restore: false }]);
+    expect(r.report.casinosAdded).toBe(0);
+    expect(r.log.casinos.map((c) => c.id)).toEqual(['c1']);
+    expect(r.log.sessions.map((s) => s.id)).toEqual(['s1']);
+    expect(r.log.deletedCasinos).toEqual([{ id: 'c2', name: 'Pauma', at: LATER }]);
+  });
+
+  it('ticked, it comes back with its sessions, and is no longer remembered as deleted', () => {
+    const r = mergeImport(local(), fileText, {}, {}, { c2: true });
+    if (!r.ok) throw new Error(r.error);
+    expect(r.report.deleted).toEqual([{ id: 'c2', name: 'Pauma', restore: true }]);
+    expect(r.log.casinos.map((c) => c.id)).toEqual(['c1', 'c2']);
+    expect(r.log.sessions.map((s) => s.id)).toEqual(['s1', 's2']);
+    expect(r.log.deletedCasinos).toBeUndefined();
   });
 });
