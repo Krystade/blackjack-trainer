@@ -4,6 +4,7 @@ import { isPresetId } from '../engine/variants/rules';
 import type { PresetId } from '../engine/variants/rules';
 import { normMethod, type BetMethod } from '../engine/betMethods';
 import { normSideBets, type CasinoSideBet } from './casinoSideBets';
+import { diag } from '../diag/diagnosticLog';
 
 /**
  * WAVE J (lane C): THE REAL-PLAY NOTEBOOK. Casinos and the sessions played in
@@ -16,7 +17,8 @@ import { normSideBets, type CasinoSideBet } from './casinoSideBets';
  *
  *   - ONE KEY, OWN BLOB. It shares nothing with settings or stats, so the
  *     settings diff in the diagnostic log never sees it, and nothing here
- *     ever calls `diag()`.
+ *     calls `diag()` with any of it (the one line below, an old build's
+ *     write ignored, carries no data at all).
  *   - NOT IN THE STATS BACKUP. `exportAll` (persist.ts) is a training backup
  *     a user may hand to someone to debug a drill; this has its own export,
  *     made deliberately from the Casino tab (persistHardening.test.ts lists
@@ -77,9 +79,17 @@ import { normSideBets, type CasinoSideBet } from './casinoSideBets';
  *
  * A NEW KEY FOR V3, as for v2: `bjtrainer.casinoLog.v3`. The v2 key is only
  * read -- left exactly as the last build before this one wrote it, so it is
- * also the backup of the log as it was -- and what a tab still on that build
- * writes there is merged in on load by the same fingerprint-and-ids rule as
- * v1's (`prevSeen`, `prevIds`).
+ * also the backup of the log as it was. It is taken in once, as the log,
+ * while there is no v3 blob yet (`prevSeen`, `prevIds` record it).
+ *
+ * Re-review R1 (controller ruling): ONCE V3 EXISTS, THE V2 KEY IS NEVER
+ * MERGED FROM. A v2 record has no versions, so whatever a tab still on the
+ * old build wrote there -- even only a notes edit -- carried its stale rules
+ * with a newer stamp and undid a rule fixed here. What such a tab writes is
+ * ignored, with one diagnostic line (`casino old-build-write-ignored`, no
+ * data). Accepted cost: a notes edit made in a stale tab is lost; the owner
+ * uses one phone. (The v1 key is still merged from: no tab two builds old
+ * can be running.)
  */
 
 export const CASINO_LOG_KEY = 'bjtrainer.casinoLog.v3';
@@ -865,9 +875,21 @@ export function loadCasinoLog(): CasinoLog {
     log = readBlob(raw);
     if (!log) quarantine(raw);
   }
-  if (prev) log = takeIn(log, prev, PREV_SOURCE);
+  if (prev) {
+    if (!log) log = takeIn(null, prev, PREV_SOURCE);
+    else if (log.prevSeen !== fingerprint(prev)) oldBuildWriteIgnored(prev);
+  }
   if (legacy) log = takeIn(log, legacy, LEGACY_SOURCE);
   return log ?? emptyCasinoLog();
+}
+
+/** Each ignored v2 write is logged once a page, however often the log is read. */
+const ignoredPrev = new Set<string>();
+function oldBuildWriteIgnored(prev: string): void {
+  const f = fingerprint(prev);
+  if (ignoredPrev.has(f)) return;
+  ignoredPrev.add(f);
+  diag('set', 'casino old-build-write-ignored');
 }
 
 /** An older build's key this build reads: where this log keeps what it has taken in from it. */

@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { diag } from '../diag/diagnosticLog';
 import {
   CASINO_LOG_KEY,
   PREV_CASINO_LOG_KEY,
@@ -19,6 +20,8 @@ import {
   type CasinoLog,
   type VersionChoice,
 } from './casinoLog';
+
+vi.mock('../diag/diagnosticLog', () => ({ diag: vi.fn() }));
 
 /**
  * Wave W (review S2): VERSIONS OF A GAME. A rule the casino changed makes a
@@ -44,7 +47,6 @@ beforeEach(() => {
 afterEach(() => _setCasinoStorage(null));
 
 const AT = '2026-09-01T00:00:00.000Z';
-const LATER = '2026-10-01T00:00:00.000Z';
 const T1 = Date.parse('2026-10-10T00:00:00.000Z');
 const T2 = Date.parse('2026-10-20T00:00:00.000Z');
 
@@ -92,20 +94,33 @@ describe('the v2 -> v3 migration', () => {
     expect(loadCasinoLog()).toEqual(log);
   });
 
-  it('what a tab still on the old build writes to v2 since is merged in, and what was deleted here stays deleted', () => {
+  it('re-review R1: once v3 exists, what a tab still on the old build writes to v2 is ignored -- a rule fixed here survives', () => {
     store.map.set(PREV_CASINO_LOG_KEY, JSON.stringify(V2));
-    expect(saveCasinoLog(deleteSession(loadCasinoLog(), 's3'))).toBe(true);
-    // The old tab, still holding s3, edits a casino's notes and adds a session.
-    store.map.set(
-      PREV_CASINO_LOG_KEY,
-      JSON.stringify({ ...V2, casinos: [{ ...V2.casinos[0], notes: 'old tab', updatedAt: LATER }, V2.casinos[1]], sessions: [...V2.sessions, sess('s4', 'c1', { updatedAt: LATER })] }),
-    );
+    const first = loadCasinoLog();
+    // Fixed in place on v3: c1 has sessions, the owner said "Fix this version".
+    const fixed = saveCasino(first, draftWith(c1(first), { decks: 8 }), T1, 'c1', { 'g-one': 'fix' })!.log;
+    expect(saveCasinoLog(deleteSession(fixed, 's3'))).toBe(true);
+    vi.mocked(diag).mockClear();
+    // The old tab, still holding s3 and 6 decks, edits only a casino's notes and adds a session.
+    // Stamped after the fix (T1), as the probe's Barona edit was.
+    const stale = '2026-10-15T00:00:00.000Z';
+    const v2Before = JSON.stringify({ ...V2, casinos: [{ ...V2.casinos[0], notes: 'old tab', updatedAt: stale }, V2.casinos[1]], sessions: [...V2.sessions, sess('s4', 'c1', { updatedAt: stale })] });
+    store.map.set(PREV_CASINO_LOG_KEY, v2Before);
     const log = loadCasinoLog();
-    // Neither copy's notes are dropped (review S3).
-    expect(log.casinos[0]!.notes).toBe('old tab\n\nn1');
-    expect(log.sessions.map((s) => s.id)).toEqual(['s1', 's2', 's4']);
-    // The game kept its version through the old tab's record.
-    expect(log.casinos[0]!.games[0]!.versionId).toBe('g-one-v1');
+    const g = c1(log).games[0]!;
+    expect(g.decks).toBe(8);
+    expect(g.versions).toHaveLength(1);
+    expect(g.versions![0]!.rules.decks).toBe(8);
+    // Ignored whole: the accepted cost is the stale tab's notes and session.
+    expect(c1(log).notes).toBe('n1');
+    expect(log.sessions.map((s) => s.id)).toEqual(['s1', 's2']);
+    expect(vi.mocked(diag)).toHaveBeenCalledWith('set', 'casino old-build-write-ignored');
+    expect(vi.mocked(diag).mock.calls[0]).toHaveLength(2);
+    // Read again (and after a save): still the fix, the line logged once, the v2 key never written.
+    saveCasinoLog(log);
+    expect(c1(loadCasinoLog()).games[0]!.decks).toBe(8);
+    expect(vi.mocked(diag)).toHaveBeenCalledTimes(1);
+    expect(store.map.get(PREV_CASINO_LOG_KEY)).toBe(v2Before);
     // The fingerprints are bookkeeping, never exported.
     const file = serializeExport(log, T1, null);
     expect(file).not.toContain('prevSeen');
