@@ -206,3 +206,34 @@ test('a session records its game and version: one tap at a casino of one game, w
   const s3 = (await stored(page)).sessions.find((s: { id: string }) => s.id === 's3');
   expect(s3).toMatchObject({ gameId: 'g-shoe', versionId: 'g-shoe-v1' });
 });
+
+/*
+ * Controller ruling: only sessions (logged results) make a rule change ask.
+ * A game with sim figures and no sessions is edited in place, its old
+ * figures kept in the archive under their spec key.
+ */
+test('a game with figures but no sessions is fixed in place without asking; its old figures stay archived', async ({ page }) => {
+  await seedV2(page);
+  await page.goto('/?e2e=1');
+  await openCasino(page);
+  await openPage(page, 'Two Pits');
+  // The v2 session at Two Pits is casino-level, so the double deck holds no session -- only figures, once worked out.
+  const dd = page.locator('[data-testid="detail-game"][data-game="g-dd"]');
+  await expect(dd.getByTestId('detail-figures')).not.toHaveText('Figures being worked out…', { timeout: 30_000 });
+  const cache = () => page.evaluate(() => JSON.parse(localStorage.getItem('bjtrainer.casinoGameStats.v1') ?? '{}'));
+  await expect.poll(async () => (await cache()).results?.['g-dd']?.key ?? null, { timeout: 30_000 }).not.toBeNull();
+  const oldKey: string = (await cache()).results['g-dd'].key;
+
+  await dd.getByTestId('edit-rules').click();
+  const editor = page.locator('[data-testid="game-editor"][data-game="g-dd"]');
+  await editor.getByRole('group', { name: 'Dealer soft 17' }).getByRole('button', { name: /^Stands/ }).click();
+  await page.getByRole('button', { name: 'Save casino' }).click();
+  await expect(page.getByTestId('casino-detail')).toBeVisible();
+  await expect(page.getByTestId('version-prompt')).toHaveCount(0);
+  const g = (await stored(page)).casinos[1].games[1];
+  expect(g.versions).toHaveLength(1);
+  expect(g.s17).toBe(true);
+  // The new rules are worked out afresh; the old figures sit in the archive under their key.
+  await expect.poll(async () => (await cache()).results?.['g-dd']?.key, { timeout: 30_000 }).not.toBe(oldKey);
+  expect(Object.keys((await cache()).archive ?? {})).toContain(oldKey);
+});

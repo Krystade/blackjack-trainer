@@ -63,7 +63,13 @@ export function currentVersionData(
   return { sessions, figures };
 }
 
-export const hasData = (d: VersionData): boolean => d.sessions > 0 || d.figures;
+/**
+ * Whether a rule change on this version asks "new version or fix?": only
+ * when it holds sessions (logged results). Sim figures are derived and
+ * simply recompute for the new rules; the old ones stay archived under
+ * their spec key (casinoGameStats `saveGameResult`), so nothing is lost.
+ */
+export const hasData = (d: VersionData): boolean => d.sessions > 0;
 
 /** "12 Oct 2026", local. */
 export const dateText = (iso: string): string => longDate(localDateKey(new Date(iso)));
