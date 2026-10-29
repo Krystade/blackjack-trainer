@@ -313,3 +313,12 @@
   color: var(--ink-dim);
   font-variant-numeric: tabular-nums;
 }
+
+/* ---------- Review S2: "Edit rules" beside a game's rules ---------- */
+.cas-dir-card-actions {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-1);
+}

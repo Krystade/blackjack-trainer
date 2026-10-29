@@ -25,7 +25,20 @@ import { SideBetsCard } from './SideBetsCard';
  * that stopped at its time cap offers "Run another minute".
  */
 
-export function GameStats({ log, casinoId, gameId, go }: { log: CasinoLog; casinoId: string; gameId: string; go: (v: CasinoView) => void }) {
+export function GameStats({
+  log,
+  casinoId,
+  gameId,
+  self,
+  go,
+}: {
+  log: CasinoLog;
+  casinoId: string;
+  gameId: string;
+  /** This card's own view: where the form opened from it returns. */
+  self: CasinoView;
+  go: (v: CasinoView) => void;
+}) {
   const profile = useActiveProfile();
   const { results, archive } = useGameCache(log);
   const runner = useRunner();
@@ -52,7 +65,9 @@ export function GameStats({ log, casinoId, gameId, go }: { log: CasinoLog; casin
     archive,
   ).find((r) => r.game.id === gameId);
   if (!row) return null;
-  if (game.variant) return <VariantGameStats casino={casino} game={game} />;
+  // Review S2: every place that shows a game's rules can open them for editing.
+  const editRules = () => go({ kind: 'casino', id: casino.id, focusGame: game.id, from: self });
+  if (game.variant) return <VariantGameStats casino={casino} game={game} editRules={editRules} />;
   const rph = roundsPerHourOf(game);
   const bankroll = log.settings.startingBankroll;
   // The run for this game's inputs, whichever game of those inputs it was started for.
@@ -85,6 +100,7 @@ export function GameStats({ log, casinoId, gameId, go }: { log: CasinoLog; casin
           )}
         </p>
         <h2 className="cas-gs-title">{labelledSummary(game)}</h2>
+        <EditRules onClick={editRules} />
         {warnBadges(game).length > 0 && (
           <span className="cas-row-badges">
             {warnBadges(game).map((w) => (
@@ -330,7 +346,15 @@ export function GameStats({ log, casinoId, gameId, go }: { log: CasinoLog; casin
  * A commission is added to the edge (variantCostFor), and a card room's
  * unlogged one is the only rule this card says it assumed.
  */
-function VariantGameStats({ casino, game }: { casino: Casino; game: CasinoGame }) {
+function EditRules({ onClick }: { onClick: () => void }) {
+  return (
+    <button type="button" className="cas-link" onClick={onClick} data-testid="edit-rules">
+      Edit rules
+    </button>
+  );
+}
+
+function VariantGameStats({ casino, game, editRules }: { casino: Casino; game: CasinoGame; editRules: () => void }) {
   const preset = game.variant!;
   const { edge, payout, commissionPer100, commissionAssumed, total } = variantCostFor(game, preset, casino.kind);
   const mismatches = variantMismatches(game, preset);
@@ -349,6 +373,7 @@ function VariantGameStats({ casino, game }: { casino: Casino; game: CasinoGame }
           )}
         </p>
         <h2 className="cas-gs-title">{labelledSummary(game)}</h2>
+        <EditRules onClick={editRules} />
         {mismatches.length > 0 && (
           <span className="cas-row-badges">
             <span className="cas-badge" data-tone="warn" data-testid="gs-variant-mismatch-badge">

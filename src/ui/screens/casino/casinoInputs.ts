@@ -39,3 +39,41 @@ export function gameText(g: CasinoGame): GameText {
   const t = (n: number | null | undefined) => (n === null || n === undefined ? '' : String(n));
   return { minBet: t(g.minBet), maxBet: t(g.maxBet), cut: t(g.cutDecksLeft), roundsPerHour: t(g.roundsPerHour), commission: t(g.commissionPer100) };
 }
+
+/** Wave W review S2: the `unsure` field each number box of the form edits. */
+const TEXT_FIELD: Record<keyof GameText, string | null> = {
+  minBet: 'minBet',
+  maxBet: 'maxBet',
+  cut: 'cutDecksLeft',
+  roundsPerHour: null,
+  commission: 'commissionPer100',
+};
+
+/**
+ * Wave W review S2: a game with a change applied, its "?" (not sure) marks
+ * kept on every field but the ones the change set to something else --
+ * entering a rule is saying what it is. A choice tapped again at the value
+ * it has changes nothing, so it clears nothing; "Confirmed" (an explicit
+ * `unsure` in the patch) still clears them all.
+ */
+export function withRuleChange(g: CasinoGame, patch: Partial<CasinoGame>): CasinoGame {
+  const next = { ...g, ...patch };
+  if ('unsure' in patch || !g.unsure) return next;
+  const changed = new Set(Object.keys(patch).filter((k) => (patch as Record<string, unknown>)[k] !== (g as unknown as Record<string, unknown>)[k]));
+  return withUnsure(next, g.unsure.filter((f) => !changed.has(f)));
+}
+
+/** The same for a number box typed in: its field's "?" goes when its text changes. */
+export function withTextChange(g: CasinoGame, before: GameText, patch: Partial<GameText>): CasinoGame {
+  if (!g.unsure) return g;
+  const changed = new Set(
+    (Object.keys(patch) as (keyof GameText)[]).filter((k) => patch[k] !== before[k]).map((k) => TEXT_FIELD[k]),
+  );
+  return withUnsure(g, g.unsure.filter((f) => !changed.has(f)));
+}
+
+function withUnsure(g: CasinoGame, list: string[]): CasinoGame {
+  if (list.length === (g.unsure?.length ?? 0)) return g;
+  const { unsure: _drop, ...rest } = g;
+  return list.length > 0 ? { ...rest, unsure: list } : rest;
+}

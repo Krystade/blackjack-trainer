@@ -136,6 +136,7 @@ export function CasinoDetail({
               row={rows.find((r) => r.game.id === g.id)}
               failed={(k) => runner.failed[k]}
               onFigures={() => go({ kind: 'game', casinoId: casino.id, gameId: g.id, from: self })}
+              onEdit={() => go({ kind: 'casino', id: casino.id, focusGame: g.id, from: self })}
             />
           ))}
         </div>
@@ -194,6 +195,7 @@ function GameCard({
   row,
   failed,
   onFigures,
+  onEdit,
 }: {
   casino: Casino;
   game: CasinoGame;
@@ -201,6 +203,8 @@ function GameCard({
   row: RankRow | undefined;
   failed: (key: string) => string | undefined;
   onFigures: () => void;
+  /** Review S2: the form, at this game's rules. */
+  onEdit: () => void;
 }) {
   // Review S1: the figure as Ranked says it, with its interval and what it is.
   const line = row ? figureLine(row, failed(row.input.key)) : null;
@@ -224,9 +228,14 @@ function GameCard({
             </p>
           )}
         </div>
-        <button type="button" className="cas-head-btn" onClick={onFigures}>
-          Figures
-        </button>
+        <span className="cas-dir-card-actions">
+          <button type="button" className="cas-head-btn" onClick={onEdit} data-testid="edit-rules">
+            Edit rules
+          </button>
+          <button type="button" className="cas-head-btn" onClick={onFigures}>
+            Figures
+          </button>
+        </span>
       </div>
       {warns.length > 0 && (
         <p className="cas-row-badges">

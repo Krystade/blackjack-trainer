@@ -63,9 +63,11 @@ export function GameEditor({
 }) {
   const n = (name: string) => `${name}-${index}`;
   return (
-    <div className="cas-ge" data-testid="game-editor" data-index={index}>
+    <div className="cas-ge" data-testid="game-editor" data-index={index} data-game={game.id}>
       <div className="cas-ge-head">
-        <span className="cas-ge-title">Game {index + 1}</span>
+        <span className="cas-ge-title" tabIndex={-1}>
+          Game {index + 1}
+        </span>
         <span className="cas-ge-actions">
           {onStats && (
             <button type="button" className="cas-link" onClick={onStats} data-testid="game-stats-link">

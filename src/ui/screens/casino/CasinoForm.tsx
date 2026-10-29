@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useState } from 'react';
 import {
   blankCasinoDraft,
   blankGame,
@@ -26,7 +26,7 @@ import {
 } from '../../casinoFigures';
 import { Choice, DeleteButton, Field, FieldGroup, HeatBadge } from './fields';
 import { GameEditor } from './GameEditor';
-import { gameText, type GameText } from './casinoInputs';
+import { gameText, withRuleChange, withTextChange, type GameText } from './casinoInputs';
 import { NotesEditor } from './NotesEditor';
 import type { CasinoView } from './Casino';
 
@@ -43,12 +43,15 @@ import type { CasinoView } from './Casino';
 export function CasinoForm({
   log,
   id,
+  focusGame,
   commit,
   go,
   onDirty,
 }: {
   log: CasinoLog;
   id: string | null;
+  /** Review S2: opened from a game's "Edit rules": that game's block, scrolled to. */
+  focusGame?: string;
   commit: (next: CasinoLog) => boolean;
   go: (view: CasinoView) => void;
   onDirty: (dirty: boolean) => void;
@@ -65,6 +68,13 @@ export function CasinoForm({
   const [locMsg, setLocMsg] = useState<string | null>(null);
 
   useEffect(() => onDirty(touched), [touched, onDirty]);
+  // Review S2: "Edit rules" on a game opens the form at that game's block.
+  useLayoutEffect(() => {
+    if (!focusGame) return;
+    const el = document.querySelector<HTMLElement>(`[data-testid="game-editor"][data-game="${CSS.escape(focusGame)}"]`);
+    el?.scrollIntoView({ block: 'start' });
+    el?.querySelector<HTMLElement>('.cas-ge-title')?.focus({ preventScroll: true });
+  }, [focusGame]);
 
   if (id && !existing) {
     return (
@@ -82,10 +92,13 @@ export function CasinoForm({
     setTouched(true);
   };
   const updateGame = (gid: string, patch: Partial<CasinoGame>) => {
-    setDraft((d) => ({ ...d, games: d.games.map((g) => (g.id === gid ? { ...g, ...patch } : g)) }));
+    // Review S2: setting a rule clears that rule's "?", and only that one.
+    setDraft((d) => ({ ...d, games: d.games.map((g) => (g.id === gid ? withRuleChange(g, patch) : g)) }));
     setTouched(true);
   };
   const updateText = (gid: string, patch: Partial<GameText>) => {
+    const before = texts[gid];
+    if (before) setDraft((d) => ({ ...d, games: d.games.map((g) => (g.id === gid ? withTextChange(g, before, patch) : g)) }));
     setTexts((t) => ({ ...t, [gid]: { ...t[gid]!, ...patch } }));
     setTouched(true);
   };

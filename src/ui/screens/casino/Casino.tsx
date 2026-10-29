@@ -32,8 +32,12 @@ export type CasinoView =
   | { kind: 'home' }
   /** Wave W: one casino's page, to read (the directory's row opens it). */
   | { kind: 'detail'; id: string }
-  /** The form; `from` is where Save, Cancel and Back return (the casino's page when opened there). */
-  | { kind: 'casino'; id: string | null; from?: CasinoView }
+  /**
+   * The form; `from` is where Save, Cancel and Back return (the casino's
+   * page, or a game's card, when opened there). Review S2: `focusGame` is
+   * the game whose rules it was opened to edit, scrolled to.
+   */
+  | { kind: 'casino'; id: string | null; from?: CasinoView; focusGame?: string }
   | { kind: 'start' }
   | { kind: 'end'; sessionId: string }
   | { kind: 'session'; sessionId: string; from: CasinoView }
@@ -80,11 +84,12 @@ export function Casino() {
         ? () => go(view.from!)
         : home;
   // The form returns where it was opened from -- unless that was the page of
-  // the casino it just deleted (read fresh: the delete has just been saved).
+  // the casino it just deleted, or the card of a game it just removed (read
+  // fresh: the save has just been made).
   const formFrom = view.kind === 'casino' ? view.from : undefined;
   const formGo = useCallback(
     (next: CasinoView) => {
-      if (next.kind === 'home' && formFrom?.kind === 'detail' && casinoById(loadCasinoLog(), formFrom.id)) go(formFrom);
+      if (next.kind === 'home' && formFrom) go(stillThere(formFrom));
       else go(next);
     },
     [go, formFrom],
@@ -119,7 +124,7 @@ export function Casino() {
       body = <CasinoDetail key={view.id} log={log} id={view.id} commit={commit} go={go} />;
       break;
     case 'casino':
-      body = <CasinoForm key={view.id ?? 'new'} log={log} id={view.id} commit={commit} go={formGo} onDirty={setDirty} />;
+      body = <CasinoForm key={view.id ?? 'new'} log={log} id={view.id} focusGame={view.focusGame} commit={commit} go={formGo} onDirty={setDirty} />;
       break;
     case 'start':
       body = <StartSession log={log} commit={commit} go={go} onDirty={setDirty} />;
@@ -128,7 +133,7 @@ export function Casino() {
       body = <EndSession log={log} sessionId={view.sessionId} commit={commit} go={go} onDirty={setDirty} />;
       break;
     case 'game':
-      body = <GameStats log={log} casinoId={view.casinoId} gameId={view.gameId} go={go} />;
+      body = <GameStats log={log} casinoId={view.casinoId} gameId={view.gameId} self={view} go={go} />;
       break;
     case 'settings':
       body = <CasinoSettings log={log} commit={commit} />;
@@ -167,4 +172,20 @@ export function Casino() {
       {body}
     </div>
   );
+}
+
+/**
+ * Where a form returns after a save: the view it was opened from, or the
+ * nearest one still there -- a removed game's casino page, home for a
+ * deleted casino.
+ */
+function stillThere(v: CasinoView): CasinoView {
+  const log = loadCasinoLog();
+  if (v.kind === 'detail') return casinoById(log, v.id) ? v : { kind: 'home' };
+  if (v.kind === 'game') {
+    const c = casinoById(log, v.casinoId);
+    if (!c) return { kind: 'home' };
+    return c.games.some((g) => g.id === v.gameId) ? v : v.from ? stillThere(v.from) : { kind: 'detail', id: c.id };
+  }
+  return v;
 }

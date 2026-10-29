@@ -285,3 +285,62 @@ test('a CSM game reads "No counting edge" with its interval, on its page and its
   expect(rowText).not.toContain('+$');
   await expect(page.getByTestId('detail-figures-sub')).toContainText(/edge −?\d+\.\d\d% ±\d+\.\d\d%/);
 });
+
+/*
+ * Review S2: every place that shows a game's rules opens them for editing --
+ * the casino page's game card and the game's stats card (reached from Ranked
+ * too) -- at that game's block, and Save returns where it was opened. A rule
+ * set clears its own "?" and no other.
+ */
+test('"Edit rules" on a game card and a stats card opens the form at that game, returns there, and clears only the ? it sets', async ({ page }) => {
+  const two = { id: 'g-two', label: 'Double deck', decks: 2, s17: false, das: false, midShoeEntry: 'no', csm: false, unsure: ['decks', 's17'] };
+  const nug = { ...nugget, unsure: ['das', 's17', 'minBet'] };
+  await seed(page, { ...LOG, casinos: [{ ...LOG.casinos[0], games: [nug, two] }, LOG.casinos[2]] });
+  await page.goto('/?e2e=1');
+  await openCasino(page);
+  await page.getByTestId('casino-row').filter({ hasText: 'Golden Nugget' }).click();
+  const card = (id: string) => page.locator(`[data-testid="detail-game"][data-game="${id}"]`);
+  const marks = (id: string) => card(id).locator('.cas-rule:has(.cas-rule-unsure)').evaluateAll((els) => els.map((e) => e.getAttribute('data-field')));
+  expect(await marks('g-nug')).toEqual(['s17', 'das', 'minBet']);
+
+  // The second game's card: the form opens at its block.
+  await card('g-two').getByTestId('edit-rules').click();
+  const editor = page.locator('[data-testid="game-editor"][data-game="g-two"]');
+  await expect(editor).toBeInViewport();
+  await expect(editor.locator('.cas-ge-title')).toBeFocused();
+  await editor.getByRole('group', { name: 'Dealer soft 17' }).getByRole('button', { name: 'Stands (S17)' }).click();
+  await page.getByRole('button', { name: 'Save casino' }).click();
+  await expect(page.getByTestId('casino-detail')).toBeVisible();
+  expect(await marks('g-two')).toEqual(['decks']);
+  expect(await marks('g-nug')).toEqual(['s17', 'das', 'minBet']);
+
+  // The first game's stats card, from Ranked: Edit rules, set the DAS and the min bet, Save -- back on the card.
+  await page.getByRole('button', { name: /Back$/ }).click();
+  await page.getByRole('tab', { name: /Ranked/ }).click();
+  await page.locator('[data-testid="rank-row"][data-game="g-nug"]').click();
+  await expect(page.getByTestId('game-stats')).toBeVisible();
+  await page.getByTestId('game-stats').getByTestId('edit-rules').click();
+  const first = page.locator('[data-testid="game-editor"][data-game="g-nug"]');
+  await expect(first.locator('.cas-ge-title')).toBeFocused();
+  await first.getByRole('group', { name: 'Double after split' }).getByRole('button', { name: 'No', exact: true }).click();
+  await first.locator('input[name="minBet-0"]').fill('50');
+  await page.getByRole('button', { name: 'Save casino' }).click();
+  await expect(page.getByTestId('game-stats')).toBeVisible();
+  await expect(page.getByTestId('game-stats').locator('.cas-gs-title')).toContainText('NDAS');
+  // Back from the card: Ranked, where it was opened.
+  await page.getByRole('button', { name: /Back$/ }).click();
+  await expect(page.getByTestId('games-ranked')).toBeVisible();
+  const games = (await stored(page)).casinos[0].games as { id: string; unsure?: string[]; das: boolean; minBet: number }[];
+  expect(games.find((g) => g.id === 'g-nug')).toMatchObject({ das: false, minBet: 50, unsure: ['s17'] });
+  expect(games.find((g) => g.id === 'g-two')!.unsure).toEqual(['decks']);
+
+  // A variant's card has it too, and the form returns to it.
+  await page.getByRole('tab', { name: /Casinos/ }).click();
+  await page.getByTestId('casino-row').filter({ hasText: 'Bicycle' }).click();
+  await page.getByTestId('detail-game').getByRole('button', { name: 'Figures' }).click();
+  await expect(page.getByTestId('game-stats')).toHaveAttribute('data-state', 'variant');
+  await page.getByTestId('game-stats').getByTestId('edit-rules').click();
+  await expect(page.locator('[data-testid="game-editor"][data-game="g-bike"] .cas-ge-title')).toBeFocused();
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  await expect(page.getByTestId('game-stats')).toHaveAttribute('data-state', 'variant');
+});
