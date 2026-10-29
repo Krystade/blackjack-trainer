@@ -10,7 +10,7 @@ import { test, expect, type Page } from '@playwright/test';
 
 test.use({ viewport: { width: 375, height: 812 } });
 
-const KEY = 'bjtrainer.casinoLog.v2';
+const KEY = 'bjtrainer.casinoLog.v3';
 const AT = '2026-10-01T00:00:00.000Z';
 const base = { createdAt: AT, updatedAt: AT, status: 'ok' };
 const nugget = {
@@ -48,6 +48,22 @@ const names = (page: Page) => page.getByTestId('casino-row').evaluateAll((els) =
 const search = (page: Page) => page.locator('input[name="casinoSearch"]');
 const sortBy = (page: Page, label: string) => page.getByRole('group', { name: 'Sort casinos by' }).getByRole('button', { name: label, exact: true }).click();
 const stored = (page: Page) => page.evaluate((k) => JSON.parse(localStorage.getItem(k) ?? 'null'), KEY);
+/**
+ * Save the form. Review S2: when the version changed holds sessions or
+ * figures, Save asks whether the casino changed the rules; these tests fix
+ * a rule entered wrong, so "Fix this version". Whether figures have landed
+ * by then depends on the simulator's pace, so the question is answered only
+ * when it is asked.
+ */
+async function saveFixing(page: Page): Promise<void> {
+  await page.getByRole('button', { name: 'Save casino' }).click();
+  const prompt = page.getByTestId('version-prompt');
+  await expect(prompt.or(page.locator('[data-testid="casino-screen"]:not([data-view="casino"])'))).toBeVisible();
+  if (await prompt.isVisible()) {
+    await prompt.getByTestId('version-fix').click();
+    await prompt.getByRole('button', { name: 'Save casino' }).click();
+  }
+}
 
 test('Casinos is the default part: every casino with every game rules line, searchable, in four orders kept on this device', async ({ page }) => {
   await seed(page);
@@ -136,7 +152,7 @@ test("a casino's page: every rule, the unknowns and ? marks, side bets, notes, f
   // Edit, change a rule, Save: back on the page, showing it.
   await page.getByRole('button', { name: 'Edit casino', exact: true }).click();
   await page.getByTestId('game-editor').first().getByRole('group', { name: 'Dealer soft 17' }).getByRole('button', { name: 'Stands (S17)' }).click();
-  await page.getByRole('button', { name: 'Save casino' }).click();
+  await saveFixing(page);
   await expect(detail).toBeVisible();
   await expect(rule('s17')).toHaveText('Stands (S17)');
   // Edit then Back: the page again.
@@ -179,9 +195,9 @@ test('Paste JSON runs the same merge as Import JSON, and says why a bad paste is
   );
   await expect(page.getByTestId('casino-paste')).toHaveCount(0);
   await expect(page.getByTestId('casino-row')).toHaveCount(3);
-  // Kept in the v2 format, under its key.
+  // Kept in this build's format (v3 since game versions), under its key.
   const after = await stored(page);
-  expect(after.version).toBe(2);
+  expect(after.version).toBe(3);
   expect(after.casinos.map((c: { name: string }) => c.name).sort()).toEqual(['Aria', 'Bicycle', 'Golden Nugget']);
 
   // The same text through the file picker merges the same way: nothing new.
@@ -309,7 +325,7 @@ test('"Edit rules" on a game card and a stats card opens the form at that game, 
   await expect(editor).toBeInViewport();
   await expect(editor.locator('.cas-ge-title')).toBeFocused();
   await editor.getByRole('group', { name: 'Dealer soft 17' }).getByRole('button', { name: 'Stands (S17)' }).click();
-  await page.getByRole('button', { name: 'Save casino' }).click();
+  await saveFixing(page);
   await expect(page.getByTestId('casino-detail')).toBeVisible();
   expect(await marks('g-two')).toEqual(['decks']);
   expect(await marks('g-nug')).toEqual(['s17', 'das', 'minBet']);
@@ -324,7 +340,7 @@ test('"Edit rules" on a game card and a stats card opens the form at that game, 
   await expect(first.locator('.cas-ge-title')).toBeFocused();
   await first.getByRole('group', { name: 'Double after split' }).getByRole('button', { name: 'No', exact: true }).click();
   await first.locator('input[name="minBet-0"]').fill('50');
-  await page.getByRole('button', { name: 'Save casino' }).click();
+  await saveFixing(page);
   await expect(page.getByTestId('game-stats')).toBeVisible();
   await expect(page.getByTestId('game-stats').locator('.cas-gs-title')).toContainText('NDAS');
   // Back from the card: Ranked, where it was opened.

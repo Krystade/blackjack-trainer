@@ -52,7 +52,10 @@ export const OWNED_KEYS = [
   // the Casino screen's state. A stale tab ending a session would otherwise
   // write back a log missing the other tab's buy-in. Wave K (review S2): the
   // v2 blob has its own key; the v1 key stays here because a tab still on an
-  // older build writes it, and this build merges what it wrote.
+  // older build writes it, and this build merges what it wrote. Wave W
+  // (review S2): the v3 blob (game versions) has its own key in turn, and
+  // the v2 key is now the one an older build writes.
+  'bjtrainer.casinoLog.v3',
   'bjtrainer.casinoLog.v2',
   'bjtrainer.casinoLog.v1',
   // Wave K: the casino ranking's cached simulations, so a result computed in

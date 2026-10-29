@@ -16,7 +16,7 @@ import { worstContrast } from './contrast';
 test.use({ viewport: { width: 375, height: 812 } });
 
 /** Wave K (review S2): the log's own key; the v1 key is only read, as the migration source. */
-const KEY = 'bjtrainer.casinoLog.v2';
+const KEY = 'bjtrainer.casinoLog.v3';
 const LEGACY_KEY = 'bjtrainer.casinoLog.v1';
 /** 7pm local on 18 Oct 2026: a back-off today cools off until 18 Apr 2027. */
 const T0 = new Date(2026, 9, 18, 19, 0, 0).getTime();
@@ -320,8 +320,8 @@ test('a finished session can be edited and deleted, and the figures follow', asy
   // Review N4: times left alone are kept to the second, not cut to the minute.
   const saved = await page.evaluate((k) => JSON.parse(localStorage.getItem(k) ?? '{}').sessions[0], KEY);
   expect([saved.start, saved.end]).toEqual([start, endAt]);
-  // Review S2: the edit went to the v2 key; the v1 blob an older build reads is untouched.
-  expect(await page.evaluate((k) => JSON.parse(localStorage.getItem(k)!).version, KEY)).toBe(2);
+  // Review S2: the edit went to this build's key (v3 since game versions); the v1 blob an older build reads is untouched.
+  expect(await page.evaluate((k) => JSON.parse(localStorage.getItem(k)!).version, KEY)).toBe(3);
   const legacy = JSON.parse((await page.evaluate((k) => localStorage.getItem(k), LEGACY_KEY))!);
   expect(legacy.version).toBe(1);
   expect(legacy.sessions[0].cashOut).toBe(800);

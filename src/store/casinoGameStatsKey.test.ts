@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   ARCHIVE_MAX,
+  pinGameKeys,
   GAME_STATS_KEY,
   SIM_VERSION,
   _setGameStatsStorage,
@@ -272,6 +273,22 @@ describe('the stored results (Wave Q: by game, and by key)', () => {
     expect(archive.k5).toBeDefined();
     expect(archive[`k${ARCHIVE_MAX + 5}`]).toBeUndefined();
     expect(loadGameResults().g1!.key).toBe(`k${ARCHIVE_MAX + 5}`);
+  });
+
+  it('wave W review S2: a pinned key (the figures of an earlier version) is kept however many newer ones push it', () => {
+    pinGameKeys(['k0', 'k3']);
+    try {
+      for (let i = 0; i <= ARCHIVE_MAX + 5; i++) saveGameResult('g1', result(`k${i}`, i, new Date(Date.UTC(2026, 0, 1, 0, i)).toISOString()));
+      const archive = loadGameArchive();
+      expect(archive.k0).toBeDefined();
+      expect(archive.k3).toBeDefined();
+      // The newest ARCHIVE_MAX beside them, as without pins.
+      expect(Object.keys(archive)).toHaveLength(ARCHIVE_MAX + 2);
+      expect(archive.k4).toBeUndefined();
+      expect(archive.k5).toBeDefined();
+    } finally {
+      pinGameKeys([]);
+    }
   });
 
   it('an older blob with no archive reads as one; unreadable storage reads as empty', () => {

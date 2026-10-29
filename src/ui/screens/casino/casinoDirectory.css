@@ -315,6 +315,11 @@
 }
 
 /* ---------- Review S2: "Edit rules" beside a game's rules ---------- */
+/* The form scrolls to the game's block: clear of the sticky top bar. */
+.cas-ge {
+  scroll-margin-top: calc(var(--safe-top, 0px) + var(--topbar-h) + var(--space-3));
+}
+
 .cas-dir-card-actions {
   display: flex;
   flex: none;

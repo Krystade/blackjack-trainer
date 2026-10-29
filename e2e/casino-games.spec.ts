@@ -17,7 +17,7 @@ import { worstContrast } from './contrast';
 
 test.use({ viewport: { width: 375, height: 812 } });
 
-const KEY = 'bjtrainer.casinoLog.v2';
+const KEY = 'bjtrainer.casinoLog.v3';
 const STATS_KEY = 'bjtrainer.casinoGameStats.v1';
 const AT = '2026-10-01T00:00:00.000Z';
 
@@ -69,9 +69,21 @@ async function editCasino(page: Page, name: string): Promise<void> {
   await page.getByTestId('casino-row').filter({ hasText: name }).click();
   await page.getByRole('button', { name: 'Edit casino', exact: true }).click();
 }
-/** Save the form (back on the casino's page), then home to the ranking. */
+/**
+ * Save the form (back on the casino's page), then home to the ranking. Wave
+ * W (review S2): a rule change on a version holding sessions or figures
+ * asks whether the casino changed it; these tests correct the rules in
+ * place ("Fix this version"), answered only when asked (whether figures
+ * have landed by then depends on the simulator's pace).
+ */
 async function saveToRanked(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Save casino' }).click();
+  const prompt = page.getByTestId('version-prompt');
+  await expect(prompt.or(page.getByTestId('casino-detail'))).toBeVisible();
+  if (await prompt.isVisible()) {
+    await prompt.getByTestId('version-fix').click();
+    await prompt.getByRole('button', { name: 'Save casino' }).click();
+  }
   await expect(page.getByTestId('casino-detail')).toBeVisible();
   await back(page);
   await seg(page, 'ranked');

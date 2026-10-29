@@ -56,13 +56,40 @@ import { normSideBets, type CasinoSideBet } from './casinoSideBets';
  * not bring it back -- nor its sessions, which went with it (a deletion here
  * wins even over a newer edit in the old tab). A record the old tab created
  * since is new to `legacyIds` and is taken in.
+ *
+ * WAVE W (review S2): VERSION 3, VERSIONS OF A GAME. The owner: "When I do
+ * adjust the rules I want a new 'version' of the casino made so previous
+ * data on it is saved for the old versions." Each game keeps its stable id
+ * and gains `versions`: every set of rules it has had (`GameVersion`: the
+ * rules, side bets and limits -- everything its figures depend on -- with
+ * when that version began), `versionId` naming the current one. The game's
+ * own fields are the current version's rules and are authoritative: the
+ * current entry in `versions` is kept in step with them on every read. The
+ * label, notes, pace and the house's name for the game are not versioned.
+ * A session records the game and the version it was played at (`gameId`,
+ * `versionId`), so its result stays with the rules it was played under.
+ *
+ * The v2 -> v3 migration is the same every time: a game with no versions
+ * gets one, `<game id>-v1`, from the casino's creation, and a session at a
+ * casino with ONE game is attached to that game's version 1 (at a casino of
+ * several games a v2 session never said which it was at, so it stays the
+ * casino's, unattached; its edit form can say which). Nothing is dropped.
+ *
+ * A NEW KEY FOR V3, as for v2: `bjtrainer.casinoLog.v3`. The v2 key is only
+ * read -- left exactly as the last build before this one wrote it, so it is
+ * also the backup of the log as it was -- and what a tab still on that build
+ * writes there is merged in on load by the same fingerprint-and-ids rule as
+ * v1's (`prevSeen`, `prevIds`).
  */
 
-export const CASINO_LOG_KEY = 'bjtrainer.casinoLog.v2';
+export const CASINO_LOG_KEY = 'bjtrainer.casinoLog.v3';
+/** Wave W: the v2 blob's key -- read as a migration source and kept as the backup, never written. */
+export const PREV_CASINO_LOG_KEY = 'bjtrainer.casinoLog.v2';
 /** The v1 blob's key: read as a migration source, never written. */
 export const LEGACY_CASINO_LOG_KEY = 'bjtrainer.casinoLog.v1';
 const CORRUPT_KEY = `${CASINO_LOG_KEY}.corrupt`;
-/** Where an older build quarantined what it could not read. */
+/** Where older builds quarantined what they could not read. */
+const PREV_CORRUPT_KEY = `${PREV_CASINO_LOG_KEY}.corrupt`;
 const LEGACY_CORRUPT_KEY = `${LEGACY_CASINO_LOG_KEY}.corrupt`;
 
 // ---------------------------------------------------------------- types
@@ -131,6 +158,36 @@ export interface CasinoGame {
    * variant game gets its flat house edge from the variant charts instead.
    */
   variant?: PresetId;
+  /**
+   * Wave W (review S2): the current version's id. Always set on a game read
+   * from the log (`normGame`); a game being built may leave it to the save.
+   */
+  versionId?: string;
+  /** Every version this game has had, oldest first, the current one included. */
+  versions?: GameVersion[];
+}
+
+/**
+ * Wave W (review S2): the fields a version of a game holds -- everything
+ * its figures depend on. The label, notes, rounds per hour (a table's pace,
+ * not a house rule) and the house's name for the game are the game's own.
+ * `unsure` rides along with the rules it marks, but never makes a version
+ * (`sameRules`).
+ */
+export const VERSIONED_FIELDS = [
+  'decks', 's17', 'das', 'surrender', 'payout', 'cutDecksLeft', 'minBet', 'maxBet', 'midShoeEntry', 'csm',
+  'rsa', 'doubleSplitAces', 'maxSplitHands', 'doubleOn', 'commissionPer100', 'variant', 'sideBets', 'unsure',
+] as const;
+export type VersionedField = (typeof VERSIONED_FIELDS)[number];
+export type VersionRules = Pick<CasinoGame, VersionedField>;
+
+export interface GameVersion {
+  versionId: string;
+  /** When these rules began. */
+  createdAt: string;
+  /** When they were last changed in place ("Fix this version"): decides a merge of two copies. */
+  updatedAt: string;
+  rules: VersionRules;
 }
 
 /** Rounds an hour when a game does not say: a typical shoe game with a few players. */
@@ -181,6 +238,13 @@ export interface Casino {
 export interface CasinoSession {
   id: string;
   casinoId: string;
+  /**
+   * Wave W (review S2): the game played and its version then. Absent on a
+   * session at a casino of several games from before versions (it never
+   * said which), or one that says "several".
+   */
+  gameId?: string;
+  versionId?: string;
   /** ISO timestamp. */
   start: string;
   /** ISO timestamp, or null while the session is running. */
@@ -223,7 +287,7 @@ export const DEFAULT_EXIT_WAIT_MINUTES = 15;
 export const EXIT_MINUTES_MAX = 120;
 
 export interface CasinoLog {
-  version: 2;
+  version: 3;
   casinos: Casino[];
   sessions: CasinoSession[];
   settings: CasinoLogSettings;
@@ -240,6 +304,9 @@ export interface CasinoLog {
    * bookkeeping, never exported.
    */
   legacyIds?: LegacyIds;
+  /** Wave W: the same pair for the v2 blob (PREV_CASINO_LOG_KEY). Storage bookkeeping, never exported. */
+  prevSeen?: string;
+  prevIds?: LegacyIds;
 }
 
 export interface LegacyIds {
@@ -251,7 +318,7 @@ const idList = (x: unknown): string[] => (Array.isArray(x) ? x.filter((v): v is 
 
 export function emptyCasinoLog(): CasinoLog {
   return {
-    version: 2,
+    version: 3,
     casinos: [],
     sessions: [],
     settings: { startingBankroll: null, updatedAt: null },
@@ -343,9 +410,16 @@ const notesOf = (x: unknown) => (typeof x === 'string' ? x.slice(0, NOTES_MAX) :
 /**
  * A stored or imported game, repaired. `legacy` carries a v1 casino's
  * casino-level fields, which a v1 game sat beside; `fallbackId` names a
- * game that arrived without one.
+ * game that arrived without one. Wave W: its versions too (`normVersions`);
+ * `since` is when a game from before versions began, its version 1.
  */
-export function normGame(x: unknown, fallbackId: string, legacy?: Record<string, unknown>): CasinoGame {
+export function normGame(x: unknown, fallbackId: string, legacy?: Record<string, unknown>, since?: { createdAt: string; updatedAt: string }): CasinoGame {
+  const game = normGameRules(x, fallbackId, legacy);
+  return normVersions(isObj(x) ? x : {}, game, since ?? { createdAt: EPOCH, updatedAt: EPOCH });
+}
+
+/** A game's own fields, repaired: everything but its versions. */
+function normGameRules(x: unknown, fallbackId: string, legacy?: Record<string, unknown>): CasinoGame {
   const g = isObj(x) ? x : {};
   const src = legacy ?? g;
   const game: CasinoGame = {
@@ -365,6 +439,148 @@ export function normGame(x: unknown, fallbackId: string, legacy?: Record<string,
   Object.assign(game, normWaveMGame(g));
   if (isPresetId(g.variant)) game.variant = g.variant;
   return game;
+}
+
+// ---------------------------------------------------------------- versions (Wave W, review S2)
+
+/** A game's versioned fields, as stored (a field the game leaves unknown is left out where the game leaves it out). */
+export function rulesOf(g: CasinoGame): VersionRules {
+  const out: Record<string, unknown> = {};
+  for (const f of VERSIONED_FIELDS) if (g[f] !== undefined) out[f] = g[f];
+  return out as unknown as VersionRules;
+}
+
+/** The game with a version's rules in place of its own (a field the version does not have is cleared). */
+export function withRules(g: CasinoGame, rules: VersionRules): CasinoGame {
+  const next: Record<string, unknown> = { ...g };
+  for (const f of VERSIONED_FIELDS) {
+    if (rules[f] === undefined) delete next[f];
+    else next[f] = rules[f];
+  }
+  return next as unknown as CasinoGame;
+}
+
+/** The rules as one comparable text: every versioned field but `unsure`, an unknown read as null. */
+function rulesText(r: VersionRules | CasinoGame): string {
+  return JSON.stringify(VERSIONED_FIELDS.filter((f) => f !== 'unsure').map((f) => r[f] ?? null));
+}
+
+/** Whether two sets of rules would deal the same game (a "?" mark aside). */
+export function sameRules(a: VersionRules | CasinoGame, b: VersionRules | CasinoGame): boolean {
+  return rulesText(a) === rulesText(b);
+}
+
+const byCreated = (a: GameVersion, b: GameVersion) => Date.parse(a.createdAt) - Date.parse(b.createdAt) || (a.versionId < b.versionId ? -1 : a.versionId > b.versionId ? 1 : 0);
+
+/**
+ * A game's versions, repaired: each entry's rules normalised as a game's
+ * are, duplicates dropped, oldest first. The current one (`versionId`) is
+ * the game's own fields -- those are authoritative -- and a game with none
+ * gets its version 1, `<game id>-v1`, from `since`.
+ */
+function normVersions(raw: Record<string, unknown>, game: CasinoGame, since: { createdAt: string; updatedAt: string }): CasinoGame {
+  const list: GameVersion[] = [];
+  const seen = new Set<string>();
+  if (Array.isArray(raw.versions)) {
+    for (const v of raw.versions) {
+      if (!isObj(v) || typeof v.versionId !== 'string' || v.versionId === '' || seen.has(v.versionId)) continue;
+      seen.add(v.versionId);
+      const createdAt = iso(v.createdAt) ?? since.createdAt;
+      list.push({
+        versionId: v.versionId,
+        createdAt,
+        updatedAt: iso(v.updatedAt) ?? createdAt,
+        rules: rulesOf(normGameRules({ ...(isObj(v.rules) ? v.rules : {}), id: game.id }, game.id)),
+      });
+    }
+  }
+  list.sort(byCreated);
+  const named = typeof raw.versionId === 'string' && raw.versionId !== '' ? raw.versionId : null;
+  const versionId = named ?? list[list.length - 1]?.versionId ?? `${game.id}-v1`;
+  const rules = rulesOf(game);
+  const cur = list.find((v) => v.versionId === versionId);
+  if (cur) cur.rules = rules;
+  else {
+    list.push({ versionId, createdAt: since.createdAt, updatedAt: since.updatedAt, rules });
+    list.sort(byCreated);
+  }
+  return { ...game, versionId, versions: list };
+}
+
+/** A game's versions; one built in memory and never read back has its version 1 only. */
+export function versionsOf(g: CasinoGame): GameVersion[] {
+  if (g.versions && g.versions.length > 0) return g.versions;
+  return [{ versionId: g.versionId ?? `${g.id}-v1`, createdAt: EPOCH, updatedAt: EPOCH, rules: rulesOf(g) }];
+}
+
+/** A game's current version id. */
+export const currentVersionId = (g: CasinoGame): string => g.versionId ?? `${g.id}-v1`;
+
+/** The versions before the current one, newest first. */
+export function earlierVersions(g: CasinoGame): GameVersion[] {
+  const cur = currentVersionId(g);
+  return versionsOf(g)
+    .filter((v) => v.versionId !== cur)
+    .sort((a, b) => byCreated(b, a));
+}
+
+/** An earlier version as a game: its rules on the game's own label, pace and notes, under the version's id. */
+export function gameAtVersion(g: CasinoGame, v: GameVersion): CasinoGame {
+  return { ...withRules(g, v.rules), id: v.versionId, versionId: v.versionId, versions: [v] };
+}
+
+/** The version of a game that was current at a moment: the newest begun by then (else the oldest). */
+export function versionAt(g: CasinoGame, at: string): GameVersion {
+  const list = versionsOf(g);
+  const t = Date.parse(at);
+  let best = list[0]!;
+  for (const v of list) if (Date.parse(v.createdAt) <= t) best = v;
+  return best;
+}
+
+/**
+ * How a save treats a game whose rules changed: `new` -- the casino changed
+ * them, so the old rules are kept as an earlier version with their sessions
+ * and figures; `fix` -- they were entered wrong, so the current version is
+ * corrected in place. The form asks only for a version with sessions or
+ * figures; one with neither is corrected in place.
+ */
+export type VersionChoice = 'new' | 'fix';
+
+/** A saved game, its versions brought up to the save (see `VersionChoice`). */
+function versioned(prev: CasinoGame | undefined, g: CasinoGame, choice: VersionChoice | undefined, at: string): CasinoGame {
+  if (!prev) {
+    // A new game: its version 1 begins now.
+    const versionId = currentVersionId(g);
+    return { ...g, versionId, versions: [{ versionId, createdAt: at, updatedAt: at, rules: rulesOf(g) }] };
+  }
+  const base = versionsOf(prev);
+  const curId = currentVersionId(prev);
+  const rules = rulesOf(g);
+  if (!sameRules(prev, g) && choice === 'new') {
+    const versionId = makeCasinoId('v');
+    return { ...g, versionId, versions: [...base, { versionId, createdAt: at, updatedAt: at, rules }] };
+  }
+  const changed = JSON.stringify(rulesOf(prev)) !== JSON.stringify(rules);
+  const versions = base.map((v) => (v.versionId === curId ? { ...v, rules, updatedAt: changed ? at : v.updatedAt } : v));
+  return { ...g, versionId: curId, versions };
+}
+
+/**
+ * Two copies of one game merged: every version either holds, by id, the one
+ * changed last winning; the newest version is current, and the game's rules
+ * are its. Nothing is replaced wholesale and no version is dropped.
+ */
+function mergeGameVersions(g: CasinoGame, other: CasinoGame | undefined): CasinoGame {
+  if (!other) return g;
+  const byId = new Map(versionsOf(g).map((v) => [v.versionId, v]));
+  for (const v of versionsOf(other)) {
+    const cur = byId.get(v.versionId);
+    if (!cur || Date.parse(v.updatedAt) > Date.parse(cur.updatedAt)) byId.set(v.versionId, v);
+  }
+  const versions = [...byId.values()].sort(byCreated);
+  const current = versions[versions.length - 1]!;
+  return { ...withRules(g, current.rules), versionId: current.versionId, versions };
 }
 
 /**
@@ -406,18 +622,18 @@ export function blankGame(id: string = makeCasinoId('g')): CasinoGame {
   };
 }
 
-function normGames(x: Record<string, unknown>, casinoId: string): CasinoGame[] {
+function normGames(x: Record<string, unknown>, casinoId: string, since: { createdAt: string; updatedAt: string }): CasinoGame[] {
   // v1: one `game`, with the betting facts on the casino beside it.
-  if (!Array.isArray(x.games)) return [normGame(x.game, `g-${casinoId}`, { ...(isObj(x.game) ? x.game : {}), ...x })];
+  if (!Array.isArray(x.games)) return [normGame(x.game, `g-${casinoId}`, { ...(isObj(x.game) ? x.game : {}), ...x }, since)];
   const seen = new Set<string>();
   const games: CasinoGame[] = [];
   x.games.forEach((raw, i) => {
-    const g = normGame(raw, `g-${casinoId}-${i}`);
+    const g = normGame(raw, `g-${casinoId}-${i}`, undefined, since);
     if (seen.has(g.id)) return;
     seen.add(g.id);
     games.push(g);
   });
-  return games.length > 0 ? games : [blankGame(`g-${casinoId}`)];
+  return games.length > 0 ? games : [normGame(blankGame(`g-${casinoId}`), `g-${casinoId}`, undefined, since)];
 }
 
 function normPoint(x: unknown): GeoPoint | null {
@@ -435,11 +651,12 @@ export function normCasino(x: unknown): Casino | null {
   if (!id || !name) return null;
   const status: CasinoStatus = x.status === 'avoid' || x.status === 'burned' ? x.status : 'ok';
   const createdAt = iso(x.createdAt) ?? EPOCH;
+  const updatedAt = iso(x.updatedAt) ?? createdAt;
   return {
     id,
     name,
     area: typeof x.area === 'string' && x.area.trim() !== '' ? x.area.trim() : undefined,
-    games: normGames(x, id),
+    games: normGames(x, id, { createdAt, updatedAt }),
     driveMinutes: boundedOrNull(x.driveMinutes, 0, 24 * 60),
     location: normPoint(x.location),
     ...normWaveMCasino(x),
@@ -447,7 +664,7 @@ export function normCasino(x: unknown): Casino | null {
     burnedUntil: typeof x.burnedUntil === 'string' && DATE_ONLY.test(x.burnedUntil) ? x.burnedUntil : null,
     notes: notesOf(x.notes),
     createdAt,
-    updatedAt: iso(x.updatedAt) ?? createdAt,
+    updatedAt,
   };
 }
 
@@ -471,9 +688,15 @@ export function normSession(x: unknown): CasinoSession | null {
   const buyIns = Array.isArray(x.buyIns) ? x.buyIns.filter((b): b is number => money(b) !== null && (b as number) > 0) : [];
   const maxTc = typeof x.maxTc === 'number' && Number.isFinite(x.maxTc) ? Math.round(x.maxTc) : null;
   const createdAt = iso(x.createdAt) ?? start;
+  const played: Pick<CasinoSession, 'gameId' | 'versionId'> = {};
+  if (typeof x.gameId === 'string' && x.gameId !== '') {
+    played.gameId = x.gameId;
+    if (typeof x.versionId === 'string' && x.versionId !== '') played.versionId = x.versionId;
+  }
   return {
     id,
     casinoId,
+    ...played,
     start,
     // An end before the start is a typo, not a negative session.
     end: end && Date.parse(end) >= Date.parse(start) ? end : end ? start : null,
@@ -528,30 +751,48 @@ function normSettings(x: unknown): CasinoLogSettings {
  * Bring any blob this build understands up to the current shape.
  *
  * Version 1 moves each casino's single game into `games` (see the header);
- * either version is also repaired: a partial or hand-edited blob gets every
- * missing field filled and every bad entry dropped. A blob with no version
- * but the two lists is read as v1 (an export edited by hand loses the
- * wrapper first). Anything else -- a newer version this build does not know
- * -- is refused, so it is quarantined rather than flattened into this
- * build's idea of it.
+ * versions 1 and 2 give each game its version 1 and attach each session at a
+ * casino of one game to it (Wave W); every version is also repaired: a
+ * partial or hand-edited blob gets every missing field filled and every bad
+ * entry dropped. A blob with no version but the two lists is read as v1 (an
+ * export edited by hand loses the wrapper first). Anything else -- a newer
+ * version this build does not know -- is refused, so it is quarantined
+ * rather than flattened into this build's idea of it.
  */
 export function migrateCasinoLog(parsed: unknown): { log: CasinoLog; skipped: number } | null {
   if (!isObj(parsed)) return null;
   const v = parsed.version;
-  const readable = v === 1 || v === 2 || (v === undefined && (Array.isArray(parsed.casinos) || Array.isArray(parsed.sessions)));
+  const readable = v === 1 || v === 2 || v === 3 || (v === undefined && (Array.isArray(parsed.casinos) || Array.isArray(parsed.sessions)));
   if (!readable) return null;
   const casinos = normList(parsed.casinos, normCasino);
   const sessions = normList(parsed.sessions, normSession);
   const log: CasinoLog = {
-    version: 2,
+    version: 3,
     casinos: casinos.items,
-    sessions: sessions.items,
+    sessions: v === 3 ? sessions.items : attachToVersionOne(casinos.items, sessions.items),
     settings: normSettings(parsed.settings),
     lastExportAt: iso(parsed.lastExportAt),
   };
-  if (v === 2 && typeof parsed.legacySeen === 'string') log.legacySeen = parsed.legacySeen;
-  if (v === 2 && isObj(parsed.legacyIds)) log.legacyIds = { casinos: idList(parsed.legacyIds.casinos), sessions: idList(parsed.legacyIds.sessions) };
+  const ids = (x: Record<string, unknown>): LegacyIds => ({ casinos: idList(x.casinos), sessions: idList(x.sessions) });
+  if ((v === 2 || v === 3) && typeof parsed.legacySeen === 'string') log.legacySeen = parsed.legacySeen;
+  if ((v === 2 || v === 3) && isObj(parsed.legacyIds)) log.legacyIds = ids(parsed.legacyIds);
+  if (v === 3 && typeof parsed.prevSeen === 'string') log.prevSeen = parsed.prevSeen;
+  if (v === 3 && isObj(parsed.prevIds)) log.prevIds = ids(parsed.prevIds);
   return { log, skipped: casinos.skipped + sessions.skipped };
+}
+
+/**
+ * Wave W: a session from before versions, at a casino with one game, was
+ * played at that game as it was then -- its version 1. At a casino of
+ * several it never said which, so it stays the casino's.
+ */
+function attachToVersionOne(casinos: readonly Casino[], sessions: CasinoSession[]): CasinoSession[] {
+  const only = new Map(casinos.filter((c) => c.games.length === 1).map((c) => [c.id, c.games[0]!]));
+  return sessions.map((s) => {
+    const g = only.get(s.casinoId);
+    if (!g || s.gameId !== undefined) return s;
+    return { ...s, gameId: g.id, versionId: versionsOf(g)[0]!.versionId };
+  });
 }
 
 /** FNV-1a over the text, plus its length: tells one stored v1 blob from another. */
@@ -586,7 +827,7 @@ export function keepUnreadable(raw: string): void {
 export function quarantinedCasinoLog(): string | null {
   try {
     const s = store();
-    return s.getItem(CORRUPT_KEY) ?? s.getItem(LEGACY_CORRUPT_KEY);
+    return s.getItem(CORRUPT_KEY) ?? s.getItem(PREV_CORRUPT_KEY) ?? s.getItem(LEGACY_CORRUPT_KEY);
   } catch {
     return null;
   }
@@ -602,16 +843,19 @@ function readBlob(raw: string): CasinoLog | null {
 
 /**
  * Read the log. Never throws: absent reads as empty, unreadable is
- * quarantined and reads as empty, partial is repaired. A v1 blob an older
- * build wrote since this log last took it in is merged in (see the header);
- * the result carries the v1 fingerprint, and the next save records it. Load
- * itself never writes the log.
+ * quarantined and reads as empty, partial is repaired. A v2 or v1 blob an
+ * older build wrote since this log last took it in is merged in (see the
+ * header) -- the v2 one first, as the log itself when there is no v3 blob
+ * yet; the result carries their fingerprints, and the next save records
+ * them. Load itself never writes the log.
  */
 export function loadCasinoLog(): CasinoLog {
   let raw: string | null;
+  let prev: string | null;
   let legacy: string | null;
   try {
     raw = store().getItem(CASINO_LOG_KEY);
+    prev = store().getItem(PREV_CASINO_LOG_KEY);
     legacy = store().getItem(LEGACY_CASINO_LOG_KEY);
   } catch {
     return emptyCasinoLog();
@@ -621,24 +865,44 @@ export function loadCasinoLog(): CasinoLog {
     log = readBlob(raw);
     if (!log) quarantine(raw);
   }
-  if (!legacy) return log ?? emptyCasinoLog();
-  const seen = fingerprint(legacy);
-  if (log && log.legacySeen === seen) {
-    if (log.legacyIds) return log;
-    // Saved by a build before R1: the v1 blob it took in is still this one.
-    const taken = readBlob(legacy);
-    return taken ? { ...log, legacyIds: idsOf(taken) } : log;
+  if (prev) log = takeIn(log, prev, PREV_SOURCE);
+  if (legacy) log = takeIn(log, legacy, LEGACY_SOURCE);
+  return log ?? emptyCasinoLog();
+}
+
+/** An older build's key this build reads: where this log keeps what it has taken in from it. */
+interface OlderSource {
+  seen: 'legacySeen' | 'prevSeen';
+  ids: 'legacyIds' | 'prevIds';
+  /** A v1 blob's casinos know one game (`fromV1Casino`). */
+  fromV1: boolean;
+}
+const LEGACY_SOURCE: OlderSource = { seen: 'legacySeen', ids: 'legacyIds', fromV1: true };
+const PREV_SOURCE: OlderSource = { seen: 'prevSeen', ids: 'prevIds', fromV1: false };
+
+/**
+ * What an older build wrote under its own key, merged into the log unless
+ * the log has taken in these very bytes already. Re-review R1: a casino or
+ * session taken in from there before and gone now was deleted here, and
+ * stays deleted.
+ */
+function takeIn(log: CasinoLog | null, text: string, src: OlderSource): CasinoLog {
+  const seen = fingerprint(text);
+  if (log && log[src.seen] === seen) {
+    if (log[src.ids]) return log;
+    // Saved by a build before R1: the blob it took in is still this one.
+    const taken = readBlob(text);
+    return taken ? { ...log, [src.ids]: idsOf(taken) } : log;
   }
-  const old = readBlob(legacy);
+  const old = readBlob(text);
   if (!old) {
-    quarantine(legacy);
-    return { ...(log ?? emptyCasinoLog()), legacySeen: seen };
+    quarantine(text);
+    return { ...(log ?? emptyCasinoLog()), [src.seen]: seen };
   }
-  if (!log) return { ...old, legacySeen: seen, legacyIds: idsOf(old) };
-  // Re-review R1: what was taken in from v1 before and is gone now was deleted here.
-  const prev = log.legacyIds ?? { casinos: [], sessions: [] };
-  const deletedCasinos = new Set(prev.casinos.filter((id) => !log.casinos.some((c) => c.id === id)));
-  const deletedSessions = new Set(prev.sessions.filter((id) => !log.sessions.some((x) => x.id === id)));
+  if (!log) return { ...old, [src.seen]: seen, [src.ids]: idsOf(old) };
+  const before = log[src.ids] ?? { casinos: [], sessions: [] };
+  const deletedCasinos = new Set(before.casinos.filter((id) => !log.casinos.some((c) => c.id === id)));
+  const deletedSessions = new Set(before.sessions.filter((id) => !log.sessions.some((x) => x.id === id)));
   const fresh: CasinoLog = {
     ...old,
     casinos: old.casinos.filter((c) => !deletedCasinos.has(c.id)),
@@ -646,9 +910,9 @@ export function loadCasinoLog(): CasinoLog {
   };
   const ids = idsOf(old);
   return {
-    ...mergeLogs(log, fresh, true).log,
-    legacySeen: seen,
-    legacyIds: { casinos: union(prev.casinos, ids.casinos), sessions: union(prev.sessions, ids.sessions) },
+    ...mergeLogs(log, fresh, src.fromV1).log,
+    [src.seen]: seen,
+    [src.ids]: { casinos: union(before.casinos, ids.casinos), sessions: union(before.sessions, ids.sessions) },
   };
 }
 
@@ -696,8 +960,8 @@ export function saveCasinoLog(log: CasinoLog): boolean {
  */
 export function subscribeCasinoLog(fn: Listener): () => void {
   listeners.add(fn);
-  // The v1 key too: an older build in another tab writes only that.
-  const offExternal = subscribeToExternalWrites([CASINO_LOG_KEY, LEGACY_CASINO_LOG_KEY], () => fn());
+  // The older keys too: a tab still on an older build writes only its own.
+  const offExternal = subscribeToExternalWrites([CASINO_LOG_KEY, PREV_CASINO_LOG_KEY, LEGACY_CASINO_LOG_KEY], () => fn());
   return () => {
     listeners.delete(fn);
     offExternal();
@@ -706,7 +970,7 @@ export function subscribeCasinoLog(fn: Listener): () => void {
 
 // ---------------------------------------------------------------- ids and time
 
-export function makeCasinoId(prefix: 'c' | 's' | 'g' | 'm'): string {
+export function makeCasinoId(prefix: 'c' | 's' | 'g' | 'm' | 'v'): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return `${prefix}-${crypto.randomUUID()}`;
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
@@ -751,18 +1015,32 @@ export function blankCasinoDraft(name = ''): CasinoDraft {
   };
 }
 
-/** Add (no id) or replace a casino. The name is trimmed; an empty one is refused. */
-export function saveCasino(log: CasinoLog, draft: CasinoDraft, now: number, id?: string): { log: CasinoLog; casino: Casino } | null {
+/**
+ * Add (no id) or replace a casino. The name is trimmed; an empty one is
+ * refused. Wave W (review S2): a game whose rules changed gets a new version
+ * where `versions` says `new` for it, and is corrected in place otherwise.
+ */
+export function saveCasino(
+  log: CasinoLog,
+  draft: CasinoDraft,
+  now: number,
+  id?: string,
+  versions: Readonly<Record<string, VersionChoice>> = {},
+): { log: CasinoLog; casino: Casino } | null {
   const name = draft.name.trim();
   if (!name) return null;
   const existing = id ? casinoById(log, id) : undefined;
-  const casino = normCasino({
+  const normed = normCasino({
     ...draft,
     name,
     id: existing?.id ?? makeCasinoId('c'),
     createdAt: existing?.createdAt ?? stamp(now),
     updatedAt: stamp(now),
   })!;
+  const casino: Casino = {
+    ...normed,
+    games: normed.games.map((g) => versioned(existing?.games.find((p) => p.id === g.id), g, versions[g.id], stamp(now))),
+  };
   const casinos = existing ? log.casinos.map((c) => (c.id === casino.id ? casino : c)) : [...log.casinos, casino];
   return { log: { ...log, casinos }, casino };
 }
@@ -776,18 +1054,26 @@ export function deleteCasino(log: CasinoLog, id: string): CasinoLog {
   };
 }
 
-/** Put a session on the clock. Refused while another is running, or for an unknown casino. */
+/**
+ * Put a session on the clock. Refused while another is running, or for an
+ * unknown casino. Wave W: at the game `gameId` names, at its version now; a
+ * casino of one game needs none named; at several, none named is "several".
+ */
 export function startSession(
   log: CasinoLog,
   casinoId: string,
   now: number,
   buyIn?: number | null,
+  gameId?: string | null,
 ): { log: CasinoLog; session: CasinoSession } | null {
-  if (runningSession(log) || !casinoById(log, casinoId)) return null;
+  const casino = casinoById(log, casinoId);
+  if (runningSession(log) || !casino) return null;
   const at = stamp(now);
+  const game = gameId === null ? undefined : gameId !== undefined ? casino.games.find((g) => g.id === gameId) : casino.games.length === 1 ? casino.games[0] : undefined;
   const session: CasinoSession = {
     id: makeCasinoId('s'),
     casinoId,
+    ...(game ? { gameId: game.id, versionId: currentVersionId(game) } : {}),
     start: at,
     end: null,
     buyIns: buyIn && buyIn > 0 ? [buyIn] : [],
@@ -926,7 +1212,7 @@ export function exportFileName(now: number): string {
 export function serializeExport(log: CasinoLog, now: number, corrupt: string | null = quarantinedCasinoLog()): string {
   const out: Record<string, unknown> = {
     app: EXPORT_APP,
-    version: 2,
+    version: 3,
     exportedAt: stamp(now),
     casinos: log.casinos,
     sessions: log.sessions,
@@ -1002,12 +1288,54 @@ function fromV1Casino(cur: Casino, inc: Casino): Casino {
 }
 
 /**
+ * Two copies of one casino merged. The newer record's own fields win (a tie
+ * keeps what is here), as before; Wave W (review S2): each game both hold
+ * keeps every version either has (`mergeGameVersions`), whichever record
+ * won. A v1 record knows no versions: it is taken as before (`fromV1Casino`),
+ * its rules the current version's.
+ */
+function mergeCasino(cur: Casino, inc: Casino, fromV1: boolean): Casino {
+  const newer = Date.parse(inc.updatedAt) > Date.parse(cur.updatedAt);
+  if (fromV1) {
+    if (!newer) return cur;
+    const taken = fromV1Casino(cur, inc);
+    return { ...taken, games: taken.games.map((g) => versioned(cur.games.find((p) => p.id === g.id), g, 'fix', inc.updatedAt)) };
+  }
+  const [base, other] = newer ? [inc, cur] : [cur, inc];
+  return { ...base, games: base.games.map((g) => mergeGameVersions(g, other.games.find((o) => o.id === g.id))) };
+}
+
+/** Casinos merged by id (`mergeCasino`); one is counted updated when the merge changed it here. */
+function mergeCasinos(local: Casino[], incoming: Casino[], fromV1: boolean): { items: Casino[]; added: number; updated: number; kept: number } {
+  const byId = new Map(local.map((x) => [x.id, x]));
+  let added = 0;
+  let updated = 0;
+  let kept = 0;
+  for (const inc of incoming) {
+    const cur = byId.get(inc.id);
+    if (!cur) {
+      byId.set(inc.id, inc);
+      added += 1;
+      continue;
+    }
+    const merged = mergeCasino(cur, inc, fromV1);
+    if (JSON.stringify(merged) === JSON.stringify(cur)) kept += 1;
+    else {
+      byId.set(inc.id, merged);
+      updated += 1;
+    }
+  }
+  const items = [...local.map((x) => byId.get(x.id)!), ...incoming.filter((x) => !local.some((l) => l.id === x.id))];
+  return { items, added, updated, kept };
+}
+
+/**
  * Two logs merged by id: the newer `updatedAt` wins, a tie keeps what is
  * here, nothing is deleted. `fromV1`: the incoming log was a v1 blob or file
  * (see `fromV1Casino`; its settings only carry the bankroll).
  */
 function mergeLogs(local: CasinoLog, inc: CasinoLog, fromV1: boolean) {
-  const casinos = mergeById(local.casinos, inc.casinos, fromV1 ? fromV1Casino : undefined);
+  const casinos = mergeCasinos(local.casinos, inc.casinos, fromV1);
   const sessions = mergeById(local.sessions, inc.sessions);
   const incSettingsNewer =
     inc.settings.updatedAt !== null &&
@@ -1037,13 +1365,13 @@ export function mergeImport(
   if (!isObj(parsed) || (!Array.isArray(parsed.casinos) && !Array.isArray(parsed.sessions))) {
     return { ok: false, error: 'That file is not a casino log export.' };
   }
-  if (parsed.version !== undefined && parsed.version !== 1 && parsed.version !== 2) {
+  if (parsed.version !== undefined && parsed.version !== 1 && parsed.version !== 2 && parsed.version !== 3) {
     return { ok: false, error: `That file is version ${String(parsed.version)}, newer than this app reads.` };
   }
   // A v1 file is migrated exactly as a v1 blob is (each casino's game -> games[0]).
   const migrated = migrateCasinoLog({ ...parsed, version: parsed.version ?? 1 });
   if (!migrated) return { ok: false, error: 'That file is not a casino log export.' };
-  const { log, casinos, sessions } = mergeLogs(local, migrated.log, parsed.version !== 2);
+  const { log, casinos, sessions } = mergeLogs(local, migrated.log, parsed.version !== 2 && parsed.version !== 3);
   const open = sessions.items.filter((s) => s.end === null).length;
   return {
     ok: true,

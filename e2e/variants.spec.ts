@@ -145,7 +145,7 @@ test('a casino game can be a variant: the card shows its house edge and says cou
     // A round budget: were the variant ever run, it would land well inside the hold below.
     (window as unknown as { __bjCasinoSimBudget: number }).__bjCasinoSimBudget = 4000;
     if (!sessionStorage.getItem('seeded')) {
-      localStorage.setItem('bjtrainer.casinoLog.v2', l);
+      localStorage.setItem('bjtrainer.casinoLog.v3', l);
       sessionStorage.setItem('seeded', '1');
     }
   }, JSON.stringify(log));
@@ -183,7 +183,7 @@ test('a casino game can be a variant: the card shows its house edge and says cou
   await expect(card.getByTestId('gs-edge')).toHaveText(`${presetData('freebet').houseEdge.toFixed(2)}%`);
   await expect(card.getByTestId('gs-not-modelled')).toHaveText('Not modelled');
   // Stored on the game, additively.
-  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('bjtrainer.casinoLog.v2')!).casinos[0].games[0].variant);
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('bjtrainer.casinoLog.v3')!).casinos[0].games[0].variant);
   expect(stored).toBe('freebet');
 });
 
@@ -208,7 +208,7 @@ test('a variant game at a card room: commission added, assumed only for that; lo
   };
   await page.addInitScript((l) => {
     if (!sessionStorage.getItem('seeded')) {
-      localStorage.setItem('bjtrainer.casinoLog.v2', l);
+      localStorage.setItem('bjtrainer.casinoLog.v3', l);
       sessionStorage.setItem('seeded', '1');
     }
   }, JSON.stringify(log));

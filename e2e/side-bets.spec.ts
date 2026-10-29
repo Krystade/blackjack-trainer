@@ -289,7 +289,7 @@ test.describe('the casino stats card', () => {
   test('a row per side bet: the exact edge, the count and trigger, the counted EV per hour', async ({ page }) => {
     await page.addInitScript((log) => {
       if (!sessionStorage.getItem('seeded')) {
-        localStorage.setItem('bjtrainer.casinoLog.v2', log);
+        localStorage.setItem('bjtrainer.casinoLog.v3', log);
         sessionStorage.setItem('seeded', '1');
       }
     }, JSON.stringify(LOG));
@@ -322,7 +322,7 @@ test.describe('the casino stats card', () => {
     const log = { ...LOG, casinos: [{ ...LOG.casinos[0]!, games: [variant] }] };
     await page.addInitScript((l) => {
       if (!sessionStorage.getItem('seeded')) {
-        localStorage.setItem('bjtrainer.casinoLog.v2', l);
+        localStorage.setItem('bjtrainer.casinoLog.v3', l);
         sessionStorage.setItem('seeded', '1');
       }
     }, JSON.stringify(log));
@@ -352,7 +352,7 @@ test.describe('the casino stats card', () => {
       ([l, b]) => {
         (window as unknown as { __bjCasinoSimBudget: number }).__bjCasinoSimBudget = b as number;
         if (!sessionStorage.getItem('seeded')) {
-          localStorage.setItem('bjtrainer.casinoLog.v2', l as string);
+          localStorage.setItem('bjtrainer.casinoLog.v3', l as string);
           sessionStorage.setItem('seeded', '1');
         }
       },

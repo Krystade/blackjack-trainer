@@ -5,6 +5,8 @@ import { newEditTracker, noteKeys, orderCandidates, sessionHolds } from '../../c
 import { attachAuto, setAutoPlan } from './simRunner';
 import { requestSideRow } from './sideRunner';
 import { sideRowFor, sideRowSpec } from '../../../store/casinoSideRows';
+import { pinGameKeys } from '../../../store/casinoGameStats';
+import { earlierVersionKeys } from '../../casinoVersions';
 import { useActiveProfile, useGameCache } from './useGameStats';
 
 /**
@@ -40,6 +42,8 @@ export function AutoSim({ log, openGame }: { log: CasinoLog; openGame: string | 
     setAutoPlan(orderCandidates(rows, tracker.editedAt, profile.name), openGame, { sessionRunning });
   }, [rows, openGame, profile.name, sessionRunning]);
   useEffect(() => attachAuto(), []);
+  // Wave W (review S2): an earlier version's figures stay in the cache, however many newer ones land.
+  useEffect(() => pinGameKeys(earlierVersionKeys(log, profile)), [log, profile]);
   useEffect(() => {
     for (const r of rows) {
       if (r.notModelled) continue;

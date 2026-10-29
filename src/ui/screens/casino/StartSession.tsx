@@ -1,12 +1,18 @@
 import { useEffect, useState } from 'react';
 import { blankCasinoDraft, saveCasino, startSession, type CasinoLog } from '../../../store/casinoLog';
-import { burnedText, sortCasinos, standing } from '../../casinoFigures';
+import { burnedText, labelledSummary, sortCasinos, standing } from '../../casinoFigures';
 import type { CasinoView } from './Casino';
+import './casinoVersions.css';
 
 /**
  * Pick where you are playing and the clock starts. One tap on a known casino;
  * a new one needs only a name (the rest can be filled in later from its page).
  * The buy-in is asked for on the live card, and can wait.
+ *
+ * Wave W (review S2): a session records the game it is played at, and that
+ * game's version, so its result stays with the rules it was played under. A
+ * casino of one game needs nothing more; at one of several, the tap asks
+ * which -- or "several", which leaves it the casino's.
  */
 export function StartSession({
   log,
@@ -23,12 +29,13 @@ export function StartSession({
   const [name, setName] = useState('');
   const [area, setArea] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [picking, setPicking] = useState<string | null>(null);
   const casinos = sortCasinos(log, now);
 
   useEffect(() => onDirty(name.trim() !== '' || area.trim() !== ''), [name, area, onDirty]);
 
-  const startAt = (base: CasinoLog, casinoId: string) => {
-    const r = startSession(base, casinoId, Date.now());
+  const startAt = (base: CasinoLog, casinoId: string, gameId?: string | null) => {
+    const r = startSession(base, casinoId, Date.now(), null, gameId);
     if (!r) {
       setError('A session is already running. End it first.');
       return;
@@ -58,13 +65,20 @@ export function StartSession({
           <ul className="cas-list">
             {casinos.map((c) => {
               const s = standing(c, now);
+              const several = c.games.length > 1;
               return (
                 <li key={c.id}>
-                  <button type="button" className="cas-row cas-pick" data-testid="start-at" onClick={() => startAt(log, c.id)}>
+                  <button
+                    type="button"
+                    className="cas-row cas-pick"
+                    data-testid="start-at"
+                    aria-expanded={several ? picking === c.id : undefined}
+                    onClick={() => (several ? setPicking((p) => (p === c.id ? null : c.id)) : startAt(log, c.id))}
+                  >
                     <span className="cas-row-top">
                       <span className="cas-row-name">{c.name}</span>
                       <span className="cas-pick-go" aria-hidden="true">
-                        Start ›
+                        {several ? (picking === c.id ? 'Which game? ▾' : 'Start ›') : 'Start ›'}
                       </span>
                     </span>
                     {(c.area || s.group !== 'playable') && (
@@ -78,6 +92,18 @@ export function StartSession({
                       </span>
                     )}
                   </button>
+                  {several && picking === c.id && (
+                    <div className="cas-pick-games" role="group" aria-label={`Which game at ${c.name}`} data-testid="start-games">
+                      {c.games.map((g, i) => (
+                        <button key={g.id} type="button" className="u-btn cas-wide cas-pick-game" data-testid="start-game" data-game={g.id} onClick={() => startAt(log, c.id, g.id)}>
+                          {g.label?.trim() ? labelledSummary(g) : `Game ${i + 1}: ${labelledSummary(g)}`}
+                        </button>
+                      ))}
+                      <button type="button" className="u-btn cas-wide cas-pick-game" data-testid="start-several" onClick={() => startAt(log, c.id, null)}>
+                        Several, or not sure
+                      </button>
+                    </div>
+                  )}
                 </li>
               );
             })}

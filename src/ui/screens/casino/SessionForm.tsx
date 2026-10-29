@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { deleteSession, updateSession, type CasinoLog, type HeatLevel } from '../../../store/casinoLog';
-import { hoursText, parseMoney, sessionHours, signedMoney } from '../../casinoFigures';
+import { casinoById, deleteSession, updateSession, versionAt, versionsOf, type CasinoGame, type CasinoLog, type CasinoSession, type HeatLevel } from '../../../store/casinoLog';
+import { hoursText, labelledSummary, parseMoney, sessionHours, signedMoney } from '../../casinoFigures';
+import { dateText } from '../../casinoVersions';
 import { DeleteButton, Field, FieldGroup, HeatPicker, MoneyInput } from './fields';
 import { fromLocalInput, moneyText, toLocalInput } from './casinoInputs';
 
@@ -8,10 +9,16 @@ import { fromLocalInput, moneyText, toLocalInput } from './casinoInputs';
  * Fix a finished session after the fact: the times, every buy-in, the
  * cash-out, the heat and the notes -- or delete it. A running session is
  * changed from its live card instead.
+ *
+ * Wave W (review S2): and which game it was played at. A session from before
+ * versions at a casino of several games never said; saying so here attaches
+ * it to that game's rules as they were when it started (`versionAt`).
  */
 
 interface Text {
   casinoId: string;
+  /** '' = several, or not said. */
+  gameId: string;
   start: string;
   end: string;
   buyIns: string[];
@@ -39,6 +46,7 @@ export function SessionForm({
   const session = log.sessions.find((s) => s.id === sessionId);
   const [text, setText] = useState<Text>(() => ({
     casinoId: session?.casinoId ?? '',
+    gameId: session?.gameId ?? '',
     start: session ? toLocalInput(session.start) : '',
     end: session?.end ? toLocalInput(session.end) : '',
     buyIns: session && session.buyIns.length > 0 ? session.buyIns.map(String) : [''],
@@ -67,7 +75,15 @@ export function SessionForm({
   }
 
   const set = (patch: Partial<Text>) => {
-    setText((t) => ({ ...t, ...patch }));
+    setText((t) => {
+      const next = { ...t, ...patch };
+      // Another casino: its one game, or not said.
+      if (patch.casinoId !== undefined && patch.casinoId !== t.casinoId) {
+        const there = casinoById(log, patch.casinoId)?.games ?? [];
+        next.gameId = there.length === 1 ? there[0]!.id : '';
+      }
+      return next;
+    });
     setTouched(true);
   };
   const setBuyIn = (i: number, v: string) => set({ buyIns: text.buyIns.map((b, j) => (j === i ? v : b)) });
@@ -76,6 +92,13 @@ export function SessionForm({
   // exactly, so an unrelated edit does not shave seconds off the hours.
   const start = session.start && text.start === toLocalInput(session.start) ? session.start : fromLocalInput(text.start);
   const end = session.end && text.end === toLocalInput(session.end) ? session.end : fromLocalInput(text.end);
+  const games = casinoById(log, text.casinoId)?.games ?? [];
+  const shownGame = games.find((g) => g.id === text.gameId);
+  const shownVersion = shownGame && start ? (shownGame.id === session.gameId && text.casinoId === session.casinoId && session.versionId ? session.versionId : versionAt(shownGame, start).versionId) : null;
+  const versionHint =
+    shownGame && shownVersion && versionsOf(shownGame).length > 1
+      ? `At its rules from ${dateText(versionsOf(shownGame).find((v) => v.versionId === shownVersion)?.createdAt ?? start!)}.`
+      : undefined;
   const buyIns = text.buyIns.map(parseMoney);
   const cashOut = parseMoney(text.cashOut);
   const previewNet =
@@ -105,11 +128,13 @@ export function SessionForm({
       setError('Amounts are in dollars and the true count a whole number. Fix or clear them.');
       return;
     }
+    const { gameId: _game, versionId: _version, ...rest } = session;
     commit(
       updateSession(
         log,
         {
-          ...session,
+          ...rest,
+          ...playedAt(session, text.casinoId, shownGame, text.gameId, start),
           casinoId: text.casinoId,
           start,
           end,
@@ -141,6 +166,19 @@ export function SessionForm({
             {!log.casinos.some((c) => c.id === text.casinoId) && <option value={text.casinoId}>Deleted casino</option>}
           </select>
         </Field>
+        {games.length > 0 && (games.length > 1 || text.gameId === '') && (
+          <Field label="Game" hint={versionHint}>
+            <select className="cas-input cas-select" name="gameId" value={text.gameId} onChange={(e) => set({ gameId: e.target.value })}>
+              <option value="">Several, or not said</option>
+              {games.map((g, i) => (
+                <option key={g.id} value={g.id}>
+                  {g.label?.trim() ? labelledSummary(g) : `Game ${i + 1}: ${labelledSummary(g)}`}
+                </option>
+              ))}
+              {text.gameId !== '' && !games.some((g) => g.id === text.gameId) && <option value={text.gameId}>A game since removed</option>}
+            </select>
+          </Field>
+        )}
         {/* One per row: a date and a time do not fit half of a 375 screen. */}
         <Field label="Started">
           <input type="datetime-local" className="cas-input" name="start" value={text.start} onChange={(e) => set({ start: e.target.value })} />
@@ -242,4 +280,14 @@ export function SessionForm({
       </div>
     </div>
   );
+}
+
+/**
+ * The game and version a saved session records. Unchanged, it keeps the
+ * version it has; a game newly said is at its rules when the session began.
+ */
+function playedAt(session: CasinoSession, casinoId: string, game: CasinoGame | undefined, gameId: string, start: string): Pick<CasinoSession, 'gameId' | 'versionId'> {
+  if (gameId === '') return {};
+  if (gameId === session.gameId && casinoId === session.casinoId && session.versionId) return { gameId, versionId: session.versionId };
+  return game ? { gameId, versionId: versionAt(game, start).versionId } : { gameId };
 }

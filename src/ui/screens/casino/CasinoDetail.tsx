@@ -1,4 +1,5 @@
-import { casinoById, type Casino, type CasinoGame, type CasinoLog } from '../../../store/casinoLog';
+import type { ReactNode } from 'react';
+import { casinoById, earlierVersions, gameAtVersion, type Casino, type CasinoGame, type CasinoLog } from '../../../store/casinoLog';
 import {
   burnedText,
   distanceOf,
@@ -23,6 +24,7 @@ import { figureLine } from '../../casinoFigureLine';
 import { FigureBadges } from './FigureBadges';
 import { HeatBadge } from './fields';
 import { NotesEditor } from './NotesEditor';
+import { CurrentVersionLine, EarlierVersions } from './EarlierVersions';
 import { useActiveProfile, useGameCache, useHere, useRunner } from './useGameStats';
 import type { CasinoView } from './Casino';
 import './casinoDirectory.css';
@@ -64,6 +66,11 @@ export function CasinoDetail({
   const self: CasinoView = { kind: 'detail', id: casino.id };
   // Every game's row, whatever the casino's standing.
   const rows = buildRanking({ ...log, casinos: [{ ...casino, status: 'ok' }] }, profile, results, now, null, 'ev', archive);
+  // Review S2: each earlier version's figures, by its own rules (found in the cache by their key, never worked out again).
+  const pastGames = casino.games.flatMap((g) => earlierVersions(g).map((v) => gameAtVersion(g, v)));
+  const pastRows = new Map(
+    (pastGames.length > 0 ? buildRanking({ ...log, casinos: [{ ...casino, status: 'ok', games: pastGames }] }, profile, results, now, null, 'ev', archive) : []).map((r) => [r.game.id, r]),
+  );
   const sessions = sessionsAt(log, casino.id);
   const t = totals(sessions);
   const { group, coolOffOver } = standing(casino, now);
@@ -137,6 +144,12 @@ export function CasinoDetail({
               failed={(k) => runner.failed[k]}
               onFigures={() => go({ kind: 'game', casinoId: casino.id, gameId: g.id, from: self })}
               onEdit={() => go({ kind: 'casino', id: casino.id, focusGame: g.id, from: self })}
+              versions={
+                <>
+                  <CurrentVersionLine log={log} casino={casino} game={g} />
+                  <EarlierVersions log={log} casino={casino} game={g} rows={pastRows} now={now} onSession={(sid) => go({ kind: 'session', sessionId: sid, from: self })} />
+                </>
+              }
             />
           ))}
         </div>
@@ -196,6 +209,7 @@ function GameCard({
   failed,
   onFigures,
   onEdit,
+  versions,
 }: {
   casino: Casino;
   game: CasinoGame;
@@ -205,6 +219,8 @@ function GameCard({
   onFigures: () => void;
   /** Review S2: the form, at this game's rules. */
   onEdit: () => void;
+  /** Review S2: since when these rules hold, and the game's earlier versions. */
+  versions: ReactNode;
 }) {
   // Review S1: the figure as Ranked says it, with its interval and what it is.
   const line = row ? figureLine(row, failed(row.input.key)) : null;
@@ -280,6 +296,7 @@ function GameCard({
           <p className="cas-dir-game-notes">{game.notes}</p>
         </div>
       )}
+      {versions}
     </article>
   );
 }

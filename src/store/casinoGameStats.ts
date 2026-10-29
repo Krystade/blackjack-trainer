@@ -368,8 +368,21 @@ export function loadGameCache(): { results: Results; archive: Archive } {
 const listeners = new Set<() => void>();
 
 /**
+ * Wave W (review S2): keys kept in the archive however old -- the figures of
+ * the games' earlier versions (casinoVersions.ts `earlierVersionKeys`), set
+ * by the Casino screen whenever the log or the profile changes. They are
+ * the only record of what those rules were worth, and no game asks for them
+ * again to bring them back.
+ */
+let pinned: ReadonlySet<string> = new Set();
+export function pinGameKeys(keys: Iterable<string>): void {
+  pinned = new Set(keys);
+}
+
+/**
  * The newest ARCHIVE_MAX, minus any key a game's own result holds, and minus
- * keys from another SIM_VERSION (review N9: no input can ever produce them again).
+ * keys from another SIM_VERSION (review N9: no input can ever produce them
+ * again); a pinned key is kept beside them, whatever its age.
  */
 function trimArchive(archive: Archive, results: Results): Archive {
   const live = new Set(Object.values(results).map((r) => r.key));
@@ -377,11 +390,12 @@ function trimArchive(archive: Archive, results: Results): Archive {
     const v = /^(\d+):/.exec(k);
     return v !== null && Number(v[1]) !== SIM_VERSION;
   };
-  const kept = Object.entries(archive)
-    .filter(([k]) => !live.has(k) && !otherVersion(k))
+  const usable = Object.entries(archive).filter(([k]) => !live.has(k) && !otherVersion(k));
+  const kept = usable
+    .filter(([k]) => !pinned.has(k))
     .sort(([, a], [, b]) => Date.parse(b.computedAt) - Date.parse(a.computedAt))
     .slice(0, ARCHIVE_MAX);
-  return Object.fromEntries(kept);
+  return Object.fromEntries([...usable.filter(([k]) => pinned.has(k)), ...kept]);
 }
 
 /** Whether the save landed. When it did not, the session keeps the cache in memory (`unsaved`). */

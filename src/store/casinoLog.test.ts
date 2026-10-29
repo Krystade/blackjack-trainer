@@ -30,6 +30,7 @@ import {
   startSession,
   subscribeCasinoLog,
   updateSession,
+  VERSIONED_FIELDS,
   type CasinoLog,
 } from './casinoLog';
 import { _resetStorageHealthForTest, onStorageFailure } from './storageHealth';
@@ -47,6 +48,17 @@ function memStore() {
       map.delete(k);
     },
   };
+}
+
+const EPOCH = '1970-01-01T00:00:00.000Z';
+
+/**
+ * Wave W: a game as a pre-versions log is migrated -- its version 1,
+ * `<id>-v1`, begun when its casino was, holding its rules.
+ */
+function versionOne<G extends { id: string }>(g: G, createdAt: string, updatedAt: string) {
+  const rules = Object.fromEntries(Object.entries(g).filter(([k]) => (VERSIONED_FIELDS as readonly string[]).includes(k)));
+  return { ...g, versionId: `${g.id}-v1`, versions: [{ versionId: `${g.id}-v1`, createdAt, updatedAt, rules }] };
 }
 
 let store: ReturnType<typeof memStore>;
@@ -124,7 +136,7 @@ describe('corrupt and partial blobs', () => {
   });
 
   it('quarantines a version this build does not know instead of flattening it', () => {
-    const FUTURE = JSON.stringify({ version: 3, casinos: [{ id: 'c1', name: 'X' }], sessions: [] });
+    const FUTURE = JSON.stringify({ version: 4, casinos: [{ id: 'c1', name: 'X' }], sessions: [] });
     store.map.set(CASINO_LOG_KEY, FUTURE);
     expect(loadCasinoLog().casinos).toEqual([]);
     expect(quarantinedCasinoLog()).toBe(FUTURE);
@@ -154,20 +166,24 @@ describe('corrupt and partial blobs', () => {
     const c = log.casinos[0]!;
     expect(c.name).toBe('Bellagio');
     expect(c.games).toEqual([
-      {
-        id: 'g-c1',
-        decks: null,
-        s17: null,
-        das: null,
-        surrender: null,
-        payout: '6:5',
-        cutDecksLeft: null,
-        minBet: null,
-        maxBet: null,
-        midShoeEntry: 'unknown',
-        csm: false,
-        roundsPerHour: null,
-      },
+      versionOne(
+        {
+          id: 'g-c1',
+          decks: null,
+          s17: null,
+          das: null,
+          surrender: null,
+          payout: '6:5',
+          cutDecksLeft: null,
+          minBet: null,
+          maxBet: null,
+          midShoeEntry: 'unknown',
+          csm: false,
+          roundsPerHour: null,
+        },
+        EPOCH,
+        EPOCH,
+      ),
     ]);
     expect(c.status).toBe('ok');
     expect(log.sessions.map((s) => s.id)).toEqual(['s1', 's3']);
@@ -221,18 +237,18 @@ describe('wave K: version 2, several games per casino', () => {
     const v1 = JSON.stringify({ version: 1, casinos: [V1_CASINO], sessions: [], settings: { startingBankroll: 5000, updatedAt: null }, lastExportAt: null });
     store.map.set(LEGACY_CASINO_LOG_KEY, v1);
     const log = loadCasinoLog();
-    expect(log.version).toBe(2);
+    expect(log.version).toBe(3);
     const c = log.casinos[0]!;
-    expect(c.games).toEqual([V1_GAME]);
+    expect(c.games).toEqual([versionOne(V1_GAME, V1_CASINO.createdAt, V1_CASINO.updatedAt)]);
     expect(c).toMatchObject({ name: 'El Cortez', area: 'Downtown', status: 'avoid', notes: 'Swing shift is friendly', updatedAt: V1_CASINO.updatedAt });
     expect(c).not.toHaveProperty('game');
     expect(c).not.toHaveProperty('minBet');
     expect(log.settings).toEqual({ startingBankroll: 5000, updatedAt: null });
     expect(quarantinedCasinoLog()).toBeNull();
-    // Saved back, it is a v2 blob under its own key that loads to the same
+    // Saved back, it is a v3 blob under its own key that loads to the same
     // thing; the v1 bytes are left exactly as they were.
     saveCasinoLog(log);
-    expect(JSON.parse(store.map.get(CASINO_LOG_KEY)!).version).toBe(2);
+    expect(JSON.parse(store.map.get(CASINO_LOG_KEY)!).version).toBe(3);
     expect(store.map.get(LEGACY_CASINO_LOG_KEY)).toBe(v1);
     expect(loadCasinoLog()).toEqual(log);
   });
@@ -241,11 +257,12 @@ describe('wave K: version 2, several games per casino', () => {
     const file = JSON.stringify({ app: 'bjtrainer-casino-log', version: 1, casinos: [V1_CASINO], sessions: [] });
     const r = mergeImport(emptyCasinoLog(), file);
     if (!r.ok) throw new Error(r.error);
-    expect(r.log.casinos[0]!.games).toEqual([V1_GAME]);
+    const migrated = versionOne(V1_GAME, V1_CASINO.createdAt, V1_CASINO.updatedAt);
+    expect(r.log.casinos[0]!.games).toEqual([migrated]);
     const again = mergeImport(r.log, file);
     if (!again.ok) throw new Error(again.error);
     expect(again.report).toMatchObject({ casinosAdded: 0, casinosUpdated: 0, kept: 1 });
-    expect(again.log.casinos[0]!.games).toEqual([V1_GAME]);
+    expect(again.log.casinos[0]!.games).toEqual([migrated]);
   });
 
   it('round-trips two games, drive time, a saved spot, notes and the Casino settings through export', () => {
@@ -272,7 +289,7 @@ describe('wave K: version 2, several games per casino', () => {
     expect(c1.games.map((g) => g.id)).toEqual(['x', 'g-c1-2']);
     expect(c1.games[0]!.decks).toBeNull();
     expect(c1.games[0]!.roundsPerHour).toBeNull();
-    expect(normCasino({ id: 'c2', name: 'B', games: [] })!.games).toEqual([blankGame('g-c2')]);
+    expect(normCasino({ id: 'c2', name: 'B', games: [] })!.games).toEqual([versionOne(blankGame('g-c2'), EPOCH, EPOCH)]);
     expect(normCasino({ id: 'c3', name: 'C', location: { lat: 99, lon: 0 }, driveMinutes: 'far' })).toMatchObject({ location: null, driveMinutes: null });
   });
 
@@ -286,10 +303,10 @@ describe('wave K: version 2, several games per casino', () => {
     expect(setCasinoLocation(b, id, null, T0 + 4 * H).casinos[0]!.location).toBeNull();
   });
 
-  it('refuses a custom method whose entry is not above its exit, and an import of version 3', () => {
+  it('refuses a custom method whose entry is not above its exit, and an import of version 4', () => {
     const log = setCasinoSettings(emptyCasinoLog(), { methods: [{ id: 'bad', entryTc: 0, exitTc: 0, rampStartTc: null }] }, T0);
     expect(log.settings.methods).toEqual([]);
-    const r = mergeImport(emptyCasinoLog(), JSON.stringify({ version: 3, casinos: [], sessions: [] }));
+    const r = mergeImport(emptyCasinoLog(), JSON.stringify({ version: 4, casinos: [], sessions: [] }));
     expect(r.ok).toBe(false);
   });
 });
@@ -455,7 +472,7 @@ describe('export and import', () => {
   it('rejects files that are not a casino log', () => {
     expect(mergeImport(emptyCasinoLog(), 'not json').ok).toBe(false);
     expect(mergeImport(emptyCasinoLog(), '{"settings":{},"stats":{}}').ok).toBe(false);
-    expect(mergeImport(emptyCasinoLog(), '{"version":3,"casinos":[]}').ok).toBe(false);
+    expect(mergeImport(emptyCasinoLog(), '{"version":4,"casinos":[]}').ok).toBe(false);
     expect(mergeImport(emptyCasinoLog(), '[1,2]').ok).toBe(false);
   });
 
@@ -529,7 +546,7 @@ describe('review S2: the v2 log has its own key, and an older build\'s writes ar
     const before = v1Blob([v1Casino()]);
     upgraded();
     expect(store.map.get(LEGACY_CASINO_LOG_KEY)).toBe(before);
-    expect(CASINO_LOG_KEY).toBe('bjtrainer.casinoLog.v2');
+    expect(CASINO_LOG_KEY).toBe('bjtrainer.casinoLog.v3');
     expect(JSON.parse(store.map.get(CASINO_LOG_KEY)!).casinos[0].games).toHaveLength(2);
   });
 

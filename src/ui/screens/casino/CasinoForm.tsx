@@ -4,13 +4,18 @@ import {
   blankGame,
   casinoById,
   deleteCasino,
+  sameRules,
   saveCasino,
   type CasinoDraft,
   type CasinoGame,
   type CasinoLog,
   type CasinoStatus,
   type GeoPoint,
+  type VersionChoice,
 } from '../../../store/casinoLog';
+import { currentVersionData, hasData, ruleChanges } from '../../casinoVersions';
+import { useActiveProfile, useGameCache } from './useGameStats';
+import { VersionPrompt, type VersionAsk } from './VersionPrompt';
 import {
   hoursText,
   localDateKey,
@@ -72,6 +77,10 @@ export function CasinoForm({
   const [milesText, setMilesText] = useState(() => (existing?.miles === null || existing?.miles === undefined ? '' : String(existing.miles)));
   const [touched, setTouched] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Review S2: Save asks, for each game whose changed rules held sessions or figures, whether the casino changed them.
+  const [asking, setAsking] = useState<{ asks: VersionAsk[]; choices: Record<string, VersionChoice> } | null>(null);
+  const profile = useActiveProfile();
+  const { results, archive } = useGameCache(log);
   const [locMsg, setLocMsg] = useState<string | null>(null);
 
   useEffect(() => onDirty(touched), [touched, onDirty]);
@@ -94,30 +103,35 @@ export function CasinoForm({
     );
   }
 
+  // Any edit after Save asked: the question is about the form as it was, so it is asked again.
+  const edited = () => {
+    setTouched(true);
+    setAsking(null);
+  };
   const update = (patch: Partial<CasinoDraft>) => {
     setDraft((d) => ({ ...d, ...patch }));
-    setTouched(true);
+    edited();
   };
   const updateGame = (gid: string, patch: Partial<CasinoGame>) => {
     // Review S2: setting a rule clears that rule's "?", and only that one.
     setDraft((d) => ({ ...d, games: d.games.map((g) => (g.id === gid ? withRuleChange(g, patch) : g)) }));
-    setTouched(true);
+    edited();
   };
   const updateText = (gid: string, patch: Partial<GameText>) => {
     const before = texts[gid];
     if (before) setDraft((d) => ({ ...d, games: d.games.map((g) => (g.id === gid ? withTextChange(g, before, patch) : g)) }));
     setTexts((t) => ({ ...t, [gid]: { ...t[gid]!, ...patch } }));
-    setTouched(true);
+    edited();
   };
   const addGame = () => {
     const g = blankGame();
     setDraft((d) => ({ ...d, games: [...d.games, g] }));
     setTexts((t) => ({ ...t, [g.id]: gameText(g) }));
-    setTouched(true);
+    edited();
   };
   const removeGame = (gid: string) => {
     setDraft((d) => ({ ...d, games: d.games.filter((g) => g.id !== gid) }));
-    setTouched(true);
+    edited();
   };
 
   const saveSpot = () => {
@@ -176,9 +190,26 @@ export function CasinoForm({
         notes: g.notes?.trim() ? g.notes : undefined,
       });
     }
+    // Review S2: a rule changed on a version with sessions or figures -- did the casino change it, or was it entered wrong?
+    if (existing && !asking) {
+      const asks: VersionAsk[] = [];
+      games.forEach((g, i) => {
+        const prev = existing.games.find((p) => p.id === g.id);
+        if (!prev || sameRules(prev, g)) return;
+        const data = currentVersionData(log, existing, prev, profile, results, archive);
+        if (!hasData(data)) return;
+        const title = g.label?.trim() || (games.length === 1 ? 'The game' : `Game ${i + 1}`);
+        asks.push({ gameId: g.id, title, changes: ruleChanges(prev, g), data });
+      });
+      if (asks.length > 0) {
+        setError(null);
+        setAsking({ asks, choices: Object.fromEntries(asks.map((a) => [a.gameId, 'new' as const])) });
+        return;
+      }
+    }
     // The notes save themselves on this page; take the stored copy, not the one this form opened with.
     const notes = existing ? (casinoById(log, existing.id)?.notes ?? '') : draft.notes;
-    const r = saveCasino(log, { ...draft, games, driveMinutes, miles, notes }, Date.now(), id ?? undefined);
+    const r = saveCasino(log, { ...draft, games, driveMinutes, miles, notes }, Date.now(), id ?? undefined, asking?.choices ?? {});
     if (!r) {
       setError('Give the casino a name.');
       return;
@@ -354,14 +385,24 @@ export function CasinoForm({
               {error}
             </p>
           )}
-          <div className="cas-btn-row">
-            <button type="button" className="u-btn" onClick={() => go({ kind: 'home' })}>
-              Cancel
-            </button>
-            <button type="button" className="u-btn u-btn-primary" onClick={save}>
-              Save casino
-            </button>
-          </div>
+          {asking ? (
+            <VersionPrompt
+              asks={asking.asks}
+              choices={asking.choices}
+              onChoice={(gid, c) => setAsking((a) => (a ? { ...a, choices: { ...a.choices, [gid]: c } } : a))}
+              onCancel={() => setAsking(null)}
+              onSave={save}
+            />
+          ) : (
+            <div className="cas-btn-row">
+              <button type="button" className="u-btn" onClick={() => go({ kind: 'home' })}>
+                Cancel
+              </button>
+              <button type="button" className="u-btn u-btn-primary" onClick={save}>
+                Save casino
+              </button>
+            </div>
+          )}
         </div>
       </section>
 

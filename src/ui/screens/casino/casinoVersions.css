@@ -1,0 +1,175 @@
+/* Wave W (review S2): versions of a game -- the question on Save, and the earlier versions on a casino's page. */
+
+/* ---------- The question on Save ---------- */
+.cas-ver-prompt {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 2px solid var(--accent);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.cas-ver-prompt-title {
+  margin: 0;
+  font-size: var(--fs-md);
+  font-weight: 700;
+  /* Scrolled to on Save: clear of the sticky top bar. */
+  scroll-margin-top: calc(var(--safe-top, 0px) + var(--topbar-h) + var(--space-4));
+}
+
+.cas-ver-prompt-title:focus {
+  outline: none;
+}
+
+.cas-ver-prompt-title:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.cas-ver-ask {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.cas-ver-ask + .cas-ver-ask {
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line);
+}
+
+.cas-ver-ask-title {
+  margin: 0;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+}
+
+.cas-ver-changes {
+  margin: 0;
+  padding-left: 1.1em;
+  font-size: var(--fs-sm);
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.cas-ver-options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.cas-ver-option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 48px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cas-ver-option[aria-pressed='true'] {
+  border: 2px solid var(--accent);
+  padding: calc(var(--space-2) - 1px) calc(var(--space-3) - 1px);
+  background: var(--raised);
+}
+
+.cas-ver-option-name {
+  font-size: var(--fs-sm);
+  font-weight: 700;
+}
+
+.cas-ver-option[aria-pressed='true'] .cas-ver-option-name::before {
+  content: '✓ ';
+  color: var(--accent);
+}
+
+.cas-ver-option-hint {
+  font-size: var(--fs-xs);
+  color: var(--ink-dim);
+}
+
+/* ---------- Earlier versions on a casino's page ---------- */
+.cas-ver-since {
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--ink-dim);
+}
+
+.cas-ver-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cas-ver-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--line);
+}
+
+.cas-ver-dates {
+  margin: 0;
+  font-size: var(--fs-sm);
+  font-weight: 650;
+}
+
+.cas-ver-summary,
+.cas-ver-diff,
+.cas-ver-sessions {
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--ink-dim);
+  overflow-wrap: anywhere;
+}
+
+.cas-ver-figure {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  margin: 0;
+  font-size: var(--fs-sm);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.cas-ver-figure[data-sign='1'] .cas-ver-figure-text {
+  color: var(--cas-good);
+}
+
+.cas-ver-figure[data-sign='-1'] .cas-ver-figure-text {
+  color: var(--bad);
+}
+
+.cas-ver-session-list {
+  margin: var(--space-1) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* ---------- Start a session: which game, at a casino of several ---------- */
+.cas-pick-games {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4) var(--space-3);
+}
+
+.cas-pick-game {
+  justify-content: flex-start;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
