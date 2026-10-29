@@ -48,7 +48,8 @@ for (const size of [{ width: 375, height: 812 }, { width: 320, height: 568 }]) {
     await paintOnly(page, 'hard-16-v-10');
     await saveAs(page, 'Sixteen v ten');
     await expect(status(page)).toHaveText('This is “Sixteen v ten”.');
-    await expect(row(page, 'Sixteen v ten')).toContainText('1 Focus · 0 Regular · 0 Rare');
+    // Review S8: only the tiers the list uses.
+    await expect(row(page, 'Sixteen v ten').getByTestId('scl-row-counts')).toHaveText('1 Focus');
 
     // Painting more is the working copy only; the list says so and can take it.
     await cell(page, 'hard-15-v-10').click();
@@ -286,4 +287,57 @@ test('"Save to" waits while the painting is another list, and a list deleted mea
   await page.getByTestId('scl-save-origin').click();
   await expect(panel(page).getByRole('status')).toHaveText('“Ay” is no longer a list (deleted, perhaps in another tab). Save as… to keep the painting.');
   expect((await stored(page)).lists.map((l) => l.name)).toEqual(['Bee']);
+});
+
+/*
+ * Review S8: at 320 a list name broke inside "3-6" ("3-" / "6"), and the
+ * counts, zeros and all, wrapped onto two or three lines.
+ */
+test('320: a saved list name breaks between words, and its counts stay on one line', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 568 });
+  const sel = (ids: string[], favourMissed = false) => ({
+    tiers: Object.fromEntries(ids.map((i) => [i, 'focus'])),
+    painted: {},
+    mix: { focus: 60, regular: 30, rare: 10 },
+    favourMissed,
+  });
+  const at = '2026-10-26T12:00:00.000Z';
+  const doc = {
+    version: 1,
+    lists: [
+      { id: 'cl-1', name: 'Soft doubles v 3-6', selection: sel(['soft-13-v-5', 'soft-14-v-5', 'soft-17-v-3', 'soft-18-v-3']), savedAt: at },
+      { id: 'cl-3', name: 'Splits', selection: sel(['pair-8-v-A', 'pair-9-v-7'], true), savedAt: at },
+    ],
+  };
+  await page.addInitScript(([k, j]) => localStorage.setItem(k as string, j as string), [KEY, JSON.stringify(doc)]);
+  await page.goto('/?e2e=1');
+  await openEditor(page);
+  const soft = row(page, 'Soft doubles v 3-6');
+  await expect(soft.getByTestId('scl-row-counts')).toHaveText('4 Focus');
+  await expect(row(page, 'Splits').getByTestId('scl-row-counts')).toHaveText('2 Focus · favour missed');
+  // "3-6" on one line: every box of its characters at the same top.
+  const tops = await soft.locator('.scl-row-name').evaluate((el) => {
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      const i = n.textContent!.indexOf('3-6');
+      if (i < 0) continue;
+      const r = document.createRange();
+      r.setStart(n, i);
+      r.setEnd(n, i + 3);
+      return [...r.getClientRects()].map((b) => Math.round(b.top));
+    }
+    return [];
+  });
+  expect(tops.length).toBeGreaterThan(0);
+  expect(new Set(tops).size, '"3-6" split across lines').toBe(1);
+  for (const name of ['Soft doubles v 3-6', 'Splits']) {
+    const lines = await row(page, name)
+      .getByTestId('scl-row-counts')
+      .evaluate((el) => {
+        const r = document.createRange();
+        r.selectNodeContents(el);
+        return new Set([...r.getClientRects()].filter((b) => b.width > 0).map((b) => Math.round(b.top))).size;
+      });
+    expect(lines, `${name}: counts on one line`).toBe(1);
+  }
 });

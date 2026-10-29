@@ -131,3 +131,14 @@
   font-size: var(--fs-sm);
   color: var(--ink);
 }
+
+/* Review S8: a name breaks between words, not at the hyphen in "3-6"; counts break between parts. */
+.scl-word {
+  display: inline-block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.scl-part {
+  white-space: nowrap;
+}

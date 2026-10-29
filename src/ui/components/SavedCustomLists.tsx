@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import type { CustomSelection, Settings } from '../../store/types';
 import { saveSettings } from '../../store/persist';
 import { ALL_PAINT_CELL_IDS, tierOf } from '../../drills/cellSelection';
@@ -29,16 +29,39 @@ import './savedCustomLists.css';
  * that destroys.
  */
 
-/** "12 Focus · 40 Regular · 3 Rare", what the list deals. */
-function listCounts(sel: CustomSelection): string {
+/**
+ * "12 Focus · 40 Regular", what the list deals: the tiers it uses (review
+ * S8: at 320 all three, zeros too, wrapped to a second and third line).
+ */
+function listCounts(sel: CustomSelection): string[] {
   const c = { focus: 0, regular: 0, rare: 0 };
   for (const id of ALL_PAINT_CELL_IDS) {
     const t = tierOf(sel, id);
     if (t !== 'off') c[t] += 1;
   }
-  const parts = [`${c.focus} Focus`, `${c.regular} Regular`, `${c.rare} Rare`];
+  const parts = [
+    c.focus > 0 ? `${c.focus} Focus` : null,
+    c.regular > 0 ? `${c.regular} Regular` : null,
+    c.rare > 0 ? `${c.rare} Rare` : null,
+  ].filter((p): p is string => p !== null);
+  if (parts.length === 0) parts.push('Nothing painted');
   if (sel.favourMissed) parts.push('favour missed');
-  return parts.join(' · ');
+  return parts;
+}
+
+/** Each part whole, " · " between: a line breaks between parts, never inside "40 Regular". */
+function Parts({ parts }: { parts: string[] }) {
+  return parts.map((p, i) => (
+    <Fragment key={p}>
+      {i > 0 && ' · '}
+      <span className="scl-part">{p}</span>
+    </Fragment>
+  ));
+}
+
+/** A list name with each word kept whole ("3-6" never breaks at its hyphen); a word wider than the line still wraps. */
+function WholeWords({ text }: { text: string }) {
+  return text.split(/(\s+)/).map((t, i) => (/^\s*$/.test(t) ? t : <span key={i} className="scl-word">{t}</span>));
 }
 
 const PROBLEM: Record<NameProblem, string> = {
@@ -230,10 +253,12 @@ export function SavedCustomLists({
                 <div className="scl-row-main">
                   <span className="scl-row-text">
                     <span className="scl-row-name">
-                      {l.name}
+                      <WholeWords text={l.name} />
                       {isCurrent && <span className="scl-badge">loaded</span>}
                     </span>
-                    <span className="scl-row-meta">{listCounts(l.selection)}</span>
+                    <span className="scl-row-meta" data-testid="scl-row-counts">
+                      <Parts parts={listCounts(l.selection)} />
+                    </span>
                   </span>
                   <button
                     type="button"
