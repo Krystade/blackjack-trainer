@@ -1237,7 +1237,26 @@ export interface MergeReport {
    * is the live card; the others wait in the history to be ended.
    */
   extraRunning: number;
+  /** Wave W (review S3): what the import does to each casino in the file, for the preview. */
+  casinos: { id: string; name: string; outcome: 'added' | 'updated' | 'unchanged' }[];
+  /**
+   * Casinos in the file under another id than the one here of the same
+   * name: merged into it (`localId`) or added beside it, as `choice` says.
+   */
+  nameMatches: NameMatch[];
 }
+
+/** Wave W (review S3): a casino in a file named as one here, under another id. */
+export interface NameMatch {
+  /** The file's id for it. */
+  id: string;
+  name: string;
+  /** The one here. */
+  localId: string;
+  choice: NameChoice;
+}
+/** Merge a same-named casino into the one here, or add it as another. */
+export type NameChoice = 'merge' | 'add';
 
 function mergeById<T extends { id: string; updatedAt: string }>(
   local: T[],
@@ -1299,34 +1318,117 @@ function mergeCasino(cur: Casino, inc: Casino, fromV1: boolean): Casino {
   if (fromV1) {
     if (!newer) return cur;
     const taken = fromV1Casino(cur, inc);
-    return { ...taken, games: taken.games.map((g) => versioned(cur.games.find((p) => p.id === g.id), g, 'fix', inc.updatedAt)) };
+    return {
+      ...taken,
+      notes: bothNotes(inc.notes, cur.notes),
+      games: taken.games.map((g) => versioned(cur.games.find((p) => p.id === g.id), g, 'fix', inc.updatedAt)),
+    };
   }
   const [base, other] = newer ? [inc, cur] : [cur, inc];
-  return { ...base, games: base.games.map((g) => mergeGameVersions(g, other.games.find((o) => o.id === g.id))) };
+  // Review S3: a game only one copy has is kept, wherever it is -- the one here above all.
+  const games = [
+    ...base.games.map((g) => mergeGame(g, other.games.find((o) => o.id === g.id))),
+    ...other.games.filter((o) => !base.games.some((g) => g.id === o.id)),
+  ];
+  return { ...base, notes: bothNotes(base.notes, other.notes), games };
+}
+
+/** One game both copies hold: every version either has, and both copies' notes. */
+function mergeGame(g: CasinoGame, other: CasinoGame | undefined): CasinoGame {
+  const merged = mergeGameVersions(g, other);
+  if (!other) return merged;
+  const notes = bothNotes(g.notes ?? '', other.notes ?? '');
+  // Unchanged notes leave the record exactly as it was (an unchanged casino must compare equal).
+  if (notes === (merged.notes ?? '')) return merged;
+  const { notes: _drop, ...rest } = merged;
+  return notes !== '' ? { ...rest, notes } : rest;
+}
+
+/**
+ * Wave W (review S3): notes from two copies, neither dropped. The newer
+ * copy's, and the other's after it when it says something the newer one
+ * does not (an edit that only added to the notes reads as the longer one).
+ * A text taken out on one phone can come back from the other: kept twice
+ * is fixable, lost is not.
+ */
+function bothNotes(win: string, other: string): string {
+  const w = win.trim();
+  const o = other.trim();
+  if (o === '' || covers(w, o)) return win;
+  if (w === '' || covers(o, w)) return other;
+  return `${win.trimEnd()}\n\n${o}`.slice(0, NOTES_MAX);
+}
+
+/** Whether `big` is `small` with words added before or after it ("Ray" -> "Ray. Maria on days"), not merely holding its letters. */
+function covers(big: string, small: string): boolean {
+  if (big === small) return true;
+  if (big.startsWith(small) && /^[\s.,;:!?)]/.test(big.slice(small.length))) return true;
+  return big.endsWith(small) && /\s$/.test(big.slice(0, big.length - small.length));
 }
 
 /** Casinos merged by id (`mergeCasino`); one is counted updated when the merge changed it here. */
-function mergeCasinos(local: Casino[], incoming: Casino[], fromV1: boolean): { items: Casino[]; added: number; updated: number; kept: number } {
+function mergeCasinos(
+  local: Casino[],
+  incoming: Casino[],
+  fromV1: boolean,
+): { items: Casino[]; added: number; updated: number; kept: number; outcomes: MergeReport['casinos'] } {
   const byId = new Map(local.map((x) => [x.id, x]));
   let added = 0;
   let updated = 0;
   let kept = 0;
+  const outcomes: MergeReport['casinos'] = [];
   for (const inc of incoming) {
     const cur = byId.get(inc.id);
     if (!cur) {
       byId.set(inc.id, inc);
       added += 1;
+      outcomes.push({ id: inc.id, name: inc.name, outcome: 'added' });
       continue;
     }
     const merged = mergeCasino(cur, inc, fromV1);
-    if (JSON.stringify(merged) === JSON.stringify(cur)) kept += 1;
-    else {
+    if (JSON.stringify(merged) === JSON.stringify(cur)) {
+      kept += 1;
+      outcomes.push({ id: inc.id, name: cur.name, outcome: 'unchanged' });
+    } else {
       byId.set(inc.id, merged);
       updated += 1;
+      outcomes.push({ id: inc.id, name: merged.name, outcome: 'updated' });
     }
   }
   const items = [...local.map((x) => byId.get(x.id)!), ...incoming.filter((x) => !local.some((l) => l.id === x.id))];
-  return { items, added, updated, kept };
+  return { items, added, updated, kept, outcomes };
+}
+
+const nameKey = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
+
+/**
+ * Wave W (review S3): casinos in the file under an id this log does not
+ * have but a name it does. `merge` (the default) takes the file's record
+ * as another copy of the one here -- its id, and its sessions' casino,
+ * rewritten to the one here; `add` keeps it as a casino of its own.
+ */
+function matchNames(local: CasinoLog, inc: CasinoLog, choices: Readonly<Record<string, NameChoice>>): { inc: CasinoLog; matches: NameMatch[] } {
+  const here = new Set(local.casinos.map((c) => c.id));
+  const inFile = new Set(inc.casinos.map((c) => c.id));
+  const matches: NameMatch[] = [];
+  const remap = new Map<string, string>();
+  for (const c of inc.casinos) {
+    if (here.has(c.id)) continue;
+    const same = local.casinos.find((l) => nameKey(l.name) === nameKey(c.name) && !inFile.has(l.id) && ![...remap.values()].includes(l.id));
+    if (!same) continue;
+    const choice = choices[c.id] ?? 'merge';
+    matches.push({ id: c.id, name: c.name, localId: same.id, choice });
+    if (choice === 'merge') remap.set(c.id, same.id);
+  }
+  if (remap.size === 0) return { inc, matches };
+  return {
+    matches,
+    inc: {
+      ...inc,
+      casinos: inc.casinos.map((c) => (remap.has(c.id) ? { ...c, id: remap.get(c.id)! } : c)),
+      sessions: inc.sessions.map((s) => (remap.has(s.casinoId) ? { ...s, casinoId: remap.get(s.casinoId)! } : s)),
+    },
+  };
 }
 
 /**
@@ -1350,11 +1452,18 @@ function mergeLogs(local: CasinoLog, inc: CasinoLog, fromV1: boolean) {
 
 /**
  * Merge an export file (or a raw stored blob) into the local log: by id, the
- * newer `updatedAt` wins, a tie keeps what is here. Nothing is deleted.
+ * newer `updatedAt` wins a record's own fields, a tie keeps what is here.
+ * Nothing here is deleted: Wave W (review S3), every game and version
+ * either copy holds is kept, and both copies' notes. A casino in the file
+ * named as one here under another id is merged into it or added beside it,
+ * as `names` says (merged by default); the report lists each such match.
+ * Pure: the screen shows the report as a preview and commits the log on
+ * the owner's word.
  */
 export function mergeImport(
   local: CasinoLog,
   text: string,
+  names: Readonly<Record<string, NameChoice>> = {},
 ): { ok: true; log: CasinoLog; report: MergeReport; unreadable: string | null } | { ok: false; error: string } {
   let parsed: unknown;
   try {
@@ -1371,7 +1480,8 @@ export function mergeImport(
   // A v1 file is migrated exactly as a v1 blob is (each casino's game -> games[0]).
   const migrated = migrateCasinoLog({ ...parsed, version: parsed.version ?? 1 });
   if (!migrated) return { ok: false, error: 'That file is not a casino log export.' };
-  const { log, casinos, sessions } = mergeLogs(local, migrated.log, parsed.version !== 2 && parsed.version !== 3);
+  const matched = matchNames(local, migrated.log, names);
+  const { log, casinos, sessions } = mergeLogs(local, matched.inc, parsed.version !== 2 && parsed.version !== 3);
   const open = sessions.items.filter((s) => s.end === null).length;
   return {
     ok: true,
@@ -1386,6 +1496,8 @@ export function mergeImport(
       kept: casinos.kept + sessions.kept,
       skipped: migrated.skipped,
       extraRunning: Math.max(0, open - 1),
+      casinos: casinos.outcomes,
+      nameMatches: matched.matches,
     },
   };
 }

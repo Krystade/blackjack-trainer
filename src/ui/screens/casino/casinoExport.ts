@@ -6,6 +6,7 @@ import {
   mergeImport,
   serializeExport,
   type CasinoLog,
+  type NameChoice,
 } from '../../../store/casinoLog';
 
 /**
@@ -61,23 +62,28 @@ export async function exportLog(log: CasinoLog, commit: (next: CasinoLog) => boo
   return 'downloaded';
 }
 
+/** Wave W (review S3): what an import would do, worked out without saving anything: the screen shows it, then commits it. */
+export type ImportPlan = Extract<ReturnType<typeof mergeImport>, { ok: true }>;
+
 /**
- * Merge an export's text into the log and say what happened, in one line.
- * The file picker and the paste box both come here: one validator, one
- * merge (store/casinoLog.ts `mergeImport`), one report.
+ * Read an export's text and work out the merge, saving nothing. The file
+ * picker and the paste box both come here: one validator, one merge
+ * (store/casinoLog.ts `mergeImport`). `names` answers each casino named as
+ * one here under another id (merged by default).
  */
-export function importText(
-  log: CasinoLog,
-  text: string,
-  commit: (next: CasinoLog) => boolean,
-): { ok: boolean; message: string; log?: CasinoLog } {
-  const r = mergeImport(log, text);
+export function planImport(log: CasinoLog, text: string, names: Readonly<Record<string, NameChoice>> = {}): { ok: true; plan: ImportPlan } | { ok: false; message: string } {
+  const r = mergeImport(log, text, names);
   if (!r.ok) return { ok: false, message: `Import failed: ${r.error}` };
+  return { ok: true, plan: r };
+}
+
+/** Save a planned import, once confirmed, and say what happened, in one line. */
+export function applyImport(plan: ImportPlan, commit: (next: CasinoLog) => boolean): { ok: boolean; message: string } {
   // The red save-failed banner says why; claiming "Imported" beside it would contradict it.
-  if (!commit(r.log)) return { ok: false, message: 'Import not saved: storage is full or unavailable.' };
+  if (!commit(plan.log)) return { ok: false, message: 'Import not saved: storage is full or unavailable.' };
   // Bytes the file carried from a corrupt blob: kept aside here too, not dropped.
-  if (r.unreadable !== null) keepUnreadable(r.unreadable);
-  const p = r.report;
+  if (plan.unreadable !== null) keepUnreadable(plan.unreadable);
+  const p = plan.report;
   const parts = [
     `${p.casinosAdded} casino${p.casinosAdded === 1 ? '' : 's'} added`,
     `${p.casinosUpdated} updated`,
@@ -90,5 +96,5 @@ export function importText(
     p.extraRunning > 0
       ? ` ${p.extraRunning} running session${p.extraRunning === 1 ? '' : 's'} from the file left open: end ${p.extraRunning === 1 ? 'it' : 'them'} from history.`
       : '';
-  return { ok: true, message: `Imported: ${parts.join(', ')}.${extra}`, log: r.log };
+  return { ok: true, message: `Imported: ${parts.join(', ')}.${extra}` };
 }

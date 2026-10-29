@@ -199,6 +199,7 @@ test('a real session: casino, buy-ins, reload, back-off, burn, figures, and the 
     mimeType: 'application/json',
     buffer: Buffer.from(file),
   });
+  await page.getByTestId('import-confirm').click();
   await expect(page.locator('.cas-message')).toHaveText(
     'Imported: 1 casino added, 0 updated, 1 session added, 0 updated.',
   );
@@ -217,6 +218,7 @@ test('a real session: casino, buy-ins, reload, back-off, burn, figures, and the 
     mimeType: 'application/json',
     buffer: Buffer.from(file),
   });
+  await page.getByTestId('import-confirm').click();
   await expect(page.locator('.cas-message')).toContainText('2 already up to date');
 
   // --- None of it reached the diagnostic log (the navigation did, so the log is being read).

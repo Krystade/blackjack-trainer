@@ -653,6 +653,7 @@ test('an import: every game gets its figures on its own, and two games dealt ali
   };
   await seg(page, 'casinos');
   await page.getByTestId('casino-import-file').setInputFiles({ name: 'casino.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(file)) });
+  await page.getByTestId('import-confirm').click();
   await expect(page.getByRole('status').filter({ hasText: 'Imported' })).toBeVisible();
   await seg(page, 'ranked');
   await expect(rows(page)).toHaveCount(5);

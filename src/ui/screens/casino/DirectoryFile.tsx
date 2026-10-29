@@ -1,7 +1,8 @@
 import { useRef, useState, type ChangeEvent } from 'react';
-import { serializeExport, type CasinoLog } from '../../../store/casinoLog';
+import { serializeExport, type CasinoLog, type NameChoice } from '../../../store/casinoLog';
 import { agoText, daysBetween, localDateKey } from '../../casinoFigures';
-import { exportLog, importText } from './casinoExport';
+import { applyImport, exportLog, planImport, type ImportPlan } from './casinoExport';
+import { ImportPreview } from './ImportPreview';
 
 /**
  * Wave W: the casino log as a file, four ways. Export JSON (a file, or the
@@ -9,20 +10,42 @@ import { exportLog, importText } from './casinoExport';
  * (the same text onto the clipboard) and Paste JSON (a box to paste a file's
  * text into: Jack keeps his casinos in a JSON file and wanted to paste it).
  * Paste runs the file import's own validator and merge.
+ *
+ * Review S3: neither saves at once. Each shows what it would do first (the
+ * casinos added, updated and already here, the sessions, and any casino
+ * named as one here under another record, to merge or add), and saves on
+ * Import.
  */
 export function DirectoryFile({ log, commit }: { log: CasinoLog; commit: (next: CasinoLog) => boolean }) {
   const [message, setMessage] = useState<string | null>(null);
   const [pasting, setPasting] = useState(false);
   const [pasted, setPasted] = useState('');
   const [copyText, setCopyText] = useState<string | null>(null);
+  // Review S3: the import worked out and shown, waiting for Import; `from` is where its text came from.
+  const [pending, setPending] = useState<{ text: string; names: Record<string, NameChoice>; from: 'file' | 'paste' } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Worked out against the log as it is now, so a change made meanwhile (another tab) is in what Import saves.
+  const planned = pending ? planImport(log, pending.text, pending.names) : null;
+  const plan: ImportPlan | null = planned?.ok ? planned.plan : null;
+
+  const preview = (text: string, from: 'file' | 'paste') => {
+    const r = planImport(log, text);
+    if (!r.ok) {
+      setPending(null);
+      setMessage(r.message);
+      return;
+    }
+    setMessage(null);
+    setPending({ text, names: {}, from });
+  };
 
   const onFile = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => setMessage(importText(log, String(reader.result ?? ''), commit).message);
+    reader.onload = () => preview(String(reader.result ?? ''), 'file');
     reader.onerror = () => setMessage('Import failed: the file could not be read.');
     reader.readAsText(file);
   };
@@ -32,11 +55,24 @@ export function DirectoryFile({ log, commit }: { log: CasinoLog; commit: (next: 
       setMessage('Paste the text of a casino log file first.');
       return;
     }
-    const r = importText(log, pasted, commit);
+    preview(pasted, 'paste');
+  };
+
+  const confirm = () => {
+    if (!pending) return;
+    if (!plan) {
+      setMessage(planned && !planned.ok ? planned.message : 'Import failed.');
+      setPending(null);
+      return;
+    }
+    const r = applyImport(plan, commit);
     setMessage(r.message);
     if (r.ok) {
-      setPasted('');
-      setPasting(false);
+      if (pending.from === 'paste') {
+        setPasted('');
+        setPasting(false);
+      }
+      setPending(null);
     }
   };
 
@@ -87,7 +123,14 @@ export function DirectoryFile({ log, commit }: { log: CasinoLog; commit: (next: 
           </button>
         </div>
         <div className="cas-btn-row">
-          <button type="button" className="u-btn" onClick={() => fileRef.current?.click()}>
+          <button
+            type="button"
+            className="u-btn"
+            onClick={() => {
+              setPending(null);
+              fileRef.current?.click();
+            }}
+          >
             Import JSON
           </button>
           <button
@@ -96,6 +139,7 @@ export function DirectoryFile({ log, commit }: { log: CasinoLog; commit: (next: 
             aria-expanded={pasting}
             onClick={() => {
               setCopyText(null);
+              setPending(null);
               setPasting((p) => !p);
             }}
           >
@@ -110,7 +154,7 @@ export function DirectoryFile({ log, commit }: { log: CasinoLog; commit: (next: 
           data-testid="casino-import-file"
           onChange={onFile}
         />
-        {pasting && (
+        {pasting && !pending && (
           <div className="cas-stack cas-paste" data-testid="casino-paste">
             <label className="cas-field">
               <span className="cas-field-label">Paste a casino log file&rsquo;s text</span>
@@ -132,10 +176,18 @@ export function DirectoryFile({ log, commit }: { log: CasinoLog; commit: (next: 
                 Cancel
               </button>
               <button type="button" className="u-btn u-btn-primary" onClick={importPasted} data-testid="casino-paste-import">
-                Import pasted
+                Preview import
               </button>
             </div>
           </div>
+        )}
+        {plan && pending && (
+          <ImportPreview
+            plan={plan}
+            onName={(id, choice) => setPending((p) => (p ? { ...p, names: { ...p.names, [id]: choice } } : p))}
+            onCancel={() => setPending(null)}
+            onImport={confirm}
+          />
         )}
         {message && (
           <p className="cas-message" role="status">
@@ -158,7 +210,8 @@ export function DirectoryFile({ log, commit }: { log: CasinoLog; commit: (next: 
             ? `Last exported ${agoText(daysBetween(localDateKey(Date.parse(log.lastExportAt)), localDateKey(Date.now())))}. `
             : ''}
           The casino log stays on this phone. It is not in the Stats backup and is never sent anywhere. Import and Paste
-          merge into what is here: the newer copy of each casino or session wins, and nothing is deleted.
+          show what they would change and save only on Import. They merge into what is here: the newer copy of a casino or
+          session wins its own details, and every game, version and note on either copy is kept.
         </p>
       </div>
     </section>

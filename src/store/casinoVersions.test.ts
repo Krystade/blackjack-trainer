@@ -101,7 +101,8 @@ describe('the v2 -> v3 migration', () => {
       JSON.stringify({ ...V2, casinos: [{ ...V2.casinos[0], notes: 'old tab', updatedAt: LATER }, V2.casinos[1]], sessions: [...V2.sessions, sess('s4', 'c1', { updatedAt: LATER })] }),
     );
     const log = loadCasinoLog();
-    expect(log.casinos[0]!.notes).toBe('old tab');
+    // Neither copy's notes are dropped (review S3).
+    expect(log.casinos[0]!.notes).toBe('old tab\n\nn1');
     expect(log.sessions.map((s) => s.id)).toEqual(['s1', 's2', 's4']);
     // The game kept its version through the old tab's record.
     expect(log.casinos[0]!.games[0]!.versionId).toBe('g-one-v1');
@@ -230,7 +231,7 @@ describe('merging two copies: every version either has', () => {
     const newer = saveCasino(here, { ...c1(here), notes: 'latest' }, T2 + 1000, 'c1')!.log;
     const r = mergeImport(newer, serializeExport(there, T2, null));
     if (!r.ok) throw new Error(r.error);
-    expect(c1(r.log).notes).toBe('latest');
+    expect(c1(r.log).notes).toBe('latest\n\nn1');
     expect(c1(r.log).games[0]!.versions).toHaveLength(3);
   });
 

@@ -190,6 +190,13 @@ test('Paste JSON runs the same merge as Import JSON, and says why a bad paste is
   const file = { app: 'bjtrainer-casino-log', version: 2, exportedAt: AT, ...LOG };
   await box.fill(JSON.stringify(file));
   await page.getByTestId('casino-paste-import').click();
+  // Review S3: first what it would do, nothing saved until Import.
+  const preview = page.getByTestId('import-preview');
+  await expect(preview.getByTestId('import-added')).toHaveText('Adds 2 casinos: Aria, Bicycle');
+  await expect(preview.getByTestId('import-unchanged')).toHaveText('Already here: 1 casino');
+  await expect(preview.getByTestId('import-sessions')).toHaveText('Sessions: 0 added, 0 updated');
+  expect((await stored(page)).casinos).toHaveLength(1);
+  await page.getByTestId('import-confirm').click();
   await expect(page.getByRole('status').filter({ hasText: 'Imported' })).toHaveText(
     'Imported: 2 casinos added, 0 updated, 0 sessions added, 0 updated, 1 already up to date.',
   );
@@ -202,6 +209,8 @@ test('Paste JSON runs the same merge as Import JSON, and says why a bad paste is
 
   // The same text through the file picker merges the same way: nothing new.
   await page.getByTestId('casino-import-file').setInputFiles({ name: 'log.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(file)) });
+  await expect(page.getByTestId('import-preview').getByRole('heading')).toHaveText('Nothing new in it');
+  await page.getByTestId('import-confirm').click();
   await expect(page.getByRole('status').filter({ hasText: 'Imported' })).toHaveText(
     'Imported: 0 casinos added, 0 updated, 0 sessions added, 0 updated, 3 already up to date.',
   );
@@ -227,6 +236,7 @@ test('Copy JSON puts the whole log on the clipboard, and it pastes back in', asy
   await page.getByRole('button', { name: 'Paste JSON' }).click();
   await page.getByTestId('casino-paste-text').fill(text);
   await page.getByTestId('casino-paste-import').click();
+  await page.getByTestId('import-confirm').click();
   await expect(page.getByRole('status').filter({ hasText: 'Imported' })).toContainText('3 casinos added');
   expect((await stored(page)).casinos).toEqual(parsed.casinos);
 });
@@ -401,4 +411,55 @@ test("the form keeps where it returns through a session and a game's card: Back,
   await expect(page.getByTestId('casino-form')).toBeVisible();
   await page.getByRole('button', { name: 'Save casino' }).click();
   await expect(detail).toBeVisible();
+});
+
+/*
+ * Review S3: a casino in the file under another id but the name of one here
+ * is flagged in the preview, merged into it by default or added beside it;
+ * Cancel saves nothing; and a merge keeps every game and note here.
+ */
+test('Paste: a same-named casino from another record is flagged, merged or added as chosen, and nothing here is dropped', async ({ page }) => {
+  await seed(page, { ...LOG, casinos: [LOG.casinos[0]] });
+  await page.goto('/?e2e=1');
+  await openCasino(page);
+  const theirs = {
+    ...LOG.casinos[0],
+    id: 'x-other',
+    notes: 'Comps desk by the cage',
+    updatedAt: '2026-10-20T00:00:00.000Z',
+    games: [{ id: 'g-other', label: 'DD', decks: 2, s17: false, midShoeEntry: 'no', csm: false }],
+  };
+  const text = JSON.stringify({ app: 'bjtrainer-casino-log', version: 3, casinos: [theirs], sessions: [] });
+  const paste = async () => {
+    await page.getByRole('button', { name: 'Paste JSON' }).click();
+    await page.getByTestId('casino-paste-text').fill(text);
+    await page.getByTestId('casino-paste-import').click();
+  };
+  await paste();
+  const preview = page.getByTestId('import-preview');
+  const match = preview.getByTestId('import-name-match');
+  await expect(match).toContainText('“Golden Nugget” in the file is a different record from the one here of that name.');
+  await expect(match.getByTestId('import-merge')).toHaveAttribute('aria-pressed', 'true');
+  await expect(preview.getByTestId('import-updated')).toHaveText('Updates 1: Golden Nugget');
+  // Add instead: the preview follows.
+  await match.getByTestId('import-add').click();
+  await expect(match.getByTestId('import-add')).toHaveAttribute('aria-pressed', 'true');
+  await expect(preview.getByTestId('import-added')).toHaveText('Adds 1 casino: Golden Nugget');
+  // Cancel: nothing saved.
+  const before = JSON.stringify(await stored(page));
+  await preview.getByRole('button', { name: 'Cancel' }).click();
+  await expect(preview).toHaveCount(0);
+  expect(JSON.stringify(await stored(page))).toBe(before);
+
+  // Merge (the default): one Golden Nugget, with its games and notes and the file's.
+  await page.getByTestId('casino-paste-import').click();
+  await page.getByTestId('import-confirm').click();
+  await expect(page.getByRole('status').filter({ hasText: 'Imported' })).toContainText('0 casinos added, 1 updated');
+  const c = (await stored(page)).casinos;
+  expect(c).toHaveLength(1);
+  expect(c[0].id).toBe('c1');
+  expect(c[0].games.map((g: { id: string }) => g.id)).toEqual(['g-other', 'g-nug']);
+  expect(c[0].notes).toBe('Comps desk by the cage\n\nRay on swing shift');
+  await expect(page.getByTestId('casino-file')).toContainText('every game, version and note on either copy is kept');
+  await expect(page.getByTestId('casino-file')).not.toContainText('nothing is deleted');
 });

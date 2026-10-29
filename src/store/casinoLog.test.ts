@@ -406,7 +406,17 @@ describe('export and import', () => {
     expect(r.log.casinos).toEqual(log.casinos);
     expect(r.log.sessions).toEqual(log.sessions);
     expect(r.log.settings).toEqual(log.settings);
-    expect(r.report).toEqual({ casinosAdded: 1, casinosUpdated: 0, sessionsAdded: 1, sessionsUpdated: 0, kept: 0, skipped: 0, extraRunning: 0 });
+    expect(r.report).toEqual({
+      casinosAdded: 1,
+      casinosUpdated: 0,
+      sessionsAdded: 1,
+      sessionsUpdated: 0,
+      kept: 0,
+      skipped: 0,
+      extraRunning: 0,
+      casinos: [{ id: log.casinos[0]!.id, name: log.casinos[0]!.name, outcome: 'added' }],
+      nameMatches: [],
+    });
   });
 
   it('merges by id: the newer updatedAt wins, a tie or older keeps the local copy', () => {
@@ -566,7 +576,8 @@ describe('review S2: the v2 log has its own key, and an older build\'s writes ar
     );
     const log = loadCasinoLog();
     const c1 = log.casinos.find((c) => c.id === 'c1')!;
-    expect(c1.notes).toBe('old tab notes');
+    // Wave W (review S3): the notes here are not dropped either; the newer come first.
+    expect(c1.notes).toBe('old tab notes\n\nfirst notes');
     expect(c1.games).toHaveLength(2);
     // The v1 game updated its own game's v1 facts, and kept what only v2 knows.
     expect(c1.games[0]).toMatchObject({ id: 'g-c1', s17: true, cutDecksLeft: 1, minBet: 25, label: 'Main pit', roundsPerHour: 90 });
@@ -659,16 +670,17 @@ describe('review S2: the v2 log has its own key, and an older build\'s writes ar
     const r = mergeImport(local, file);
     if (!r.ok) throw new Error(r.error);
     const c = r.log.casinos[0]!;
-    expect(c.notes).toBe('from the old phone');
+    expect(c.notes).toBe('from the old phone\n\nfirst notes');
     expect(c.games.map((g) => g.id)).toEqual(['g-c1', 'g-dd']);
     expect(c.games[0]!.label).toBe('Main pit');
     expect(c.driveMinutes).toBe(25);
     expect(c.location).not.toBeNull();
-    // A v2 file replaces the whole record, as before.
+    // A v2 file's newer record wins the casino's own fields; Wave W (review S3): the games here are kept beside its own.
     const v2 = JSON.stringify({ app: 'bjtrainer-casino-log', version: 2, casinos: [{ ...local.casinos[0]!, games: [blankGame('g-x')], driveMinutes: null, location: null, updatedAt: LATER }], sessions: [] });
     const r2 = mergeImport(local, v2);
     if (!r2.ok) throw new Error(r2.error);
-    expect(r2.log.casinos[0]!.games.map((g) => g.id)).toEqual(['g-x']);
+    expect(r2.log.casinos[0]!.games.map((g) => g.id)).toEqual(['g-x', 'g-c1', 'g-dd']);
+    expect(r2.log.casinos[0]!.driveMinutes).toBeNull();
   });
 
   it('review B1: the exit minutes are settings, 0 allowed, out of range refused, null clears', () => {
