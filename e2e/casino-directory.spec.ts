@@ -470,3 +470,25 @@ test('Paste: a same-named casino from another record is flagged, merged or added
   await expect(page.getByTestId('casino-file')).toContainText('every game, version and note on either copy is kept');
   await expect(page.getByTestId('casino-file')).not.toContainText('nothing is deleted');
 });
+
+/*
+ * Review S8: at 320x568 the full backup nudge, the segments, the section
+ * head, search and the sort control filled Casinos, and no casino showed.
+ * On Casinos it is one strip; the first casino is on screen with it.
+ */
+test.describe('at 320 wide', () => {
+  test.use({ viewport: { width: 320, height: 568 } });
+  test('Casinos with the backup nudge still shows the first casino without scrolling', async ({ page }) => {
+    await seed(page, { ...LOG, lastExportAt: null });
+    await page.goto('/?e2e=1');
+    await openCasino(page);
+    const nudge = page.getByTestId('casino-export-nudge');
+    await expect(nudge).toBeVisible();
+    await expect(nudge).toContainText('Never exported');
+    await expect(nudge.getByRole('button', { name: 'Export now' })).toBeVisible();
+    const tabTop = (await page.locator('.tab-bar').boundingBox())!.y;
+    const first = (await page.getByTestId('casino-row').first().boundingBox())!;
+    expect(first.y + 40, 'the first casino row starts above the tab bar').toBeLessThan(tabTop);
+    expect((await nudge.locator('.cas-nudge-strip').boundingBox())!.height, 'one strip, not a card').toBeLessThanOrEqual(60);
+  });
+});

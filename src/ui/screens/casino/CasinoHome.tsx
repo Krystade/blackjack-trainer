@@ -101,7 +101,7 @@ export function CasinoHome({ log, commit, go, segment, onSegment }: Props) {
 
         {segment === 'casinos' && (
           <>
-            {!live && due && <ExportNudge log={log} commit={commit} now={now} />}
+            {!live && due && <ExportNudge log={log} commit={commit} now={now} strip />}
             {live && (
               <div className="cas-pad">
                 <button type="button" className="cas-live-strip" data-testid="casino-live-strip" onClick={() => onSegment('sessions')}>
@@ -206,10 +206,29 @@ export function CasinoHome({ log, commit, go, segment, onSegment }: Props) {
   );
 }
 
-function ExportNudge({ log, commit, now }: { log: CasinoLog; commit: Props['commit']; now: number }) {
+/**
+ * The backup nudge. `strip`: on Casinos, one line above the directory (review
+ * S8: at 320x568 the full card, with the segments, search and sort, left no
+ * casino on screen); Sessions keeps the card with its reason.
+ */
+function ExportNudge({ log, commit, now, strip = false }: { log: CasinoLog; commit: Props['commit']; now: number; strip?: boolean }) {
   const when = log.lastExportAt
     ? `Last export ${agoText(daysBetween(localDateKey(Date.parse(log.lastExportAt)), localDateKey(now)))}.`
     : 'Never exported.';
+  if (strip) {
+    return (
+      <section className="cas-pad cas-nudge-strip-wrap" aria-label="Back up" data-testid="casino-export-nudge">
+        <div className="cas-nudge-strip">
+          <p className="cas-nudge-strip-text">
+            <strong>Back up</strong> &middot; {when.replace(/\.$/, '')}
+          </p>
+          <button type="button" className="u-btn cas-nudge-strip-btn" onClick={() => void exportLog(log, commit)}>
+            Export now
+          </button>
+        </div>
+      </section>
+    );
+  }
   return (
     <section className="cas-nudge cas-pad-x" aria-label="Back up" data-testid="casino-export-nudge">
       <p className="cas-nudge-text">
