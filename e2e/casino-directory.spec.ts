@@ -344,3 +344,45 @@ test('"Edit rules" on a game card and a stats card opens the form at that game, 
   await page.getByRole('button', { name: 'Cancel' }).click();
   await expect(page.getByTestId('game-stats')).toHaveAttribute('data-state', 'variant');
 });
+
+/*
+ * Review S7: the form opened from a casino's page returns there, even after
+ * a detour into one of its sessions or a game's card and Back.
+ */
+test("the form keeps where it returns through a session and a game's card: Back, then Save, lands on the casino's page", async ({ page }) => {
+  const start = '2026-10-02T18:00:00.000Z';
+  const end = '2026-10-02T21:00:00.000Z';
+  const session = { id: 's1', casinoId: 'c1', start, end, buyIns: [500], cashOut: 800, heat: 'none', notes: '', createdAt: start, updatedAt: end };
+  await seed(page, { ...LOG, casinos: [LOG.casinos[0]], sessions: [session] });
+  await page.goto('/?e2e=1');
+  await openCasino(page);
+  await page.getByTestId('casino-row').filter({ hasText: 'Golden Nugget' }).click();
+  const detail = page.getByTestId('casino-detail');
+  const back = () => page.getByRole('button', { name: /Back$/ }).click();
+
+  // Page → Edit → a session in "Sessions here" → Back → the form → Save: the page.
+  await page.getByRole('button', { name: 'Edit casino', exact: true }).click();
+  await page.getByTestId('casino-form').locator('.cas-hist').first().click();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Edit session');
+  await back();
+  await expect(page.getByTestId('casino-form')).toBeVisible();
+  await page.getByRole('button', { name: 'Save casino' }).click();
+  await expect(detail).toBeVisible();
+
+  // Page → Edit → "Stats ›" → Back → the form → Back: the page.
+  await page.getByRole('button', { name: 'Edit casino', exact: true }).click();
+  await page.getByTestId('game-stats-link').click();
+  await expect(page.getByTestId('game-stats')).toBeVisible();
+  await back();
+  await expect(page.getByTestId('casino-form')).toBeVisible();
+  await back();
+  await expect(detail).toBeVisible();
+
+  // And the session's own Save (not Back) returns to the form too, which then saves to the page.
+  await page.getByRole('button', { name: 'Edit casino', exact: true }).click();
+  await page.getByTestId('casino-form').locator('.cas-hist').first().click();
+  await page.getByRole('button', { name: 'Save session' }).click();
+  await expect(page.getByTestId('casino-form')).toBeVisible();
+  await page.getByRole('button', { name: 'Save casino' }).click();
+  await expect(detail).toBeVisible();
+});

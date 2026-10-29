@@ -124,7 +124,18 @@ export function Casino() {
       body = <CasinoDetail key={view.id} log={log} id={view.id} commit={commit} go={go} />;
       break;
     case 'casino':
-      body = <CasinoForm key={view.id ?? 'new'} log={log} id={view.id} focusGame={view.focusGame} commit={commit} go={formGo} onDirty={setDirty} />;
+      body = (
+        <CasinoForm
+          key={view.id ?? 'new'}
+          log={log}
+          id={view.id}
+          focusGame={view.focusGame}
+          self={{ kind: 'casino', id: view.id, from: view.from }}
+          commit={commit}
+          go={formGo}
+          onDirty={setDirty}
+        />
+      );
       break;
     case 'start':
       body = <StartSession log={log} commit={commit} go={go} onDirty={setDirty} />;

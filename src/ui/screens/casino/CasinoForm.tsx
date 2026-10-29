@@ -44,6 +44,7 @@ export function CasinoForm({
   log,
   id,
   focusGame,
+  self,
   commit,
   go,
   onDirty,
@@ -52,6 +53,12 @@ export function CasinoForm({
   id: string | null;
   /** Review S2: opened from a game's "Edit rules": that game's block, scrolled to. */
   focusGame?: string;
+  /**
+   * Review S7: this form's own view, with where it returns. A session or a
+   * game's card opened from here comes back to it, and the form then still
+   * returns where it was opened from.
+   */
+  self: CasinoView;
   commit: (next: CasinoLog) => boolean;
   go: (view: CasinoView) => void;
   onDirty: (dirty: boolean) => void;
@@ -295,7 +302,7 @@ export function CasinoForm({
               onChange={(patch) => updateGame(g.id, patch)}
               onText={(patch) => updateText(g.id, patch)}
               onRemove={() => removeGame(g.id)}
-              onStats={existing && !touched && savedIds.has(g.id) ? () => go({ kind: 'game', casinoId: existing.id, gameId: g.id }) : undefined}
+              onStats={existing && !touched && savedIds.has(g.id) ? () => go({ kind: 'game', casinoId: existing.id, gameId: g.id, from: self }) : undefined}
             />
           ))}
         </div>
@@ -383,7 +390,7 @@ export function CasinoForm({
                         type="button"
                         className="cas-hist"
                         disabled={s.end === null}
-                        onClick={() => go({ kind: 'session', sessionId: s.id, from: { kind: 'casino', id: existing.id } })}
+                        onClick={() => go({ kind: 'session', sessionId: s.id, from: self })}
                       >
                         <span className="cas-hist-main">
                           <span className="cas-hist-date">{shortDate(s.start, now)}</span>
