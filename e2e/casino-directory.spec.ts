@@ -106,6 +106,13 @@ test('Casinos is the default part: every casino with every game rules line, sear
   await expect(page.getByTestId('casino-row-ev')).toHaveCount(3);
   await expect(page.getByTestId('casino-row').filter({ hasText: 'Bicycle' }).getByTestId('casino-row-ev')).toHaveText('—');
   await expect.poll(async () => (await names(page))[2], { timeout: 30_000 }).toBe('Bicycle');
+  // Review S5: the whole order, by the figures shown -- best first, once both casinos have one.
+  const evOf = (name: string) =>
+    page.getByTestId('casino-row').filter({ hasText: name }).getByTestId('casino-row-ev').getAttribute('data-ev').then((v) => (v === null ? null : Number(v)));
+  await expect.poll(async () => [await evOf('Golden Nugget'), await evOf('Aria')].every((v) => v !== null), { timeout: 30_000 }).toBe(true);
+  const [nug, aria] = [(await evOf('Golden Nugget'))!, (await evOf('Aria'))!];
+  expect(nug).not.toBe(aria);
+  await expect.poll(() => names(page)).toEqual([...(nug > aria ? ['Golden Nugget', 'Aria'] : ['Aria', 'Golden Nugget']), 'Bicycle']);
   // Review S1: the figure carries its interval, as on Ranked.
   await expect(page.getByTestId('casino-row').filter({ hasText: 'Golden Nugget' }).getByTestId('casino-row-ev')).toContainText(/[+−]\$[\d,]+ ±\$\d[\d,]*\/h/, { timeout: 30_000 });
 

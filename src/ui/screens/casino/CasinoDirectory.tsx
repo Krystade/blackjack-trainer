@@ -261,8 +261,10 @@ function RowFigure({ row, failed }: { row: RankRow | null; failed: string | unde
     );
   }
   const line = figureLine(row, failed);
+  const ev = rankedEvHour(row);
   return (
-    <span className="cas-dir-ev" data-testid="casino-row-ev" data-sign={line.sign}>
+    // data-ev: the figure the EV/h order sorts by (review S5), unrounded.
+    <span className="cas-dir-ev" data-testid="casino-row-ev" data-sign={line.sign} data-ev={ev ?? undefined}>
       <span className="cas-dir-ev-text">{line.text}</span>
       <FigureBadges line={line} />
     </span>
