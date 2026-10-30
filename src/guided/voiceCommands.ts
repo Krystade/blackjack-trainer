@@ -6,6 +6,15 @@ import { parseCountSpeech } from '../audio/voiceNumber';
  * Wave L (lane v): the guided session's spoken commands -- skip a segment,
  * pause, end, and (paused) resume.
  *
+ * TWO WORDS WHILE A DRILL RUNS. With a drill up, every utterance may be an
+ * answer, and the phone gives one reading (iOS: offered=1 in 5 of 5 samples,
+ * docs/TODO.md), so a bare "skip" cannot be told from a misheard "split" and a
+ * bare "pause" is one syllable from the count check's "plus". There, only
+ * the two-word forms count ("skip segment", "pause session", "end session"
+ * ...), which also carry better in the car (two words 8/10 against one 3/10,
+ * voiceRecognition.ts). The bare words, and "resume", work only on the pause
+ * and transition screens, where no answer is expected.
+ *
  * ONE MICROPHONE PER PAGE (audio/voiceControl.ts), and it belongs to whichever
  * drill the segment is running. So these are not a second recogniser: the
  * drills' own useVoiceControl offers every transcript here first
@@ -29,16 +38,26 @@ import { parseCountSpeech } from '../audio/voiceNumber';
 
 export type GuidedCommand = 'skip' | 'pause' | 'end' | 'resume';
 
-export const COMMAND_PHRASES: Readonly<Record<string, GuidedCommand>> = {
+/** Where the session is: a drill running (answers expected), or its own pause / transition screen. */
+export type GuidedScreen = 'running' | 'panel';
+
+/** Heard while a drill runs: two words each, none of them an answer. */
+export const RUNNING_PHRASES: Readonly<Record<string, GuidedCommand>> = {
   'skip segment': 'skip',
   'skip ahead': 'skip',
   'skip drill': 'skip',
-  skip: 'skip',
-  pause: 'pause',
   'pause session': 'pause',
   'pause drill': 'pause',
   'end session': 'end',
   'stop session': 'end',
+};
+
+/** Heard on the pause and transition screens: the above, the bare words, and resuming. */
+export const COMMAND_PHRASES: Readonly<Record<string, GuidedCommand>> = {
+  ...RUNNING_PHRASES,
+  skip: 'skip',
+  pause: 'pause',
+  end: 'end',
   resume: 'resume',
   'resume session': 'resume',
   'carry on': 'resume',
@@ -66,9 +85,10 @@ export function matchGuidedCommand(
   heard: string,
   offered: readonly string[] = [heard],
   lastSaid?: string | null,
+  screen: GuidedScreen = 'panel',
 ): GuidedCommand | null {
   const phrase = normaliseCommand(heard);
-  const cmd = COMMAND_PHRASES[phrase];
+  const cmd = (screen === 'running' ? RUNNING_PHRASES : COMMAND_PHRASES)[phrase];
   if (!cmd) return null;
   if (lastSaid && looksLikeSelfEcho(phrase, lastSaid)) return null;
   if (YIELDS_TO_ANSWERS.has(phrase)) {
@@ -83,9 +103,12 @@ export function matchGuidedCommand(
 export type GuidedCommandHandler = (cmd: GuidedCommand) => boolean;
 
 let handler: GuidedCommandHandler | null = null;
+let screenOf: () => GuidedScreen = () => 'panel';
 
-export function setGuidedCommandHandler(next: GuidedCommandHandler | null): void {
+/** `screen` says, at each utterance, whether a drill is running (two-word commands only). */
+export function setGuidedCommandHandler(next: GuidedCommandHandler | null, screen: () => GuidedScreen = () => 'panel'): void {
   handler = next;
+  screenOf = screen;
 }
 
 /**
@@ -94,7 +117,12 @@ export function setGuidedCommandHandler(next: GuidedCommandHandler | null): void
  */
 export function claimGuidedTranscript(heard: string, offered: readonly string[], lastSaid?: string | null): string | null {
   if (!handler) return null;
-  const cmd = matchGuidedCommand(heard, offered, lastSaid);
+  let cmd: GuidedCommand | null;
+  try {
+    cmd = matchGuidedCommand(heard, offered, lastSaid, screenOf());
+  } catch {
+    return null;
+  }
   if (!cmd) return null;
   try {
     return handler(cmd) ? `guided ${cmd}` : null;
@@ -105,4 +133,5 @@ export function claimGuidedTranscript(heard: string, offered: readonly string[],
 
 export function _resetGuidedCommandsForTest(): void {
   handler = null;
+  screenOf = () => 'panel';
 }

@@ -215,7 +215,7 @@ export function GuidedSessionView({
       }
       window.setTimeout(endNow, 0);
       return true;
-    });
+    }, () => (sessionRef.current.phase === 'running' ? 'running' : 'panel'));
     return () => setGuidedCommandHandler(null);
     // The handlers read the session through its ref.
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -229,11 +229,16 @@ test('Drive: spoken transitions, answers and commands by voice, an answer is nev
   await sayOnceListening(page, 'stand');
   await expect(strip(page)).toHaveText(`1/${warm}`);
 
-  // "skip" heard with "split them" ranked under it is an answer, not a skip.
-  await sayOnceListening(page, 'skip', ['split them']);
-  await expect(running(page, 'warmup')).toBeVisible();
-  await page.waitForTimeout(500);
-  await expect(running(page, 'warmup')).toBeVisible();
+  // While a drill runs, the bare words are not commands: "split" heard as a
+  // lone "skip" (the phone gives one reading), with or without a runner-up,
+  // and "plus" heard as "pause", leave the segment where it is.
+  for (const [said, alts] of [['skip', []], ['skip', ['split them']], ['pause', []]] as const) {
+    await sayOnceListening(page, said, [...alts]);
+    // A full round trip after it: the warm-up's own microphone still takes an
+    // answer (a pause would have closed it, a skip moved to the next segment).
+    await sayOnceListening(page, 'stand');
+    await expect(running(page, 'warmup')).toBeVisible();
+  }
 
   await sayCommand(page, 'pause session', () => expect(page.getByTestId('guided-paused')).toBeVisible({ timeout: 1000 }));
   await expect.poll(async () => (await spoken(page)).at(-1)).toBe('Paused.');

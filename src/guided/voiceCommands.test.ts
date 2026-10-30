@@ -5,6 +5,7 @@ import { looksLikeSelfEcho } from '../audio/selfEcho';
 import { allGuidedSentences } from './lines';
 import {
   COMMAND_PHRASES,
+  RUNNING_PHRASES,
   _resetGuidedCommandsForTest,
   claimGuidedTranscript,
   matchGuidedCommand,
@@ -69,6 +70,42 @@ describe('matching', () => {
 
   it('every command is at most two words (the self-echo length contract)', () => {
     for (const p of PHRASES) expect(p.split(' ').length, p).toBeLessThanOrEqual(2);
+  });
+});
+
+describe('while a drill runs, two words only', () => {
+  it('the bare words do nothing over a running drill, even on a single reading', () => {
+    for (const bare of ['skip', 'pause', 'end', 'resume', 'carry on', 'keep going', 'resume session']) {
+      expect(matchGuidedCommand(bare, [bare], null, 'running'), bare).toBeNull();
+    }
+  });
+
+  it('the two-word forms work there, and everywhere', () => {
+    expect(matchGuidedCommand('skip segment', ['skip segment'], null, 'running')).toBe('skip');
+    expect(matchGuidedCommand('Pause session.', ['Pause session.'], null, 'running')).toBe('pause');
+    expect(matchGuidedCommand('end session', ['end session'], null, 'running')).toBe('end');
+    for (const p of Object.keys(RUNNING_PHRASES)) {
+      expect(p.split(' ').length, p).toBe(2);
+      expect(matchGuidedCommand(p, [p], null, 'panel'), p).toBe(RUNNING_PHRASES[p]);
+    }
+  });
+
+  it('on the pause and transition screens the bare words work', () => {
+    expect(matchGuidedCommand('skip', ['skip'], null, 'panel')).toBe('skip');
+    expect(matchGuidedCommand('pause', ['pause'], null, 'panel')).toBe('pause');
+    expect(matchGuidedCommand('end', ['end'], null, 'panel')).toBe('end');
+    expect(matchGuidedCommand('resume', ['resume'], null, 'panel')).toBe('resume');
+  });
+
+  it('the claim asks the session which screen it is on, at each utterance', () => {
+    let screen: 'running' | 'panel' = 'running';
+    const handler = vi.fn(() => true);
+    setGuidedCommandHandler(handler, () => screen);
+    expect(claimGuidedTranscript('skip', ['skip'])).toBeNull();
+    expect(claimGuidedTranscript('skip segment', ['skip segment'])).toBe('guided skip');
+    screen = 'panel';
+    expect(claimGuidedTranscript('skip', ['skip'])).toBe('guided skip');
+    expect(handler).toHaveBeenCalledTimes(2);
   });
 });
 
