@@ -100,3 +100,21 @@ describe('indexRecent: written by applyEvents, withdrawn by Wrong tap', () => {
     expect(back).toEqual(base);
   });
 });
+
+// C12 (audit 2026-10-29): a "did you have it?" answer counted as a graded
+// right answer in the windows that earn mastery.
+describe('a self-report is volume, not mastery evidence (C12)', () => {
+  it('counts in perIndex but not in indexRecent or latencyHistory', () => {
+    const ev: GradedEvent = { ...quiz(true, '2026-10-21T10:00:00.000Z'), taken: 'self-report-had', elapsedMs: 900, selfReport: true };
+    const s = applyEvents(EMPTY_STATS, [ev]);
+    expect(s.perIndex['16v10']).toEqual({ right: 1, wrong: 0 });
+    expect(s.indexRecent?.['16v10']).toBeUndefined();
+    expect(s.latencyHistory).toHaveLength(0);
+  });
+
+  it('the same answer graded is evidence', () => {
+    const s = applyEvents(EMPTY_STATS, [{ ...quiz(true, '2026-10-21T10:00:00.000Z'), elapsedMs: 900 }]);
+    expect(s.indexRecent?.['16v10']?.recent).toBe('1');
+    expect(s.latencyHistory).toHaveLength(1);
+  });
+});

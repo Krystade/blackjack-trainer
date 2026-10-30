@@ -1180,3 +1180,15 @@ describe('H1: a Deviation-quiz index answer is index-only', () => {
     expect(s.perIndex['16v10']).toEqual({ right: 1, wrong: 0 });
   });
 });
+
+describe('self-reports are marked on the event (C12)', () => {
+  it('flashcards and the quiz tag a self-report, and only a self-report', () => {
+    const card = drawFlashcard('all', {}, 0, 4242, DEFAULT_RULES);
+    expect(gradeFlashcardAnswer(card, SELF_REPORT_HAD, DEFAULT_RULES, 500, {}, 1).event.selfReport).toBe(true);
+    expect(gradeFlashcardAnswer(card, SELF_REPORT_MISSED, DEFAULT_RULES, 500, {}, 1).event.selfReport).toBe(true);
+    expect(gradeFlashcardAnswer(card, card.correct, DEFAULT_RULES, 500, {}, 1).event.selfReport).toBeUndefined();
+    const item = drawQuizItem(1234, undefined, DEFAULT_RULES);
+    expect(gradeQuizAnswer(item, SELF_REPORT_HAD, DEFAULT_RULES, 500, {}, 1).event.selfReport).toBe(true);
+    expect(gradeQuizAnswer(item, item.correct, DEFAULT_RULES, 500, {}, 1).event.selfReport).toBeUndefined();
+  });
+});

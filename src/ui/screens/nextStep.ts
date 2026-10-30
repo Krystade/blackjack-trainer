@@ -280,7 +280,8 @@ interface RungDraft {
 export function ladder(stats: Stats, ctx: LadderContext): Ladder {
   const cats = handCategoryProgress(stats);
   const weak = weakCells(stats);
-  const fluency = countFluency(stats.countDrill?.history ?? []);
+  // C12: self-reported runs are not graded evidence for the rung.
+  const fluency = countFluency((stats.countDrill?.history ?? []).filter((r) => r.selfReport !== true));
   const dt = deckTcResult(stats);
   const bets = betRampResult(stats);
   const play = playResult(stats);

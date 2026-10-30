@@ -444,6 +444,7 @@ export function TrueCountDrillView({
             decksRemaining: question.decksRemaining,
             correctTc: question.correctTc,
             correct,
+            selfReport: true, // C12
           },
         ],
       },

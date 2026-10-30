@@ -165,7 +165,10 @@ export function applyEvents(stats: Stats, events: GradedEvent[], fallbackAt?: st
         result.indexRecent = { ...stats.indexRecent };
         indexRecentCopied = true;
       }
-      result.indexRecent![deviationId] = indexRecentAfter(result.indexRecent![deviationId], event.correct, event.at ?? fallbackAt);
+      // C12: a self-report is volume, not evidence: it stays out of the window the mastery tiers read.
+      if (event.selfReport !== true) {
+        result.indexRecent![deviationId] = indexRecentAfter(result.indexRecent![deviationId], event.correct, event.at ?? fallbackAt);
+      }
     }
 
     // Per-source split, so "how am I doing at flashcards" is answerable at
@@ -300,7 +303,8 @@ export function applyEvents(stats: Stats, events: GradedEvent[], fallbackAt?: st
         ...(event.at === undefined ? {} : { date: event.at }),
         ...(event.slow === true ? { slow: true as const } : {}),
       });
-    } else if (event.elapsedMs !== undefined) {
+    } else if (event.elapsedMs !== undefined && event.selfReport !== true) {
+      // C12: nor in the timed hand window the 'sharp' tiers and Stats read.
       if (!latencyCopied) {
         result.latencyHistory = [...stats.latencyHistory];
         latencyCopied = true;

@@ -137,7 +137,7 @@ const CASES: Record<string, [AchievementContext, AchievementContext]> = {
     ctx({ stats: { indexRecent: { ...recentFor(fab, 50, 0), [fab[1]!]: entry('0' + '1'.repeat(49)) } } }),
     ctx({ stats: { indexRecent: recentFor(fab, 50, 0) } }),
   ],
-  'count-clean-10': [ctx({ stats: { countDrill: { history: [...runs(9), ...runs(5, { correct: false })] } } }), ctx({ stats: { countDrill: { history: runs(10) } } })],
+  'count-clean-10': [ctx({ stats: { countDrill: { history: [...runs(9), ...runs(5, { correct: false }), ...runs(5, { selfReport: true })] } } }), ctx({ stats: { countDrill: { history: runs(10) } } })],
   'count-clean-50': [ctx({ stats: { countDrill: { history: runs(49) } } }), ctx({ stats: { countDrill: { history: runs(50) } } })],
   'count-full-shoe': [
     ctx({ stats: { countDrill: { history: [...runs(1, { cards: FULL_SHOE_CARDS, intervalMs: 600 }), ...runs(1, { cards: FULL_SHOE_CARDS - 1, intervalMs: 500 }), ...runs(1, { cards: FULL_SHOE_CARDS, intervalMs: 500, correct: false }), ...runs(1, { cards: FULL_SHOE_CARDS, intervalMs: 500, eyesFree: true, elapsedMs: FULL_SHOE_CARDS * 1100 })] } } }),
@@ -148,7 +148,7 @@ const CASES: Record<string, [AchievementContext, AchievementContext]> = {
     ctx({ stats: { timedCount: { history: [timed(FULL_SHOE_CARDS, 31), timed(FULL_SHOE_CARDS - 1, 20), { ...timed(FULL_SHOE_CARDS, 20), correct: false }] } } }),
     ctx({ stats: { timedCount: { history: [timed(FULL_SHOE_CARDS, 30)] } } }),
   ],
-  'tc-run-10': [ctx({ stats: { trueCount: { history: tcRows([...Array(9).fill(true), false, ...Array(9).fill(true)]) } } }), ctx({ stats: { trueCount: { history: tcRows(Array(10).fill(true)) } } })],
+  'tc-run-10': [ctx({ stats: { trueCount: { history: [...tcRows([...Array(9).fill(true), false, ...Array(9).fill(true)]), ...tcRows(Array(5).fill(true)).map((r) => ({ ...r, selfReport: true }))] } } }), ctx({ stats: { trueCount: { history: tcRows(Array(10).fill(true)) } } })],
   'tc-run-25': [ctx({ stats: { trueCount: { history: tcRows(Array(24).fill(true)) } } }), ctx({ stats: { trueCount: { history: tcRows(Array(25).fill(true)) } } })],
   'tc-run-50': [ctx({ stats: { trueCount: { history: tcRows(Array(49).fill(true)) } } }), ctx({ stats: { trueCount: { history: tcRows(Array(50).fill(true)) } } })],
   'deck-50': [

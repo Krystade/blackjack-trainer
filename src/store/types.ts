@@ -734,6 +734,10 @@ export interface Stats {
       // pauses and interruptions left out). Absent on every other run.
       eyesFree?: true;
       elapsedMs?: number;
+      // C12: the verdict was the operator's own "I had it" / "I missed it".
+      // Kept for volume; left out of the mastery readers (count-clean, Full
+      // shoe, the count rung).
+      selfReport?: true;
     }[];
   };
   // Cycle-4 (docs/research/2026-07-21-priority-list.md item 8): per-drill
@@ -755,6 +759,8 @@ export interface Stats {
       guess?: number;
       correctTc: number;
       correct: boolean;
+      /** C12: an eyes-free self-report (see countDrill's). */
+      selfReport?: true;
     }[];
   };
   deckEstimation: {

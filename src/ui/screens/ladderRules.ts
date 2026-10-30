@@ -34,7 +34,8 @@ export function recentWindow(
 
 export function deckTcResult(stats: Stats): { deck: WindowResult; tc: WindowResult; passed: boolean } {
   const deck = recentWindow(stats.deckEstimation?.history ?? []);
-  const tc = recentWindow(stats.trueCount?.history ?? []);
+  // C12: self-reported answers are not graded evidence for the rung.
+  const tc = recentWindow((stats.trueCount?.history ?? []).filter((r) => r.selfReport !== true));
   return { deck, tc, passed: deck.passed && tc.passed };
 }
 

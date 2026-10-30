@@ -60,6 +60,13 @@ export type EventSource = 'table' | 'flashcard' | 'quiz' | 'mastery' | 'chartTes
 export type Category = 'hard' | 'soft' | 'pairs' | 'surrender' | 'insurance' | 'bet' | 'countCheck' | 'wong' | 'wongIn';
 
 export interface GradedEvent {
+  /**
+   * C12 (audit 2026-10-29): the answer was a "did you have it?" self-report,
+   * not a graded play. It counts toward volume (answers, days, per-index
+   * totals) but not toward the windows that earn mastery (indexRecent,
+   * latencyHistory).
+   */
+  selfReport?: true;
   kind: EventKind;
   category: Category;
   correct: boolean;

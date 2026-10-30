@@ -1501,6 +1501,8 @@ export function CountDrillView({
             correct,
             ...(manual ? { manual: true, ...(meanTapMs !== undefined ? { meanTapMs } : {}) } : {}),
             ...(eyesFreeAuto ? { eyesFree: true as const, elapsedMs: Math.round(eyesFreeDealtMsRef.current) } : {}),
+            // C12: no number was given -- the operator's own verdict.
+            ...(!answered ? { selfReport: true as const } : {}),
             // RT#12: omitted entirely when the run had no checkpoints, so a
             // reader can tell "not measured" from "got none right".
             ...(report ? { checkpointsCorrect: report.correct, checkpointsTotal: report.total } : {}),

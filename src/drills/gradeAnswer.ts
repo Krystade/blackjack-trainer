@@ -171,6 +171,11 @@ export const TIMEOUT_ANSWER = 'timeout';
 export const SELF_REPORT_HAD = 'self-report-had';
 export const SELF_REPORT_MISSED = 'self-report-missed';
 
+/** C12: the answer was a "did you have it?" self-report, not a graded play. */
+export function isSelfReport(taken: string): boolean {
+  return taken === SELF_REPORT_HAD || taken === SELF_REPORT_MISSED;
+}
+
 /**
  * An answer a hand drill can grade: a real play, the clock running out, or a
  * self-report from a channel that cannot name a play.
@@ -290,6 +295,7 @@ export function buildFlashcardEvent(
   const event: GradedEvent = {
     kind: 'action',
     source,
+    ...(isSelfReport(taken) ? { selfReport: true as const } : {}),
     category: cellCategory(card.cellId, card.correct),
     correct,
     classification,
@@ -355,6 +361,7 @@ export function buildQuizEvent(item: QuizItem, taken: string, rules: StrategyRul
     return {
       kind: 'insurance',
       source: 'quiz',
+      ...(isSelfReport(taken) ? { selfReport: true as const } : {}),
       category: 'insurance',
       correct,
       classification,
@@ -412,6 +419,7 @@ export function buildQuizEvent(item: QuizItem, taken: string, rules: StrategyRul
   return {
     kind: 'action',
     source: 'quiz',
+    ...(isSelfReport(taken) ? { selfReport: true as const } : {}),
     category: actionCategory(item.cards, item.correct as Action),
     correct,
     classification,

@@ -248,7 +248,8 @@ const HAND_TITLE = { hard: 'Hard hands', soft: 'Soft hands', pairs: 'Pairs' } as
 
 /** Play sessions long enough to be called a shoe (SHOE_MIN_ROUNDS rounds). */
 const playSessions = (s: Stats) => (s.sessions ?? []).filter((r) => (r.rounds ?? 0) >= SHOE_MIN_ROUNDS);
-const countRuns = (s: Stats) => s.countDrill?.history ?? [];
+// C12: a self-reported run is the operator's word, not a graded count.
+const countRuns = (s: Stats) => (s.countDrill?.history ?? []).filter((r) => r.selfReport !== true);
 
 const tiered = (
   base: Omit<Achievement, 'id' | 'title' | 'how' | 'tier' | 'measure'>,
@@ -396,7 +397,7 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
     ['bronze', 10, 'True to form', '10 true-count conversions right in a row.'],
     ['silver', 25, 'Converter', '25 true-count conversions right in a row.'],
     ['gold', 50, 'Human divider', '50 true-count conversions right in a row.'],
-  ], (c) => longestRun(c.stats.trueCount?.history ?? [], (r) => r.correct)),
+  ], (c) => longestRun((c.stats.trueCount?.history ?? []).filter((r) => r.selfReport !== true), (r) => r.correct)),
   {
     id: 'deck-50',
     title: 'Deck reader',

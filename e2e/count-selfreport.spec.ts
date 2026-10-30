@@ -81,6 +81,8 @@ test('a self-reported run is written to the count history', async ({ page }) => 
   // gap); its configured gap alone is not its pace.
   expect(after.at(-1).eyesFree).toBe(true);
   expect(after.at(-1).elapsedMs).toBeGreaterThan(0);
+  // C12: the operator's own verdict is marked, so mastery readers can leave it out.
+  expect(after.at(-1).selfReport).toBe(true);
 });
 
 /** The spoken half: eyes on the road means the verdict has to be audible. */
