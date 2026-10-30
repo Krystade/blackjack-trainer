@@ -1,7 +1,9 @@
 import type { IndexRecentEntry, Stats } from '../store/types';
 import type { ProgressState, StreakInfo } from './progress';
 import { weeksWithAtLeast, WEEK_TARGET } from './progress';
-import { ILLUSTRIOUS_18, FAB_4_H17, FAB_4_S17 } from '../engine/deviations';
+import { ILLUSTRIOUS_18, FAB_4_H17, FAB_4_S17, indexSetFor } from '../engine/deviations';
+import type { StrategyRules } from '../engine/ruleset';
+import { redundantForChart } from '../drills/deviationQuiz';
 import { classifySpeed, countRunPerCardMs } from '../drills/countSpeed';
 import { countBits } from '../store/cellStats';
 import { isRecent, recentWindow } from '../store/indexRecent';
@@ -32,6 +34,12 @@ export interface AchievementContext {
    * (guided/store.ts). OPTIONAL: absent reads as none.
    */
   guidedSessions?: number;
+  /**
+   * C16 (audit 2026-10-29): the active profile's rules, so the Illustrious 18
+   * tiers leave out an index its own chart already plays (9 v 2 on 1 and 2
+   * decks), which no drill asks. OPTIONAL: absent judges all seventeen.
+   */
+  rules?: StrategyRules;
 }
 
 export interface Measure {
@@ -217,6 +225,12 @@ function longestRun<T>(rows: readonly T[], ok: (r: T) => boolean): number {
 }
 
 const I18_IDS = ILLUSTRIOUS_18.filter((d) => d.active).map((d) => d.id);
+/** C16: the I18 ids the drills ask under `rules` (all seventeen without rules). */
+function i18IdsFor(rules: StrategyRules | undefined): string[] {
+  if (!rules) return I18_IDS;
+  const dropped = new Set(indexSetFor(rules).filter((d) => redundantForChart(d, rules)).map((d) => d.id));
+  return I18_IDS.filter((id) => !dropped.has(id));
+}
 const FAB4_H17_IDS = FAB_4_H17.map((d) => d.id);
 const FAB4_S17_IDS = FAB_4_S17.map((d) => d.id);
 /** The Fab 4 under whichever rule (H17 or S17) is further along. */
@@ -356,7 +370,7 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
       how: `Every Illustrious 18 index at once, on its last ${I18_WINDOW} answers, all from the last ${RECENT_DAYS} days.`,
     },
     (pct) => `Every Illustrious 18 index right on ${neededRight(I18_WINDOW, pct)} of its last ${I18_WINDOW} answers (${pct}%), all from the last ${RECENT_DAYS} days.`,
-    (ctx, pct) => indexSetTier(ctx, I18_IDS, I18_WINDOW, pct),
+    (ctx, pct) => indexSetTier(ctx, i18IdsFor(ctx.rules), I18_WINDOW, pct),
   ),
   ...mastery(
     'Drills',

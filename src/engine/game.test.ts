@@ -2498,6 +2498,23 @@ describe('Wave A engine fixes', () => {
     expect(game.events.find((e) => e.kind === 'action')!.correct).toBe(true);
   });
 
+  // C16 (audit 2026-10-29): on 1 and 2 decks the chart doubles 9 v 2 at every
+  // count, so the drills never ask that index; Play must not tag it either.
+  it('C16: a 9 v 2 double is an index answer on 6 decks, a chart play on 2', () => {
+    const tagged = (decks: 2 | 6) => {
+      const game = Game.withRiggedShoe(cfg({ rules: { ...DEFAULT_RULES, decks } }), rig('5', '2', '4', '10', '5', '5', '5', '5'));
+      game.startRound();
+      game.runningCount = 20;
+      expect(game.trueCountNow).toBeGreaterThanOrEqual(1);
+      game.act('double');
+      const ev = game.events.find((e) => e.kind === 'action')!;
+      expect(ev.correct).toBe(true);
+      return ev.deviationId;
+    };
+    expect(tagged(6)).toBe('9v2');
+    expect(tagged(2)).toBeUndefined();
+  });
+
   it('F10: no double after a split without DAS', () => {
     const deal = rig('8', '6', '8', '10', '3', '2', '10', '10', '10', '10');
     const noDas = Game.withRiggedShoe(cfg({ rules: { ...DEFAULT_RULES, das: false } }), deal);

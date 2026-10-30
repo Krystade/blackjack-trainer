@@ -25,6 +25,8 @@ import { classifyAction, actionCategory, classifyInsurance } from './grade';
 import type { GradedEvent } from './grade';
 import type { Action } from './deviations';
 import { DEFAULT_RULES } from './ruleset';
+import { indexSetFor } from './deviations';
+import { redundantForChart } from '../drills/deviationQuiz';
 import type { StrategyRules } from './ruleset';
 import {
   dealerErrorRate,
@@ -1163,9 +1165,16 @@ export class Game {
     const basicOnly: Advice = basicPlay(hand.cards, up, ctx, this.rules);
     // #34: with deviations off, the right play is basic strategy at every
     // count; correctPlay's index plays are never asked for.
-    const withCount: Advice =
+    const raw: Advice =
       // C11: the running count rides along for the zero-count cells.
       this.cfg.gradeDeviations === false ? basicOnly : correctPlay(hand.cards, up, tc, ctx, this.rules, this.runningCount);
+    // C16 (audit 2026-10-29): an index this profile's own chart already plays
+    // (9 v 2 on 1 and 2 decks) is not an index here -- the drills never ask it
+    // (deviationQuiz redundantForChart, as withCountAdvice does) -- so the
+    // chart play is not recorded as an index answer.
+    const rawDev = raw.deviationId ? indexSetFor(this.rules).find((d) => d.id === raw.deviationId) : undefined;
+    const withCount: Advice =
+      rawDev && basicOnly.action === raw.action && redundantForChart(rawDev, this.rules) ? basicOnly : raw;
     const { classification, correct, phantomOf } = classifyAction(action, withCount, basicOnly, hand.cards, up, tc, this.rules);
     const category = actionCategory(hand.cards, withCount.action);
     // #25: a basic error is priced, on the hand as it stood at the decision,

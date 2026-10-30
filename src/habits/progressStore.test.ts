@@ -14,6 +14,7 @@ import {
   PROGRESS_KEY,
   _resetHabitsForTest,
   _setHabitClockForTest,
+  contextFor,
   ensureBackfilled,
   installHabits,
   loadProgress,
@@ -25,6 +26,8 @@ import { _resetMomentForTest, pendingMoment, sayMomentAtPause, momentLine, MOMEN
 import { _resetEyesFreeForTest, isEyesFreeOn, setEyesFreeOn } from '../ui/eyesFreeSession';
 import { HISTORY_CAP } from '../store/retention';
 import { ILLUSTRIOUS_18 } from '../engine/deviations';
+import { makeDefaultProfile, saveProfiles, setActiveProfile } from '../store/profiles';
+import { emptyProgress } from './progress';
 
 const ev = (correct = true): GradedEvent => ({
   kind: 'action',
@@ -306,5 +309,16 @@ describe('backfill', () => {
     expect(loadProgress().days['2026-10-21'].answers).toBe(5);
     answer(1);
     expect(loadProgress().days['2026-10-21'].answers).toBe(6);
+  });
+});
+
+// C16 (audit 2026-10-29): the achievements are judged under the active
+// profile's rules, so the Illustrious 18 tiers can leave out 9 v 2 on 2 decks.
+describe('contextFor carries the active profile rules (C16)', () => {
+  it('a 2-deck profile reaches the context', () => {
+    const p = { ...makeDefaultProfile(), rules: { ...makeDefaultProfile().rules, decks: 2 as const } };
+    saveProfiles([p]);
+    setActiveProfile(p.id);
+    expect(contextFor(structuredClone(EMPTY_STATS), emptyProgress()).rules?.decks).toBe(2);
   });
 });

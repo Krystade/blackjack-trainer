@@ -22,6 +22,8 @@ import {
 import { backfillDate, newlyEarned, type AchievementContext } from './achievements';
 import { momentLine, queueMoment } from './moment';
 import { guidedCompletedCount } from '../guided/store';
+import { getActiveProfile, strategyRulesFor } from '../store/profiles';
+import type { StrategyRules } from '../engine/ruleset';
 
 /**
  * Wave N: the habit tracker's persistence, under its own key. Fed by every
@@ -120,6 +122,15 @@ function casinoSessions(): number {
   }
 }
 
+/** C16: the active profile's rules, for the Illustrious 18 tiers; absent if unreadable. */
+function activeRules(): StrategyRules | undefined {
+  try {
+    return strategyRulesFor(getActiveProfile());
+  } catch {
+    return undefined;
+  }
+}
+
 function guidedSessions(): number {
   try {
     return guidedCompletedCount();
@@ -157,6 +168,7 @@ export function contextFor(stats: Stats, progress: ProgressState, nowMs = clock(
     casinoSessions: casinoSessions(),
     nowMs,
     guidedSessions: guidedSessions(),
+    rules: activeRules(),
   };
 }
 

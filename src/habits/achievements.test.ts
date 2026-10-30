@@ -18,6 +18,7 @@ import { addDays, computeStreak, emptyProgress, type DayRecord, type ProgressSta
 import { EMPTY_STATS, type IndexRecentEntry, type Stats } from '../store/types';
 import { ILLUSTRIOUS_18, FAB_4_H17, FAB_4_S17 } from '../engine/deviations';
 import { INDEX_RECENT_KEEP } from '../store/indexRecent';
+import { DEFAULT_RULES } from '../engine/ruleset';
 import { WINDOW_SPARE } from '../store/cellStats';
 
 const TODAY = '2026-10-21';
@@ -375,5 +376,24 @@ describe('hand accuracy leaves index-only answers out (C13)', () => {
     const indexOnly = latency('hard', 200, 0).map((r) => ({ ...r, indexOnly: true as const }));
     expect(a.measure(ctx({ stats: { latencyHistory: indexOnly } })).value).toBe(0);
     expect(a.measure(ctx({ stats: { latencyHistory: latency('hard', 200, 0) } })).value).toBeGreaterThan(0);
+  });
+});
+
+// C16 (audit 2026-10-29): on 1 and 2 decks the chart doubles 9 v 2, so no
+// drill asks it; the Illustrious 18 tiers judge the sixteen that are asked.
+describe('Illustrious 18 on a 1- or 2-deck profile (C16)', () => {
+  const noNine = i18.filter((id) => id !== '9v2');
+  for (const decks of [1, 2] as const) {
+    it(`${decks} deck(s): earned without 9 v 2 answers`, () => {
+      const c = { ...ctx({ stats: { indexRecent: recentFor(noNine, 18, 2) } }), rules: { ...DEFAULT_RULES, decks } };
+      const s = statusOf(c, 'index-i18-90');
+      expect(s.earned).toBe(true);
+      expect(s.note).toBe(`${noNine.length}/${noNine.length} indices at 18/20`);
+    });
+  }
+  it('6 decks (and no rules) still need 9 v 2', () => {
+    const recent = recentFor(noNine, 20, 0);
+    expect(statusOf({ ...ctx({ stats: { indexRecent: recent } }), rules: { ...DEFAULT_RULES, decks: 6 } }, 'index-i18-90').earned).toBe(false);
+    expect(statusOf(ctx({ stats: { indexRecent: recent } }), 'index-i18-90').earned).toBe(false);
   });
 });
