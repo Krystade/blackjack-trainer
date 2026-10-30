@@ -41,7 +41,7 @@ import { releaseAnswerFocus, snapshotResult } from '../../handResult';
 import { withMissDetail } from './drillMiss';
 import type { CellTally } from '../../../store/cellStats';
 import { answerTooSoon } from '../../answerBounce';
-import { narrateSelfCheckReveal, narrateFlashcardPrompt, narrateAnswerEcho } from '../../../audio/narrate';
+import { narrateSelfCheckReveal, narrateFlashcardPrompt, narrateAnswerEcho, REVIEW_DONE, ALL_DONE } from '../../../audio/narrate';
 import type { VoiceAction } from '../../../audio/voiceRecognition';
 import { isE2eAudioMode, speak } from '../../../audio/speech';
 import { speechOptsFrom } from '../../../audio/speechOpts';
@@ -258,7 +258,7 @@ export function FlashcardsView({
     clock.clear();
     review.finish();
     if (eyesFree || voiceOn) {
-      speak(reviewSource === 'review' ? 'Review done.' : 'All done.', speechOptsFrom(settings.audio, { interrupt: false }));
+      speak(reviewSource === 'review' ? REVIEW_DONE : ALL_DONE, speechOptsFrom(settings.audio, { interrupt: false }));
     }
     onReviewDone?.();
   };

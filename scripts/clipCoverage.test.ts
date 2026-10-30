@@ -33,6 +33,7 @@ import { FIELD_TEST_STEPS } from '../src/diag/fieldTest';
 import { betMissFeedback } from '../src/ui/betFeedback';
 import { DC_LINES, QUEUE_TTS_LINE } from '../src/diag/driveChecks';
 import { ROUTE_LINES } from '../src/diag/routeKit';
+import { DRIVE_LABELS } from '../src/ui/driveLaunch';
 import {
   narrateNotATag,
   narrateReadback,
@@ -283,6 +284,15 @@ describe('shipped clip coverage', () => {
         texts.add(narrateNotATag(value));
       }
       const unresolved = [...texts].filter((t) => segmentForClips(t, manifest) === null);
+      expect(unresolved).toEqual([]);
+    });
+
+    /** A19: Home's Drive button names the drill aloud before it starts. */
+    it(`resolves every Drive label Home speaks (${voice})`, () => {
+      const manifest = manifestFor(voice);
+      const texts = Object.values(DRIVE_LABELS).map((label) => `${label}.`);
+      expect(texts.length).toBeGreaterThan(3);
+      const unresolved = texts.filter((t) => segmentForClips(t, manifest) === null);
       expect(unresolved).toEqual([]);
     });
 

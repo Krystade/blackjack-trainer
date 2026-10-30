@@ -25,6 +25,7 @@
 import { CALIBRATION_INTRO, CALIBRATION_RETRY, calibrationOrderLine } from '../src/diag/testKit';
 import { DC_LINES } from '../src/diag/driveChecks';
 import { ROUTE_LINES } from '../src/diag/routeKit';
+import { DRIVE_LABELS } from '../src/ui/driveLaunch';
 import { correctPlay } from '../src/engine/strategy';
 import { DEFAULT_RULES } from '../src/engine/ruleset';
 import type { RuleSet } from '../src/engine/ruleset';
@@ -251,6 +252,8 @@ export function tableSentences(): string[] {
  */
 export function voiceSentences(): string[] {
   const sentences = new Set<string>(VOICE_CONVERSATION_LINES);
+  // A19: Home's Drive button says the drill's name first (Home.tsx startDrive).
+  for (const label of Object.values(DRIVE_LABELS)) sentences.add(`${label}.`);
   for (let value = TC_MIN; value <= TC_MAX; value++) {
     for (const part of splitIntoSentences(narrateReadback(value))) sentences.add(part);
     // Shares its first sentence with the read-back by construction; walked

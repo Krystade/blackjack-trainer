@@ -30,7 +30,7 @@ import { withMissDetail } from './drillMiss';
 import type { CellTally } from '../../../store/cellStats';
 import { answerTooSoon } from '../../answerBounce';
 import { Segmented } from '../Settings';
-import { narrateQuizPrompt, narrateAnswerEcho, DID_YOU_HAVE_IT } from '../../../audio/narrate';
+import { narrateQuizPrompt, narrateAnswerEcho, DID_YOU_HAVE_IT, REVIEW_DONE } from '../../../audio/narrate';
 import type { VoiceAction } from '../../../audio/voiceRecognition';
 import { isE2eAudioMode, speak } from '../../../audio/speech';
 import { speechOptsFrom } from '../../../audio/speechOpts';
@@ -244,7 +244,7 @@ export function DeviationQuizView({
     session.clearAdvanceTimer();
     clock.clear();
     review.finish();
-    if (eyesFree || voiceOn) speak('Review done.', speechOptsFrom(settings.audio, { interrupt: false }));
+    if (eyesFree || voiceOn) speak(REVIEW_DONE, speechOptsFrom(settings.audio, { interrupt: false }));
     onReviewDone?.();
   };
 

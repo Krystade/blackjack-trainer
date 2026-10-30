@@ -498,9 +498,15 @@ export const DECLINED_NEXT = 'Okay. Say yes when you want the next one.';
 export const SAY_YES_AGAIN = 'Say yes to go again.';
 export const SAY_YES_NEXT = 'Say yes for the next one.';
 
+/** A19: the end of a review run, said eyes-free; recorded so it is not live TTS. */
+export const REVIEW_DONE = 'Review done.';
+export const ALL_DONE = 'All done.';
+
 /** Every fixed conversational line, for the clip derivation to walk. */
 export const VOICE_CONVERSATION_LINES: readonly string[] = [
   MIC_STOPPED_LINE,
+  REVIEW_DONE,
+  ALL_DONE,
   COUNTDOWN_TAG_PROMPT,
   NOT_A_TAG,
   CHECKPOINT_PROMPT,
