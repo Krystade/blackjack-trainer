@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { fieldTestRunIsLive } from '../diag/fieldTestRun';
+import { leaveGuardInstalled } from './leaveGuard';
 
 /**
  * ONE "SOMEBODY IS IN THE MIDDLE OF SOMETHING" FLAG for the whole app.
@@ -59,7 +60,9 @@ export function useActivityLive(key: string, live = true): void {
  * `fieldTest` is injectable so the rule can be tested without storage.
  */
 export function updateMustWait(fieldTest: () => boolean = fieldTestRunIsLive): boolean {
-  return activityIsLive() || fieldTest();
+  // B14: a screen with unsaved work (a leave guard is installed) holds it
+  // too -- a reload threw away an unsaved Profile editor draft.
+  return activityIsLive() || leaveGuardInstalled() || fieldTest();
 }
 
 /** Tests only. */

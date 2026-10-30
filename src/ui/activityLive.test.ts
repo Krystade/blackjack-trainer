@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { holdActivity, activityIsLive, updateMustWait, resetActivityForTest } from './activityLive';
+import { setLeaveGuard } from './leaveGuard';
 
 afterEach(() => resetActivityForTest());
 
@@ -46,6 +47,17 @@ describe('updateMustWait', () => {
     const release = holdActivity('table');
     expect(updateMustWait(() => false)).toBe(true);
     release();
+    expect(updateMustWait(() => false)).toBe(false);
+  });
+});
+
+describe('unsaved work holds an update reload (B14)', () => {
+  it('waits while a leave guard is installed, and not after it is removed', () => {
+    resetActivityForTest();
+    expect(updateMustWait(() => false)).toBe(false);
+    const remove = setLeaveGuard(() => true);
+    expect(updateMustWait(() => false)).toBe(true);
+    remove();
     expect(updateMustWait(() => false)).toBe(false);
   });
 });

@@ -28,3 +28,12 @@ export function mayLeave(): boolean {
     return true;
   }
 }
+
+/**
+ * B14: is a screen holding unsaved work right now? The update check's
+ * deferral asks this, so ANY guarded form (the Profile editor today) holds an
+ * update reload, not only the screens that opted into useActivityLive.
+ */
+export function leaveGuardInstalled(): boolean {
+  return guard !== null;
+}
