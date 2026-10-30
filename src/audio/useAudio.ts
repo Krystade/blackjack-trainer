@@ -15,7 +15,9 @@ import { prewarmClips, setClipsEnabled, setClipVoice } from './clips';
  */
 export interface AudioApi {
   say: (text: string, opts?: { interrupt?: boolean }) => void;
-  sayFull: (text: string) => void;
+  /** `interrupt` as for `say`: for narration that must keep pace with what
+   * is on screen rather than queue behind the line still sounding (D21). */
+  sayFull: (text: string, opts?: { interrupt?: boolean }) => void;
   ding: (kind: 'good' | 'bad' | 'attention' | 'ready' | 'again') => void;
   /**
    * A chime held until the app stops talking.
@@ -97,9 +99,9 @@ export function useAudio(audio: AudioSettings): AudioApi {
       speak(text, { interrupt: opts?.interrupt, rate, voiceURI, volume });
     };
 
-    const sayFull: AudioApi['sayFull'] = (text) => {
+    const sayFull: AudioApi['sayFull'] = (text, opts) => {
       if (!enabled || verbosity !== 'full') return;
-      speak(text, { rate, voiceURI, volume });
+      speak(text, { interrupt: opts?.interrupt, rate, voiceURI, volume });
     };
 
     const ding: AudioApi['ding'] = (kind) => {

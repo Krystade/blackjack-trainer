@@ -835,7 +835,10 @@ export function CountDrillView({
     if (eyesFree) {
       speak(narrateCards(g, 'rank'), speechOptsFrom(settings.audio, { interrupt: true }));
     } else {
-      audio.sayFull(narrateCards(g, 'rank'));
+      // D21: interrupt here too. Queued, a 0.7s rank clip per flip fell a
+      // card further behind every two flips at a fast pace, and was still
+      // naming cards over the keypad. The card on screen is the one to name.
+      audio.sayFull(narrateCards(g, 'rank'), { interrupt: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, shownIndex, countdownMode, groups, eyesFree, settings.drill.countManual, timedChallenge, paused]);
@@ -906,7 +909,9 @@ export function CountDrillView({
     if (eyesFree) {
       speak(narrateCountPrompt(), speechOptsFrom(settings.audio));
     } else {
-      audio.sayFull(narrateCountPrompt());
+      // D21: and the question cuts off the last card rather than waiting
+      // behind it; the keypad is already up.
+      audio.sayFull(narrateCountPrompt(), { interrupt: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, countdownMode, eyesFree]);
