@@ -65,6 +65,8 @@ export class ErrorBoundary extends Component<Props, State> {
     // Nothing ships errors anywhere, so the console is the only record the
     // user can hand back when reporting a problem.
     console.error('Blackjack Trainer crashed:', error, info.componentStack);
+    // R1: a press left over from an earlier fallback is not this one's.
+    this.downOnFallback = false;
     // D1b: once per crash, and only when nobody is looking at the screen.
     if (crashLineWanted()) sayCrashLine();
   }
@@ -117,7 +119,22 @@ export class ErrorBoundary extends Component<Props, State> {
   };
 
   /** D1b: "Tap the screen to get back to Home" -- anywhere but a control. */
+  /**
+   * Review R1: the tap began on this fallback. The tap that CRASHED the
+   * screen -- a ZonePad answer on pointerup, say -- had its pointerdown on the
+   * drill, and its click arrives here after the fallback is up; touch input
+   * delivers it to the fallback, which went straight Home with it.
+   */
+  private downOnFallback = false;
+
+  private handlePointerDown = (): void => {
+    this.downOnFallback = true;
+  };
+
   private handleTapAnywhere = (e: React.MouseEvent<HTMLDivElement>): void => {
+    const began = this.downOnFallback;
+    this.downOnFallback = false;
+    if (!began) return;
     const target = e.target as Element | null;
     if (target?.closest?.('button, a, summary, details, input')) return;
     this.handleReset();
@@ -167,6 +184,7 @@ export class ErrorBoundary extends Component<Props, State> {
         role="alert"
         className="error-boundary"
         data-heard={heard ? 'true' : undefined}
+        onPointerDown={heard ? this.handlePointerDown : undefined}
         onClick={heard ? this.handleTapAnywhere : undefined}
       >
         <h1 style={{ margin: 0, fontSize: 'var(--fs-2xl, 1.4375rem)' }}>Something broke on this screen.</h1>

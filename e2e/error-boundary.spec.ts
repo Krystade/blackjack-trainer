@@ -234,3 +234,32 @@ test('D1b: the crash hook is absent without e2e=1', async ({ page }) => {
   await expect(page.locator('.home-title')).toBeVisible();
   expect(await page.evaluate(() => typeof window.__bjCrashScreen)).toBe('function');
 });
+
+/**
+ * Review R1: THE TAP THAT CRASHED THE SCREEN IS NOT THE TAP THAT LEAVES IT.
+ * The ZonePad answers on pointerup; if that answer throws, the fallback is up
+ * before the same tap's click, which touch input then delivers to it -- and
+ * the app went straight Home, the fallback never seen. Only a tap whose
+ * pointerdown began on the fallback counts.
+ */
+test.describe('D1b with touch', () => {
+  test.use({ hasTouch: true });
+  for (const ev of ['pointerup', 'pointerdown'] as const) {
+    test(`R1: a tap that crashes on ${ev} does not also leave the fallback`, async ({ page }) => {
+      await startCountDrill(page, true);
+      await page.evaluate((e) => {
+        document.addEventListener(e, () => window.__bjCrashScreen!(), { capture: true, once: true });
+      }, ev);
+      await page.touchscreen.tap(160, 330);
+      const boundary = page.locator('.error-boundary');
+      await expect(boundary).toBeVisible();
+      await page.waitForTimeout(500);
+      await expect(boundary, 'the crashing tap went on to Home').toBeVisible();
+
+      // A tap of its own still does what the line says.
+      const box = (await boundary.boundingBox())!;
+      await page.touchscreen.tap(box.x + box.width / 2, box.y + 8);
+      await expect(page.locator('.home-title')).toBeVisible();
+    });
+  }
+});
