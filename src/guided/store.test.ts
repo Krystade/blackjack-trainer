@@ -106,13 +106,16 @@ describe('guided store', () => {
 describe('through the habit hooks', () => {
   it('every stats save reaches the guided listener, after the daily goal has been credited', () => {
     const seen: number[] = [];
+    // What the habit record held each time the listener ran. Recorded, and
+    // judged OUTSIDE the listener: tellSaveListeners swallows anything a
+    // listener throws, so an expect() in there could never fail.
+    const creditedWhenTold: number[] = [];
     let sig = tallySignature(loadStats());
     const off = onStatsSaved((written, replaced, untrimmed) => {
       const t = tallyDelta(sig, untrimmed);
       sig = tallySignature(written);
       if (!replaced) seen.push(t.answers);
-      // The habit record already holds this answer when the listener runs.
-      expect(loadProgress().days['2026-10-22']?.answers).toBe(seen.reduce((a, b) => a + b, 0));
+      creditedWhenTold.push(loadProgress().days['2026-10-22']?.answers ?? 0);
     });
     for (let i = 0; i < 3; i++) {
       now += 4000;
@@ -121,6 +124,8 @@ describe('through the habit hooks', () => {
     off();
     saveStats(applyEvents(loadStats(), [ev()]));
     expect(seen).toEqual([1, 1, 1]);
+    // The day already held each answer when the listener heard of it.
+    expect(creditedWhenTold).toEqual([1, 2, 3]);
     expect(loadProgress().days['2026-10-22']!.answers).toBe(4);
   });
 
