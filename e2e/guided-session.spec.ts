@@ -454,3 +454,41 @@ test('tapped, the session closes a microphone left on, and gives it back after',
   await expect(page.locator('label', { hasText: 'Voice answers' }).locator('input')).toBeChecked();
   await expect(page.locator('label', { hasText: 'Eyes-free audio' }).locator('input')).not.toBeChecked();
 });
+
+test('time with the page hidden is not segment time', async ({ page }) => {
+  await base(page);
+  await page.addInitScript(() => {
+    const w = window as unknown as { __vis: DocumentVisibilityState };
+    w.__vis = 'visible';
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => w.__vis });
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => w.__vis === 'hidden' });
+  });
+  await seedGuided(page, {
+    preset: 5,
+    drive: false,
+    plan: [{ id: 'count', minutes: 3, target: { kind: 'time', ms: 180_000 }, weak: true }],
+    index: 0,
+    progress: [{ answers: 0, right: 0, activeMs: 0 }],
+    phase: 'intro',
+  });
+  await page.clock.install();
+  await page.goto('/?e2e=1');
+  await page.locator('.guided-card').getByRole('button', { name: 'Resume', exact: true }).click();
+  await page.getByRole('button', { name: 'Start now' }).click();
+  await expect(running(page, 'count')).toBeVisible();
+  await page.clock.fastForward(10_000);
+  await expect(strip(page)).toHaveText(/^2:5\d$/);
+
+  const setVisibility = (v: 'hidden' | 'visible') =>
+    page.evaluate((state) => {
+      (window as unknown as { __vis: string }).__vis = state;
+      document.dispatchEvent(new Event('visibilitychange'));
+    }, v);
+  await setVisibility('hidden');
+  await page.clock.fastForward(600_000);
+  await setVisibility('visible');
+  await page.clock.fastForward(1_000);
+  // Ten minutes away cost the segment nothing: still about 2:50 to go.
+  await expect(strip(page)).toHaveText(/^2:[45]\d$/);
+  await expect(running(page, 'count')).toBeVisible();
+});

@@ -271,14 +271,15 @@ export function GuidedSessionView({
   // The clock: the strip's countdown, the caps, and a resume point every few seconds.
   useEffect(() => {
     if (session.phase !== 'running') return;
-    runningSince.current = Date.now();
+    runningSince.current = document.visibilityState === 'hidden' ? null : Date.now();
     let lastSaved = Date.now();
     const id = window.setInterval(() => {
       const at = Date.now();
       setNow(at);
       const s = sessionRef.current;
       const seg = current(s);
-      if (!seg || endingRef.current) return;
+      // Hidden: the clock is stopped (see the visibility effect).
+      if (!seg || endingRef.current || runningSince.current === null) return;
       const verdict = verdictOnTick(seg, s.progress[s.index]!, activeMsNow(s, at), midRunRef.current);
       if (verdict === 'end') {
         finishCurrent(false);
@@ -300,6 +301,25 @@ export function GuidedSessionView({
       midRunRef.current = false;
     };
     // Per segment and per phase.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session.phase, session.index]);
+
+  // Time with the page hidden (locked, switched away) is not segment time:
+  // the running stretch is banked on hide and restarts on show, so coming
+  // back neither ends nor idles a segment for minutes nobody spent in it.
+  useEffect(() => {
+    if (session.phase !== 'running') return;
+    const onVisibility = () => {
+      if (sessionRef.current.phase !== 'running') return;
+      if (document.visibilityState === 'hidden') {
+        if (runningSince.current !== null) setSession(banked());
+      } else if (runningSince.current === null) {
+        runningSince.current = Date.now();
+        setNow(Date.now());
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.phase, session.index]);
 
