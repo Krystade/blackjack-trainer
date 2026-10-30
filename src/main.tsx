@@ -10,6 +10,7 @@ import { applyTheme, normalizeTheme } from './ui/theme.ts';
 import { registerOfflineWorker } from './offline/registerOffline.ts';
 import { requestPersistentStorage } from './store/storageHealth.ts';
 import { watchViewportGap } from './ui/viewportGap.ts';
+import { rootErrorOptions } from './diag/crashLog.ts';
 
 // OPEN THE VOICE LIST BEFORE ANYTHING WANTS TO SPEAK.
 //
@@ -43,7 +44,9 @@ applyTheme(normalizeTheme(loadSettings().theme));
 // ui/viewportGap.ts). A no-op in a browser tab.
 watchViewportGap();
 
-createRoot(document.getElementById('root')!).render(
+// A crash is written to the diagnostic log at the root, so every boundary is
+// covered (audit D1; see diag/crashLog.ts).
+createRoot(document.getElementById('root')!, rootErrorOptions).render(
   <StrictMode>
     <App />
   </StrictMode>,

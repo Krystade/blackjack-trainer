@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { readStoredDiagnostics } from './helpers';
 
 /**
  * The app has no backend: everything the user has practised lives in this
@@ -125,4 +126,27 @@ test('no casino button when there is no casino log', async ({ page }) => {
   await page.goto('/?e2e=1&crash=1');
   await expect(page.getByRole('button', { name: 'Save a backup' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Save casino log' })).toHaveCount(0);
+});
+
+/**
+ * D1: THE CRASH REACHES THE DIAGNOSTIC LOG. Before, componentDidCatch wrote
+ * only to the console, so a drill that died mid-drive left no `err` line in
+ * the log exported afterwards. The root's onCaughtError writes one, with the
+ * message and the component stack, and flushes it to storage at once.
+ */
+test('a caught render throw is written to the diagnostic log', async ({ page }) => {
+  await page.goto('/?e2e=1&crash=1');
+  await expect(page.locator('.error-boundary')).toBeVisible();
+  // No flush helper here on purpose: the crash path flushes synchronously.
+  const raw = await readStoredDiagnostics(page);
+  const entries = JSON.parse(raw ?? '[]') as {
+    category: string;
+    event: string;
+    detail?: Record<string, unknown>;
+  }[];
+  const crash = entries.find((e) => e.category === 'err' && e.event === 'render-crash');
+  expect(crash, 'no render-crash line in the stored log').toBeTruthy();
+  expect(crash!.detail?.kind).toBe('caught');
+  expect(String(crash!.detail?.message)).toContain('Deliberate crash');
+  expect(String(crash!.detail?.componentStack)).toContain('CrashOnDemand');
 });
