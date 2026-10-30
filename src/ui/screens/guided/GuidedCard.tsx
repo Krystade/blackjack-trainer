@@ -4,7 +4,7 @@ import type { Profile, Settings } from '../../../store/types';
 import { loadStats, saveSettings } from '../../../store/persist';
 import { localDayKey } from '../../../store/practiceDays';
 import { PRESETS, segmentDef, type GuidedPreset } from '../../../guided/plan';
-import { isResumable, type GuidedSession } from '../../../guided/session';
+import { isResumable, resume, type GuidedSession } from '../../../guided/session';
 import { loadGuided } from '../../../guided/store';
 import { setGuidedLaunch } from '../../../guided/launch';
 import { GUIDED_INTRO, introLine } from '../../../guided/lines';
@@ -73,7 +73,7 @@ export function GuidedCard({
           </div>
         </div>
         <div className="guided-card-buttons">
-          <button type="button" className="u-btn guided-card-go" onClick={() => launch(active, GUIDED_INTRO)}>
+          <button type="button" className="u-btn guided-card-go" onClick={() => launch(resume(active), GUIDED_INTRO)}>
             Resume
           </button>
           <button type="button" className="u-btn guided-card-alt" onClick={() => start(active.drive)}>

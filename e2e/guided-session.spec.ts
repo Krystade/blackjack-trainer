@@ -328,3 +328,26 @@ test('interrupted: a reload leaves a resume point on Home, with the answers kept
   await expect(running(page, 'warmup')).toBeVisible({ timeout: 8000 });
   await expect(strip(page)).toHaveText(`2/${warm}`);
 });
+
+test('paused, then Home: Resume picks the segment up, not a second pause screen', async ({ page }) => {
+  await base(page);
+  await page.goto('/?e2e=1');
+  const card = page.locator('.guided-card');
+  await card.getByRole('radio', { name: /^5/ }).click();
+  await card.getByRole('button', { name: 'Start guided session' }).click();
+  await expect(running(page, 'warmup')).toBeVisible({ timeout: 8000 });
+  const warm = answers((await storedPlan(page))[0]!);
+  await answerAdvised(page);
+  await page.locator('.guided-strip').getByRole('button', { name: 'Pause' }).click();
+  await expect(page.getByTestId('guided-paused')).toBeVisible();
+
+  // The only way out of a running session: Pause, then the tab bar.
+  await page.locator('.tab-bar').getByRole('button', { name: 'Home', exact: true }).click();
+  await expect(card).toHaveAttribute('data-state', 'resume');
+  await card.getByRole('button', { name: 'Resume', exact: true }).click();
+  await expect(page.locator('[data-testid="guided-transition"][data-segment="warmup"]')).toBeVisible();
+  await expect(page.getByTestId('guided-paused')).toHaveCount(0);
+  await expect(page.getByText('Picking up')).toBeVisible();
+  await expect(running(page, 'warmup')).toBeVisible({ timeout: 8000 });
+  await expect(strip(page)).toHaveText(`1/${warm}`);
+});
