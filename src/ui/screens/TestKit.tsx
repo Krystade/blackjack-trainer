@@ -46,6 +46,8 @@ import {
   type RouteRow,
 } from '../../diag/phoneMic';
 import { setMediaSessionProbe } from '../../audio/mediaSession';
+import { ensureMediaSessionHandlers } from '../../audio/speech';
+import { audioFocusElementIsPlaying, holdAudioFocus, releaseAudioFocus } from '../../audio/audioFocus';
 import { readAudioSessionType } from '../../audio/audioSession';
 import { endCaptureRoute } from '../../audio/audioRoute';
 import { ROUTE_ANSWERS, isRouteKitId, routeKitSummary, type RouteAnswer, type RouteStepResult } from '../../diag/routeKit';
@@ -1394,10 +1396,22 @@ function WheelPressStep({ step, run, ensureInput, onAnswer }: StepProps & { step
       cancelled.current = true;
       // Restore: nothing else arms the probe on this screen.
       setMediaSessionProbe(null);
+      releaseAudioFocus('test-kit');
     };
   }, []);
 
   const go = async () => {
+    /*
+     * CLAIM THE WHEEL FIRST, inside the tap (audit A3). Nothing on this kit
+     * plays through the clips path, which is where handlers are otherwise
+     * registered and the silent focus element started, so opened straight
+     * from Home the probe was armed over a session with no handlers and no
+     * media playing: the press went to the radio, and "Nothing arrived" was
+     * filed as call mode. Before the first await, so iOS still counts the
+     * silent element's play() as user-initiated.
+     */
+    const armed = ensureMediaSessionHandlers();
+    holdAudioFocus('test-kit');
     // The chosen input is what the car is reacting to; keep it open.
     await ensureInput();
     const actions: string[] = [];
@@ -1413,8 +1427,12 @@ function WheelPressStep({ step, run, ensureInput, onAnswer }: StepProps & { step
       await wait(1000);
     }
     setMediaSessionProbe(null);
+    // Sampled at the END of the window: play() is async, and the question is
+    // whether the app was the playing media app while the press could land.
+    const focusPlaying = audioFocusElementIsPlaying();
+    releaseAudioFocus('test-kit');
     if (cancelled.current) return;
-    run.current.wheel = { actions };
+    run.current.wheel = { actions, registered: armed, focusPlaying };
     const ok = wheelArrived(actions);
     const hasSession = typeof navigator !== 'undefined' && 'mediaSession' in navigator;
     diag('test', 'kit-wheel', {
@@ -1422,6 +1440,8 @@ function WheelPressStep({ step, run, ensureInput, onAnswer }: StepProps & { step
       actions: actions.join(',') || '(none)',
       waitedMs: Date.now() - t0,
       mediaSession: hasSession,
+      registered: armed,
+      focusPlaying,
     });
     setArrived(actions);
     setPhase('done');

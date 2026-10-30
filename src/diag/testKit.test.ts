@@ -325,6 +325,26 @@ describe('bt-phone-mic kit', () => {
     expect(line('unmeasurable').text).toMatch(/no spectrum/i);
     expect(line('unmeasurable').verdict).toBe('unclear');
   });
+
+  it('A3: a wheel press that could not have arrived does not flip the verdict to No', () => {
+    const base: PhoneRun = {
+      phone: { deviceId: 'a1', label: 'iPhone Microphone', matched: true },
+      phoneProbe: { verdict: 'wideband', highRatio: 0.2 },
+      route: Array(6).fill({ path: 'element', answer: 'Car speakers' }),
+      answers: {},
+    };
+    const wheel = (w: PhoneRun['wheel']) => phoneMicSummary({ ...base, wheel: w });
+    const unclaimed = wheel({ actions: [], registered: true, focusPlaying: false });
+    expect(unclaimed.lines.find((l) => l.id === 'wheel')!.verdict).toBe('unclear');
+    expect(unclaimed.overall).not.toBe('no');
+    const noSession = wheel({ actions: [], registered: false, focusPlaying: false });
+    expect(noSession.lines.find((l) => l.id === 'wheel')!.verdict).toBe('unclear');
+    expect(noSession.overall).not.toBe('no');
+    // Claimed and playing, and still nothing: that is evidence.
+    const claimed = wheel({ actions: [], registered: true, focusPlaying: true });
+    expect(claimed.lines.find((l) => l.id === 'wheel')!.verdict).toBe('no');
+    expect(claimed.overall).toBe('no');
+  });
 });
 
 describe('Words at speed', () => {

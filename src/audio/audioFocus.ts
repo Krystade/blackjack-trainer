@@ -32,7 +32,7 @@
 import { diag } from '../diag/diagnosticLog';
 
 /** Who wants the app to stay the active media app. */
-export type AudioFocusKey = 'speech' | 'button-test' | 'car-check';
+export type AudioFocusKey = 'speech' | 'button-test' | 'car-check' | 'test-kit';
 
 /**
  * A silent WAV as a data URI.

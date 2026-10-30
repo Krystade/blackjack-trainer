@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { readStoredDiagnostics } from './helpers';
 
 test('the test kit opens from Home and walks into the first desk step', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
@@ -83,4 +84,59 @@ test('Words at speed opens on the Bluetooth question, then the word step', async
   await kit.getByRole('button', { name: 'Bluetooth off' }).click();
   await expect(page.locator('[data-step="speed-calibrate"]')).toBeVisible();
   await expect(kit).toContainText('If it says “Again”, say the same word once more.');
+});
+
+/**
+ * A3: the phone-mic kit's wheel step must claim the media session itself.
+ * Nothing on this kit plays through the clips path, which is where handlers
+ * are otherwise registered, so opened straight from Home the probe sat over a
+ * session with no handlers and a real press could never arrive.
+ */
+test('the phone-mic wheel step registers the wheel and holds focus, opened straight from Home', async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.addInitScript(() => {
+    const ms = navigator.mediaSession;
+    if (!ms) return;
+    const handlers: Record<string, () => void> = {};
+    (window as unknown as { __wheel: (a: string) => boolean }).__wheel = (action) => {
+      const fn = handlers[action];
+      if (!fn) return false;
+      fn();
+      return true;
+    };
+    const original = ms.setActionHandler.bind(ms);
+    ms.setActionHandler = (action: string, handler: (() => void) | null) => {
+      if (handler) handlers[action] = handler;
+      else delete handlers[action];
+      return original(action as never, handler as never);
+    };
+  });
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/?e2e=1');
+  await page.getByTestId('testkit-open').click();
+  await page.getByRole('button', { name: /Bluetooth: phone mic\?/ }).click();
+  const kit = page.getByTestId('testkit-screen');
+  for (let i = 0; i < 10 && !(await page.locator('[data-step="phone-wheel"]').isVisible()); i++) {
+    await kit.getByRole('button', { name: 'Skip this step' }).click();
+  }
+  await expect(page.locator('[data-step="phone-wheel"]')).toBeVisible();
+  await kit.getByRole('button', { name: 'Start', exact: true }).click();
+  await expect(kit.getByText('Press skip-forward on the wheel now')).toBeVisible();
+
+  const pressed = await page.evaluate(
+    () => (window as unknown as { __wheel?: (a: string) => boolean }).__wheel?.('nexttrack') ?? false,
+  );
+  expect(pressed, 'no nexttrack handler was registered by the wheel step').toBe(true);
+  await expect(page.getByTestId('testkit-wheel-result')).toContainText('Arrived: nexttrack');
+
+  await expect
+    .poll(async () => {
+      const raw = await readStoredDiagnostics(page);
+      const rows = raw ? (JSON.parse(raw) as Array<{ event?: string; detail?: Record<string, unknown> }>) : [];
+      return {
+        held: rows.some((r) => (r.event === 'hold' || r.event === 'hold-joined') && r.detail?.key === 'test-kit'),
+        registered: rows.filter((r) => r.event === 'kit-wheel').pop()?.detail?.registered,
+      };
+    }, { timeout: 10_000 })
+    .toEqual({ held: true, registered: true });
 });

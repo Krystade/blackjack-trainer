@@ -130,7 +130,13 @@ export interface PhoneRun {
   finger?: { coveredRms: number; openRms: number };
   route?: RouteRow[];
   recognise?: { covered: number; uncovered: number };
-  wheel?: { actions: string[] };
+  /**
+   * `registered`: Media Session handlers were in place. `focusPlaying`: the
+   * app was the playing media app when the window closed. Without both, a
+   * press that never arrived says nothing about call mode (audit A3).
+   * Optional so an older stored run still reads.
+   */
+  wheel?: { actions: string[]; registered?: boolean; focusPlaying?: boolean };
   /** The operator's tapped answer to each plain question, by step id. */
   answers: Record<string, string>;
 }
@@ -256,14 +262,30 @@ export function phoneMicSummary(run: PhoneRun): { lines: SummaryLine[]; overall:
   if (!run.wheel) lines.push({ id: 'wheel', question: q7, verdict: 'skipped', text: 'Not run.' });
   else {
     const ok = wheelArrived(run.wheel.actions);
-    lines.push({
-      id: 'wheel',
-      question: q7,
-      verdict: ok ? 'yes' : 'no',
-      text: ok
-        ? 'Skip-forward arrived: the car is not in call mode.'
-        : 'Nothing arrived in 8 seconds: likely call mode (or the button was not pressed).',
-    });
+    if (ok) {
+      lines.push({ id: 'wheel', question: q7, verdict: 'yes', text: 'Skip-forward arrived: the car is not in call mode.' });
+    } else if (run.wheel.registered === false) {
+      lines.push({
+        id: 'wheel',
+        question: q7,
+        verdict: 'unclear',
+        text: 'This browser has no Media Session, so the wheel cannot reach the app here whatever the car does.',
+      });
+    } else if (run.wheel.focusPlaying === false) {
+      lines.push({
+        id: 'wheel',
+        question: q7,
+        verdict: 'unclear',
+        text: 'Nothing arrived, but the app was not the playing media app, so the press may have gone to another app.',
+      });
+    } else {
+      lines.push({
+        id: 'wheel',
+        question: q7,
+        verdict: 'no',
+        text: 'Nothing arrived in 8 seconds: likely call mode (or the button was not pressed).',
+      });
+    }
   }
 
   const by = (id: string) => lines.find((l) => l.id === id)?.verdict;
