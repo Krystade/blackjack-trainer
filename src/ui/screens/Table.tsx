@@ -34,7 +34,7 @@ import {
   VOICE_ACTIONS,
   matchSpokenAlternatives,
 } from '../../audio/voiceRecognition';
-import { parseCountSpeech, speakableCount, COUNT_BIAS_PHRASES } from '../../audio/voiceNumber';
+import { affirmsProposal, parseCountSpeech, speakableCount, COUNT_BIAS_PHRASES } from '../../audio/voiceNumber';
 import { narrateCards, narrateCountAnswer, narrateReadback, narrateRewindFrom, narrateTableCountPrompt } from '../../audio/narrate';
 import type { VoiceAction } from '../../audio/voiceRecognition';
 import { actionUnavailable } from '../../drills/answerGate';
@@ -767,8 +767,10 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
     // a worse consequence: a running count is harder to say twice than a hand
     // is to play twice. So every reading is tried, best first, and the first
     // one that is actually a number wins.
+    // A7: "yes, minus three" after the readback is the yes, not a new proposal.
+    const affirmed = affirmsProposal(offered.length > 0 ? offered : [heard], pendingCount);
     let parsed: ReturnType<typeof parseCountSpeech> = null;
-    for (const reading of offered.length > 0 ? offered : [heard]) {
+    for (const reading of affirmed ? [] : offered.length > 0 ? offered : [heard]) {
       parsed = parseCountSpeech(reading);
       if (parsed) break;
     }
@@ -781,7 +783,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
     }
 
     // Yes/no is a command like any other, so it gets the runners-up too.
-    switch (matchSpokenAlternatives(offered.length > 0 ? offered : [heard])) {
+    switch (affirmed ? 'yes' : matchSpokenAlternatives(offered.length > 0 ? offered : [heard])) {
       case 'yes': {
         if (pendingCount === null) {
           audio.say('I have no count yet. What is it?');

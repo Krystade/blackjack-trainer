@@ -60,6 +60,16 @@ const NUMBER_WORDS: Record<string, number> = {
   twenty: 20,
 };
 
+/**
+ * Number words that are also ordinary English (audit A7). Passenger talk and
+ * thinking aloud -- "go for it", "I want to", "oh no" -- proposed 4, 2 and 0,
+ * and "Oh, minus three" was refused as two numbers. A homophone counts as a
+ * number only when it is the whole transcript or sits right after a sign word
+ * ("minus for"); anywhere else it is filler. "oh" is filler whenever anything
+ * else was said.
+ */
+const HOMOPHONES = new Set(['oh', 'none', 'won', 'to', 'too', 'for', 'fore', 'free', 'ate', 'tree', 'fife', 'sicks']);
+
 const NEGATIVE_WORDS = new Set(['minus', 'negative', 'neg', 'down']);
 const POSITIVE_WORDS = new Set(['plus', 'positive', 'up']);
 
@@ -83,6 +93,10 @@ export const COUNT_BIAS_PHRASES: string[] = [
 function tokenize(transcript: string): string[] {
   return transcript
     .toLowerCase()
+    // A minus sign, en dash or em dash is the minus a keyboard would type,
+    // and "- 3" with a space is still one signed number.
+    .replace(/[\u2212\u2013\u2014]/g, '-')
+    .replace(/-\s+(?=\d)/g, '-')
     // Keep digits and the minus sign; a spoken "-3" often arrives as "-3".
     .replace(/[^a-z0-9-]+/g, ' ')
     .trim()
@@ -107,7 +121,8 @@ export function parseCountSpeech(transcript: string): CountSpeech | null {
   let netNudge = 0;
   let nudgeSeen = false;
 
-  for (const token of tokens) {
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i]!;
     // A signed or bare numeral, e.g. "-3" or "12".
     const numeric = /^(-?)(\d+)$/.exec(token);
     if (numeric) {
@@ -121,7 +136,11 @@ export function parseCountSpeech(transcript: string): CountSpeech | null {
     }
 
     const word = NUMBER_WORDS[token];
-    if (word !== undefined) {
+    const homophoneIsFiller =
+      HOMOPHONES.has(token) &&
+      tokens.length > 1 &&
+      (token === 'oh' || i === 0 || !(NEGATIVE_WORDS.has(tokens[i - 1]!) || POSITIVE_WORDS.has(tokens[i - 1]!)));
+    if (word !== undefined && !homophoneIsFiller) {
       if (magnitude !== null) return null;
       magnitude = word;
       continue;
@@ -192,6 +211,27 @@ export function mentionsACount(transcript: string): boolean {
       POSITIVE_WORDS.has(t) ||
       /^-?\d+$/.test(t),
   );
+}
+
+const YES_WORDS = new Set(['yes', 'yeah', 'yep', 'yup', 'correct', 'okay', 'ok']);
+
+/**
+ * Does this reading say yes to the value already proposed? "yes, minus three"
+ * after the readback "minus 3. Correct?" is a confirmation, but it parsed as a
+ * fresh value first and the app read it back again (audit A7). True when the
+ * top reading carries a yes word and its number, if any, IS the proposal. A
+ * different number is a correction, and stays a new proposal.
+ */
+export function affirmsProposal(readings: readonly string[], pending: number | null): boolean {
+  if (pending === null) return false;
+  const top = readings[0];
+  if (top === undefined) return false;
+  const tokens = tokenize(top);
+  if (!tokens.some((t) => YES_WORDS.has(t))) return false;
+  const rest = tokens.filter((t) => !YES_WORDS.has(t)).join(' ');
+  if (rest === '') return true;
+  const parsed = parseCountSpeech(rest);
+  return parsed !== null && parsed.kind === 'value' && parsed.value === pending;
 }
 
 export function speakableCount(value: number): string {

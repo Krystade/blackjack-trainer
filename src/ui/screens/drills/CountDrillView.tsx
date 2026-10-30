@@ -64,7 +64,7 @@ import { useWheelNumber } from '../../useWheelNumber';
 import { CountRunList } from './CountRunList';
 import { detectVoiceSupport, VOICE_ACTIONS } from '../../../audio/voiceRecognition';
 import type { VoiceAction } from '../../../audio/voiceRecognition';
-import { parseCountSpeech, speakableCount, COUNT_BIAS_PHRASES } from '../../../audio/voiceNumber';
+import { affirmsProposal, parseCountSpeech, speakableCount, COUNT_BIAS_PHRASES } from '../../../audio/voiceNumber';
 import { VoiceStatusBar } from '../../components/VoiceStatusBar';
 import { CarStatusLine } from '../../components/CarStatusLine';
 import { carMic, carScore, countPrompt, countWheelLabel, type CarStatus } from '../../carStatus';
@@ -1521,6 +1521,11 @@ export function CountDrillView({
     // answerable only by typing.
     if (phase !== 'answering' && phase !== 'checkpoint' && phase !== 'distraction') return null;
     const readings = offered.length > 0 ? offered : [heard];
+    // A7: "yes, minus three" after the readback confirms; it is not a new proposal.
+    if (affirmsProposal(readings, pendingCount)) {
+      handleVoiceCommand('yes');
+      return `confirmed ${speakableCount(pendingCount!)}`;
+    }
 
     // Every reading is tried, best first. Over a car microphone "minus three"
     // ranks behind "minus tree" often enough to matter, and a running count

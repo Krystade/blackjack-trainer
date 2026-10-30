@@ -366,3 +366,17 @@ test('a distraction can be answered out loud', async ({ page }) => {
     )
     .toBe(true);
 });
+
+/** A7: a yes that repeats the proposal confirms it, however it is padded. */
+test('"yes, it\'s minus three" confirms a standing minus three', async ({ page }) => {
+  await openCountDrill(page, { eyesFree: false });
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+  await expect(page.locator('.count-voice')).toBeVisible({ timeout: 15_000 });
+
+  await sayWhenListening(page, 'minus three');
+  await expect(page.locator('.count-voice-value')).toHaveText('−3');
+  await sayWhenListening(page, "yes, it's minus three");
+
+  await expect(page.locator('.drill-result')).toBeVisible();
+  await expect(page.locator('.drill-result .result-detail')).toContainText('You entered −3');
+});

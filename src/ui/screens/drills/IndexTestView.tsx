@@ -31,7 +31,7 @@ import { useAudio } from '../../../audio/useAudio';
 import { cancelSpeech, speak } from '../../../audio/speech';
 import { speechOptsFrom } from '../../../audio/speechOpts';
 import { narrateReadback, NO_ANSWER_YET } from '../../../audio/narrate';
-import { parseCountSpeech, speakableCount, COUNT_BIAS_PHRASES } from '../../../audio/voiceNumber';
+import { affirmsProposal, parseCountSpeech, speakableCount, COUNT_BIAS_PHRASES } from '../../../audio/voiceNumber';
 import { detectVoiceSupport, VOICE_ACTIONS } from '../../../audio/voiceRecognition';
 import type { VoiceAction } from '../../../audio/voiceRecognition';
 import { requestWakeLock, releaseWakeLock } from '../../../audio/wakeLock';
@@ -202,6 +202,11 @@ export function IndexTestView({
   const onTranscript = (heard: string, offered: readonly string[] = [heard]): string | null => {
     if (phaseRef.current !== 'answering') return null;
     const readings = offered.length > 0 ? offered : [heard];
+    // A7: "yes, minus three" after the readback confirms; it is not a new proposal.
+    if (affirmsProposal(readings, pending)) {
+      onAction('yes');
+      return `confirmed ${speakableCount(pending!)}`;
+    }
     let parsed: ReturnType<typeof parseCountSpeech> = null;
     for (const reading of readings) {
       parsed = parseCountSpeech(reading);

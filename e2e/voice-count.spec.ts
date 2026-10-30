@@ -219,3 +219,18 @@ test('a confirmation ranked second still confirms', async ({ page }) => {
   await sayWhenListening(page, 'yeh', ['yes']);
   await expect(page.locator('.count-voice')).toBeHidden();
 });
+
+/**
+ * A7: the natural reply to "minus 3. Correct?" is "yes, minus three". It used
+ * to parse as a fresh value first, so the app read it back again and the
+ * driver could not confirm without saying a bare "yes".
+ */
+test('"yes, minus three" confirms a standing minus three', async ({ page }) => {
+  await openCountCheck(page);
+  await sayWhenListening(page, 'minus three');
+  await expect(page.locator('.count-voice-value')).toHaveText('−3');
+
+  await sayWhenListening(page, 'yes, minus three');
+  await expect(page.locator('.count-voice')).toHaveCount(0);
+  await expect(page.locator('.topbar-stat', { hasText: /^Round / })).toHaveText('Round 2');
+});

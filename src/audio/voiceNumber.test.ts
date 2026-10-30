@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseCountSpeech, speakableCount, MAX_COUNT } from './voiceNumber';
+import { affirmsProposal, parseCountSpeech, speakableCount, MAX_COUNT } from './voiceNumber';
 
 /**
  * The count is the one answer where being wrong is invisible: a misheard
@@ -52,6 +52,45 @@ describe('stating a value', () => {
   // which was meant is exactly the guess this must not make.
   it('refuses two numbers rather than picking one', () => {
     expect(parseCountSpeech('three four')).toBe(null);
+  });
+});
+
+describe('A7: filler, homophones and dashes', () => {
+  it('treats "oh" as filler when anything else was said', () => {
+    expect(parseCountSpeech('Oh, minus three')).toEqual({ kind: 'value', value: -3 });
+    expect(parseCountSpeech('Oh, plus')).toEqual({ kind: 'adjust', delta: 1 });
+    expect(parseCountSpeech('oh')).toEqual({ kind: 'value', value: 0 });
+  });
+
+  it('does not hear numbers in ordinary talk', () => {
+    expect(parseCountSpeech('go for it')).toBe(null);
+    expect(parseCountSpeech('I want to')).toBe(null);
+    expect(parseCountSpeech('oh no')).toBe(null);
+    expect(parseCountSpeech('I won')).toBe(null);
+  });
+
+  it('still takes a homophone alone or right after a sign', () => {
+    expect(parseCountSpeech('for')).toEqual({ kind: 'value', value: 4 });
+    expect(parseCountSpeech('minus for')).toEqual({ kind: 'value', value: -4 });
+    expect(parseCountSpeech('plus to')).toEqual({ kind: 'value', value: 2 });
+    // A real number word next to a homophone is one number, not two.
+    expect(parseCountSpeech('it was too minus three')).toEqual({ kind: 'value', value: -3 });
+  });
+
+  it('reads a typographic minus or a spaced one as the sign', () => {
+    expect(parseCountSpeech('\u22123')).toEqual({ kind: 'value', value: -3 });
+    expect(parseCountSpeech('\u2013 3')).toEqual({ kind: 'value', value: -3 });
+    expect(parseCountSpeech('- 3')).toEqual({ kind: 'value', value: -3 });
+  });
+
+  it('"yes, minus three" confirms a standing minus three', () => {
+    expect(affirmsProposal(['yes, minus three'], -3)).toBe(true);
+    expect(affirmsProposal(['Yeah -3'], -3)).toBe(true);
+    expect(affirmsProposal(['yes'], 2)).toBe(true);
+    // A different number is a correction, not a yes.
+    expect(affirmsProposal(['yes, minus four'], -3)).toBe(false);
+    expect(affirmsProposal(['minus three'], -3)).toBe(false);
+    expect(affirmsProposal(['yes minus three'], null)).toBe(false);
   });
 });
 

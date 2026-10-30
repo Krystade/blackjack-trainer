@@ -33,7 +33,7 @@ import { useWheelCommand } from '../../useWheelCommand';
 import { useWheelNumber } from '../../useWheelNumber';
 import { detectVoiceSupport, VOICE_ACTIONS } from '../../../audio/voiceRecognition';
 import type { VoiceAction } from '../../../audio/voiceRecognition';
-import { parseCountSpeech, speakableCount, COUNT_BIAS_PHRASES } from '../../../audio/voiceNumber';
+import { affirmsProposal, parseCountSpeech, speakableCount, COUNT_BIAS_PHRASES } from '../../../audio/voiceNumber';
 import { VoiceStatusBar } from '../../components/VoiceStatusBar';
 import { useVoiceToggle, usePushToTalk, startPushToTalk } from '../../voiceSession';
 import { useEyesFreeToggle } from '../../eyesFreeSession';
@@ -469,6 +469,11 @@ export function TrueCountDrillView({
   const interpretTcSpeech = (heard: string, offered: readonly string[] = [heard]): string | null => {
     if (phase !== 'answering') return null;
     const readings = offered.length > 0 ? offered : [heard];
+    // A7: "yes, minus three" after the readback confirms; it is not a new proposal.
+    if (affirmsProposal(readings, pendingTc)) {
+      handleVoiceCommand('yes');
+      return `confirmed ${speakableCount(pendingTc!)}`;
+    }
 
     // Every reading is tried, best first: over a car microphone the count
     // often ranks second, and this is a question that is tedious to repeat.
