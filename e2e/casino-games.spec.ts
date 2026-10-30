@@ -179,9 +179,13 @@ test('figures appear on their own, the ranking follows them, and the cards say w
   for (const t of await rows(page).getByTestId('partial-badge').allTextContents()) expect(t).toMatch(/^Partial ±\$\d[\d,]*\/h$/);
   await noComputeButtons(page);
 
-  // Sorted by EV per hour, highest first.
+  // Sorted by EV per hour, highest first -- C17: an unfinished run (every row
+  // here is partial) by its figure less half its 95% interval.
   const evs = (await rows(page).getByTestId('rank-ev').allTextContents()).map(money);
-  expect(evs).toEqual([...evs].sort((a, b) => b - a));
+  const cis = (await rows(page).getByTestId('partial-badge').allTextContents()).map((t) => money(t.replace(/^Partial ±/, '')));
+  const scores = evs.map((ev, i) => ev - cis[i]! / 2);
+  // Shown figures are whole dollars, so allow a dollar either side.
+  for (let i = 1; i < scores.length; i++) expect(scores[i - 1]!, `row ${i} vs ${i + 1}`).toBeGreaterThanOrEqual(scores[i]! - 1);
   // The shuffler machine is a flat bet into the house edge: negative, and no style badge.
   const csmRow = rows(page).and(page.locator('[data-game="g-csm"]'));
   expect(money((await csmRow.getByTestId('rank-ev').textContent())!)).toBeLessThan(0);
