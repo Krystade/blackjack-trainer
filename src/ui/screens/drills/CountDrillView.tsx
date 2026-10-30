@@ -2234,9 +2234,9 @@ export function CountDrillView({
               </div>
               {settings.drill.countBias !== 'none' && (
                 <div className="settings-row settings-note-row">
-                  Clusters same-sign cards so the count runs{' '}
-                  {settings.drill.countBias === 'negative' ? 'down, then climbs back' : 'up, then falls back'}: extra
-                  practice counting through zero.
+                  Leans the {settings.drill.countBias === 'negative' ? 'high' : 'low'} cards toward the start, so the
+                  count tends to run {settings.drill.countBias === 'negative' ? 'down' : 'up'} early. It can end up,
+                  down or level, a third each.
                 </div>
               )}
             </>
