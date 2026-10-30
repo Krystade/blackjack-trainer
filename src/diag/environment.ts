@@ -402,6 +402,40 @@ export async function logSelectedInput(reason: string): Promise<void> {
  * (the page being frozen, the route flipping) happen precisely when the voice
  * hook is not running to see them.
  */
+/**
+ * D18: AN ERROR LINE THAT CAN BE MAPPED BACK TO SOURCE.
+ *
+ * The production entry chunk is one minified line, so `line=1` said nothing
+ * about where a throw happened. The column does (the session start already
+ * records the build id, so a local sourcemap build of that commit resolves
+ * it), and the stack names the path. The stack is passed as a STRING: an
+ * Error object serialises to "{}". capValue caps it at entry.
+ */
+const STACK_CHARS = 1500;
+
+export function windowErrorDetail(e: {
+  message?: string;
+  filename?: string;
+  lineno?: number;
+  colno?: number;
+  error?: unknown;
+}): Record<string, unknown> {
+  return {
+    message: e.message,
+    source: e.filename,
+    line: e.lineno,
+    col: e.colno,
+    stack: e.error instanceof Error ? e.error.stack?.slice(0, STACK_CHARS) : undefined,
+  };
+}
+
+export function rejectionDetail(reason: unknown): Record<string, unknown> {
+  return {
+    reason: String(reason),
+    stack: reason instanceof Error ? reason.stack?.slice(0, STACK_CHARS) : undefined,
+  };
+}
+
 export function startDiagnostics(): void {
   if (installed) return;
   installed = true;
@@ -445,10 +479,10 @@ export function startDiagnostics(): void {
     });
 
     window.addEventListener('error', (e) => {
-      diag('err', 'window-error', { message: e.message, source: e.filename, line: e.lineno });
+      diag('err', 'window-error', windowErrorDetail(e));
     });
     window.addEventListener('unhandledrejection', (e) => {
-      diag('err', 'unhandled-rejection', { reason: String((e as PromiseRejectionEvent).reason) });
+      diag('err', 'unhandled-rejection', rejectionDetail((e as PromiseRejectionEvent).reason));
     });
 
     const md = navigator.mediaDevices as unknown as {
