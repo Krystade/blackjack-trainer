@@ -7,7 +7,9 @@ import type { ChangeEvent } from 'react';
 import type { Screen } from '../App';
 import type { Profile, Settings, Stats as StatsData } from '../../store/types';
 import { EMPTY_STATS } from '../../store/types';
-import { filterByRange, RANGE_LABEL } from '../../store/timeRange';
+import { filterByRange, rangeStart, RANGE_LABEL } from '../../store/timeRange';
+import { latencyRowsStart, rangedAccuracy } from '../../store/latencyRange';
+import { HISTORY_CAP } from '../../store/retention';
 import { pct, pctOfPercent, clockGap, formatUnits, costHandLabel, trendLine, signed } from './statsFormat';
 import './costOfMistakes.css';
 import type { RangeId, TimeRange } from '../../store/timeRange';
@@ -66,6 +68,7 @@ import './statsGoal.css';
 import './statsHistory.css';
 import './statsSessions.css';
 import './statsBackup.css';
+import './statsLatency.css';
 import './sessionTag.css';
 import { betMissText, formatLossValue, sessionsBetMisses, sessionsLossPer100, sessionsPlayAccuracy, sessionTag } from '../sessionFigures';
 import { dealerErrorsValue, sessionsDealerErrors } from '../dealerErrorCopy';
@@ -475,6 +478,12 @@ export function Stats({ activeProfile, settings, onSettingsChange, onNavigate }:
   // the pace-drift readout -- two separate filters here could disagree about
   // which answers are in the window.
   const latencyRows = inRange(stats.latencyHistory);
+  // B6: the median and pace readouts read only the kept rows; say where they
+  // start when the range reaches back past it.
+  const rowsStart = latencyRowsStart(stats);
+  const rangeFrom = rangeStart(range, now);
+  const latencyCut =
+    rowsStart !== null && (rangeFrom === null || Date.parse(rowsStart) > rangeFrom) ? backupDateText(rowsStart).split(',')[0]! : null;
   /*
    * s10: hand accuracy that answers the range picker. The category tallies
    * are undated counters; the dated latency rows carry `correct` since Wave A
@@ -487,10 +496,10 @@ export function Stats({ activeProfile, settings, onSettingsChange, onNavigate }:
     // write a timed row; "no timed answers" under them in every range is noise.
     if (!stats.latencyHistory.some((r) => r.category === cat)) return null;
     const label = range.id === 'since' ? `Since ${range.since ?? '…'}` : RANGE_LABEL[range.id];
-    const rows = latencyRows.filter((r) => r.category === cat && r.correct !== undefined);
-    if (rows.length === 0) return `${label}: no timed answers`;
-    const right = rows.filter((r) => r.correct).length;
-    return `${label}: ${right}/${rows.length} (${pct(right, rows.length)}) timed answers`;
+    // B6: the kept rows plus the daily counts the cap folded older rows into.
+    const { right, total } = rangedAccuracy(stats, range, now, cat);
+    if (total === 0) return `${label}: no timed answers`;
+    return `${label}: ${right}/${total} (${pct(right, total)}) timed answers`;
   };
   // ET5: the session-gap for the fatigue-drift analysis is configurable (a gap
   // longer than this splits practice sessions). Local to this screen.
@@ -502,14 +511,14 @@ export function Stats({ activeProfile, settings, onSettingsChange, onNavigate }:
 
   const handleSpeakSummary = () => {
     // F14: the summary follows the range picker, and says which range it read.
-    const graded = latencyRows.filter((r) => r.correct !== undefined);
+    const graded = rangedAccuracy(stats, range, now);
     const summary =
       range.id === 'all'
         ? narrateStatsSummary(stats)
         : narrateStatsSummary(stats, {
             label: range.id === 'since' ? `Since ${range.since ?? 'the date you picked'}` : RANGE_LABEL[range.id],
-            right: graded.filter((r) => r.correct).length,
-            total: graded.length,
+            right: graded.right,
+            total: graded.total,
           });
     audio.say(summary, { interrupt: true });
   };
@@ -1041,6 +1050,12 @@ export function Stats({ activeProfile, settings, onSettingsChange, onNavigate }:
         dataTab={SECTION_TAB['Basic strategy goal']}
         defaultOpen={false}
       >
+          {latencyCut && (
+            <p className="u-note stats-latency-cut" data-testid="stats-latency-cut">
+              Times read the newest {HISTORY_CAP.toLocaleString('en-US')} timed answers, from {latencyCut}; the accuracy counts
+              every answer in the range.
+            </p>
+          )}
           <div className="category-list">
             {handRows.map((hand) => {
               const cat = HAND_CATEGORIES.find((h) => h.prefix === hand.prefix)!.category;

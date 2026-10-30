@@ -1,0 +1,4 @@
+/* B6: where the latency rows start, when the history cap has dropped older ones. */
+.stats-latency-cut {
+  margin: 0 0 0.5rem;
+}

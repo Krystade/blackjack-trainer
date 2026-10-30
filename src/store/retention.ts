@@ -24,6 +24,7 @@
  */
 
 import type { Stats } from './types';
+import { dayKeyOfIso } from './practiceDays';
 
 /** Entries kept per history array. ~2000 x the largest entry (176 chars for a
  * session) is about 350K characters for ONE full array; with eleven-plus
@@ -49,7 +50,7 @@ function tail<T>(value: T[] | undefined): T[] | undefined {
 export function capHistories(stats: Stats): Stats {
   const next = structuredClone(stats);
 
-  next.latencyHistory = tail(next.latencyHistory) as Stats['latencyHistory'];
+  next.latencyHistory = foldDroppedLatency(next);
   next.sessions = tail(next.sessions) as Stats['sessions'];
 
   // Every nested `{ history: [...] }` section, addressed generically so a
@@ -62,4 +63,32 @@ export function capHistories(stats: Stats): Stats {
   }
 
   return next;
+}
+
+/** B6: days of folded latency counts kept; the longest fixed range is 90 days. */
+export const LATENCY_DAILY_DAYS = 730;
+
+/**
+ * B6: cap the latency history, folding every graded row it drops into
+ * `latencyDaily` first. Mutates `next` (a clone) and returns the kept rows.
+ */
+function foldDroppedLatency(next: Stats): Stats['latencyHistory'] {
+  const rows = next.latencyHistory;
+  if (!Array.isArray(rows) || rows.length <= HISTORY_CAP) return rows;
+  const dropped = rows.slice(0, rows.length - HISTORY_CAP);
+  const daily: NonNullable<Stats['latencyDaily']> =
+    next.latencyDaily && typeof next.latencyDaily === 'object' ? { ...next.latencyDaily } : {};
+  for (const r of dropped) {
+    if (!r || r.correct === undefined) continue;
+    const day = dayKeyOfIso(r.date);
+    if (day === null) continue;
+    const cats = { ...(daily[day] ?? {}) };
+    const t = cats[r.category] ?? { n: 0, right: 0 };
+    cats[r.category] = { n: t.n + 1, right: t.right + (r.correct ? 1 : 0) };
+    daily[day] = cats;
+  }
+  const days = Object.keys(daily).sort();
+  for (const d of days.slice(0, Math.max(0, days.length - LATENCY_DAILY_DAYS))) delete daily[d];
+  next.latencyDaily = daily;
+  return rows.slice(rows.length - HISTORY_CAP);
 }

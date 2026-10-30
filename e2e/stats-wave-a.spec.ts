@@ -111,6 +111,28 @@ test('s10: a bounded range shows in-range hand accuracy from dated answers', asy
   await expect(hard.locator('.category-in-range')).toHaveText('Last 30 days: 3/8 (38%) timed answers');
 });
 
+test('B6: a range past the history cap still counts the answers the cap folded away', async ({ page }) => {
+  const recent = new Date(Date.now() - 3 * DAY).toISOString();
+  const d = new Date(Date.now() - 20 * DAY);
+  const p = (n: number) => String(n).padStart(2, '0');
+  const oldDay = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  await withStats(page, {
+    latencyHistory: [
+      { category: 'hard', elapsedMs: 900, date: recent, correct: true },
+      { category: 'hard', elapsedMs: 900, date: recent, correct: false },
+    ],
+    // 10 answers, 6 right, dropped by the cap 20 days ago.
+    latencyDaily: { [oldDay]: { hard: { n: 10, right: 6 } } },
+  });
+  await openStats(page);
+  const hard = page.locator('.category-row[data-hand="hard"]');
+  await page.getByRole('button', { name: 'Last 30 days', exact: true }).click();
+  await expect(hard.locator('.category-in-range')).toHaveText('Last 30 days: 7/12 (58%) timed answers');
+  await expect(page.getByTestId('stats-latency-cut')).toContainText('the accuracy counts every answer in the range');
+  await page.getByRole('button', { name: 'Last 7 days', exact: true }).click();
+  await expect(hard.locator('.category-in-range')).toHaveText('Last 7 days: 1/2 (50%) timed answers');
+});
+
 test('s06: Bet or sit shows the table decisions, and betting misses are not basic strategy errors', async ({
   page,
 }) => {

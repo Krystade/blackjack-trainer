@@ -858,6 +858,14 @@ export interface Stats {
     // the Stats range picker. Absent on rows written before it shipped.
     correct?: boolean;
   }[];
+  /**
+   * B6: the graded latency rows the history cap dropped, folded into a count
+   * per LOCAL day and category, so a 30- or 90-day accuracy is not read from
+   * the newest ~2000 rows (10-16 days at Jack's pace) under a 30-day label.
+   * Counts only: the median and pace readouts still need the rows, and say
+   * where they start. OPTIONAL: absent until the cap first drops a row.
+   */
+  latencyDaily?: Record<string, Partial<Record<Category, { n: number; right: number }>>>;
   // D1 part 1 (docs/BACKLOG.md, distraction training): telemetry for the
   // mid-drill interruption generator (drills/distraction.ts). This part is
   // additive-only -- nothing writes to this history yet; part 2 wires the
