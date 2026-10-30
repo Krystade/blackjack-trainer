@@ -1,0 +1,23 @@
+/* Wave X (item 4): "Tapping and holding is highlighting random text."
+   A long press anywhere in the game -- holding Peek, a held card, a button --
+   selected words and raised the iOS callout over the table. The shell selects
+   nothing; only what is there to be typed in or copied out opts back in:
+   form fields, editable text, and the read-back views (the diagnostic log and
+   the error's technical details are <pre>; the build id on Home). */
+html,
+body {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+input,
+textarea,
+[contenteditable]:not([contenteditable='false']),
+pre,
+code,
+.home-build {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}

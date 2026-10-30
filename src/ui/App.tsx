@@ -2,6 +2,8 @@ import { Suspense, startTransition, useEffect, useState } from 'react';
 import './app.css';
 import './themeCues.css';
 import './formControls.css';
+// Wave X: a long press never selects text in the game (fields and logs opt back in).
+import './selectGuard.css';
 import { Home } from './screens/Home';
 import { Drills } from './screens/Drills';
 import { Settings } from './screens/Settings';
