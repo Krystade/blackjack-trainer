@@ -1,0 +1,55 @@
+/* Wave X (item 3): "If I'm holding it I'm covering the info." The readout of
+   Hold to peek, on the side away from the holding thumb (mirrored for a left
+   hand), positioned so it moves nothing on the table, and opaque so it reads
+   cleanly over whatever it lies on.
+
+   Fix round 1: beside the button it sat 10 px from it, and a thumb pad is
+   100-130 css px across on a 13 mini with its tip past the point it presses.
+   Clear of the thumb means 120 px of the row between them, or 60 px of height
+   above the button. A phone's row has no 120 px to spare (375 - 2 x 16 gutter
+   - the 140 px button leaves 203, and the readout is about 125 wide), so on a
+   phone the readout floats above the dock, at the far gutter; where the row is
+   wide enough (the app is never wider than 480) it sits in the row at the far
+   gutter instead. */
+.peek-readout {
+  position: absolute;
+  bottom: calc(100% + 60px);
+  left: max(16px, env(safe-area-inset-left));
+  z-index: 6;
+  min-height: 48px;
+  box-sizing: border-box;
+  padding: 4px 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  border-radius: 10px;
+  border: 1px solid var(--accent);
+  background: var(--raised);
+  color: var(--ink);
+  font-size: var(--fs-sm);
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 2px 10px rgb(0 0 0 / 28%);
+}
+
+.peek-dock[data-hand='left'] .peek-readout {
+  left: auto;
+  right: max(16px, env(safe-area-inset-right));
+}
+
+@media (min-width: 460px) {
+  .peek-readout {
+    bottom: auto;
+    top: 50%;
+    transform: translateY(-50%);
+    /* Never so wide that it closes the 120 px. */
+    max-width: calc(min(100vw, 480px) - 2 * max(16px, env(safe-area-inset-left)) - 8.75rem - 120px);
+  }
+}
+
+.peek-readout .peek-depth {
+  font-size: var(--fs-xs);
+}

@@ -92,47 +92,7 @@
   display: none;
 }
 
-/* Wave X (item 3): "If I'm holding it I'm covering the info." The readout is
-   laid over the dock BESIDE the button, on the side away from the thumb: a
-   right thumb comes in from the lower right and covers the button and what is
-   right of and below it, so the readout sits to its left (mirrored for a left
-   hand). Positioned, so it moves nothing on the table, and opaque, so it reads
-   cleanly over whatever shares the row (Skip, a miss line). */
-.peek-readout {
-  --peek-gap: 10px;
-  position: absolute;
-  top: 50%;
-  right: calc(max(16px, env(safe-area-inset-right)) + 8.75rem + var(--peek-gap));
-  transform: translateY(-50%);
-  z-index: 6;
-  max-width: calc(100% - 2 * max(16px, env(safe-area-inset-left)) - 8.75rem - var(--peek-gap));
-  min-height: 48px;
-  box-sizing: border-box;
-  padding: 4px 12px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 1px;
-  border-radius: 10px;
-  border: 1px solid var(--accent);
-  background: var(--raised);
-  color: var(--ink);
-  font-size: var(--fs-sm);
-  line-height: 1.15;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  pointer-events: none;
-  box-shadow: 0 2px 10px rgb(0 0 0 / 28%);
-}
-
-.peek-dock[data-hand='left'] .peek-readout {
-  right: auto;
-  left: calc(max(16px, env(safe-area-inset-left)) + 8.75rem + var(--peek-gap));
-}
-
-.peek-readout .peek-depth {
-  font-size: var(--fs-xs);
-}
+/* The readout's place: peekReadout.css. */
 
 .peek-dock .peek-hold-btn[aria-pressed='true'] .peek-label {
   color: var(--accent);

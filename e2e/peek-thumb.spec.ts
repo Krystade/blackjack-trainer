@@ -7,11 +7,12 @@ import { openSettingsScreen, resolveInsurance, withProfile, withSettings } from 
  * right."
  *
  * The button sits under the holding thumb -- bottom right, or bottom left with
- * Settings > Handedness: Left -- and the readout shows beside it on the far
- * side. The thumb is simulated as the region a thumb on the button covers: the
- * button itself and everything from it out to the screen's corner on the
- * thumb's side (the thumb comes in from below and from that edge). The readout
- * must lie wholly outside it, and wholly on screen.
+ * Settings > Handedness: Left -- and the readout shows on the far side, well
+ * clear of it. Fix round 1: a thumb pad is 100-130 css px across on a 13 mini
+ * and its tip reaches past the point it presses, so "not overlapping the
+ * button" was 10 px of clearance and passed a readout the tip covered. Clear
+ * now means 120 px of the row between the readout and the button, or the
+ * readout's bottom 60 px above the button's top.
  */
 
 type Box = { x: number; y: number; width: number; height: number };
@@ -19,11 +20,12 @@ type Box = { x: number; y: number; width: number; height: number };
 const overlaps = (a: Box, b: Box) =>
   a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
 
-/** What a thumb holding `btn` covers, for a hand on `side`. */
-function thumb(btn: Box, side: 'right' | 'left', vw: number, vh: number): Box {
-  return side === 'right'
-    ? { x: btn.x, y: btn.y, width: vw - btn.x, height: vh - btn.y }
-    : { x: 0, y: btn.y, width: btn.x + btn.width, height: vh - btn.y };
+/** How far the readout is from a thumb on `btn`: across the row, and above it. */
+function clearance(btn: Box, readout: Box, side: 'right' | 'left'): { across: number; above: number } {
+  return {
+    across: side === 'right' ? btn.x - (readout.x + readout.width) : readout.x - (btn.x + btn.width),
+    above: btn.y - (readout.y + readout.height),
+  };
 }
 
 async function dealt(page: Page, w: number, h: number): Promise<void> {
@@ -44,7 +46,7 @@ async function hold(page: Page): Promise<{ btn: Box; readout: Box }> {
   return { btn, readout: (await readout.boundingBox())! };
 }
 
-for (const [w, h] of [[375, 812], [320, 568]] as const) {
+for (const [w, h] of [[375, 812], [320, 568], [480, 900]] as const) {
   for (const side of ['right', 'left'] as const) {
     test(`${side} hand at ${w}x${h}: the peek is under the thumb and its readout is clear of it`, async ({ page }) => {
       await withSettings(page, { countCheckEvery: 0, ...(side === 'left' ? { handedness: 'left' } : {}) });
@@ -57,9 +59,13 @@ for (const [w, h] of [[375, 812], [320, 568]] as const) {
       const bar = (await page.locator('.action-bar').boundingBox())!;
       expect(btn.y + btn.height).toBeLessThanOrEqual(bar.y + 1);
 
-      // The readout: not on the button, not under the thumb, all of it on screen.
+      // The readout: not on the button, on the far side, clear of the thumb,
+      // all of it on screen.
       expect(overlaps(readout, btn), 'readout on the button').toBe(false);
-      expect(overlaps(readout, thumb(btn, side, w, h)), 'readout under the thumb').toBe(false);
+      const centre = readout.x + readout.width / 2;
+      expect(side === 'right' ? centre < btn.x : centre > btn.x + btn.width, 'readout on the far side').toBe(true);
+      const { across, above } = clearance(btn, readout, side);
+      expect(across >= 120 || above >= 60, `clear of the thumb: ${across}px across, ${above}px above`).toBe(true);
       expect(readout.x).toBeGreaterThanOrEqual(0);
       expect(readout.x + readout.width).toBeLessThanOrEqual(w);
       expect(readout.y).toBeGreaterThanOrEqual(0);

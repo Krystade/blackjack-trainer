@@ -1,6 +1,7 @@
 import { useRef } from 'react';
 import type { KeyboardEvent, PointerEvent, ReactNode } from 'react';
 import './peekButton.css';
+import './peekReadout.css';
 
 interface PeekButtonProps {
   /** Whether the readout is showing. Owned by the caller, which also counts. */
@@ -31,8 +32,8 @@ interface PeekButtonProps {
  *
  * The width is fixed in peekButton.css: revealing must not move anything on
  * the table, or the act of peeking would shift the very cards being counted.
- * The readout is a sibling laid over the dock beside the button (positioned,
- * so it moves nothing either), on the side the thumb is not.
+ * The readout is a positioned sibling (so it moves nothing either), on the
+ * side the thumb is not and well clear of it (peekReadout.css).
  */
 export function PeekButton({ revealed, onReveal, onHide, readout, dataTc }: PeekButtonProps) {
   const heldRef = useRef(false);
@@ -93,8 +94,8 @@ export function PeekButton({ revealed, onReveal, onHide, readout, dataTc }: Peek
       <span className="peek-label">{revealed ? 'Peeking' : 'Hold to peek'}</span>
     </button>
     {/* Wave X (item 3): "If I'm holding it I'm covering the info." The
-        readout is beside the button, on the side away from the holding
-        thumb (peekButton.css), never on the button itself. */}
+        readout is away from the holding thumb (peekReadout.css), never on
+        or beside the button itself. */}
     {revealed && (
       <div className="peek-readout" role="status" data-testid="peek-readout">
         {readout}
