@@ -37,6 +37,7 @@ import { NumPad } from '../../components/NumPad';
 import { Segmented, Stepper } from '../Settings';
 import { useAudio } from '../../../audio/useAudio';
 import { cancelSpeech, speak, speakAsync } from '../../../audio/speech';
+import { startResumeProbe } from '../../../drills/resumeProbe';
 import { speechOptsFrom } from '../../../audio/speechOpts';
 import { answerPauseDelayMs, nextQuestionDelayMs } from '../../../audio/answerPause';
 import { requestWakeLock, releaseWakeLock } from '../../../audio/wakeLock';
@@ -85,7 +86,7 @@ import './countLeadIn.css';
 import './countTableDeal.css';
 import { tableDealOf, tableHoldMs, tableRoundPlan, tableView, type TableDeal } from '../../countTableDeal';
 import { DEALER_SEAT } from '../../dealSequence';
-import { COUNT_AGAIN_PREFIX, COUNT_HIDE_PAUSED_LINE, COUNT_PAUSED_LINE, COUNT_RESUME_PROBE_MS, COUNT_RESUMING_LINE, isCountResumeWord } from '../../../drills/countPause';
+import { COUNT_AGAIN_PREFIX, COUNT_HIDE_PAUSED_LINE, COUNT_PAUSED_LINE, COUNT_RESUMING_LINE, isCountResumeWord } from '../../../drills/countPause';
 import { EASY_FIRST_RUN, hiLoLabel, hiLoShown, offersEasyFirstRun } from '../../../drills/hiLoAid';
 import './hiLoAid.css';
 
@@ -1137,21 +1138,17 @@ export function CountDrillView({
   resumeRunRef.current = resumeRun;
   useEffect(() => {
     if (!paused || !unheardHold) return undefined;
-    let stopped = false;
-    let timer = 0;
-    const probe = async () => {
-      if (stopped) return;
-      const outcome = await speakAsync(COUNT_RESUMING_LINE, speechOptsFrom(settings.audio));
-      if (stopped) return;
-      diag('life', 'count-resume-probe', { outcome });
-      if (outcome === 'spoken') resumeRunRef.current();
-      else timer = window.setTimeout(() => void probe(), COUNT_RESUME_PROBE_MS);
-    };
-    timer = window.setTimeout(() => void probe(), COUNT_RESUME_PROBE_MS);
-    return () => {
-      stopped = true;
-      window.clearTimeout(timer);
-    };
+    // Cleanup runs on any resume (tap, wheel, voice): a probe line still in
+    // flight is stopped there, before the replayed card is spoken.
+    const probe = startResumeProbe({
+      say: () => speakAsync(COUNT_RESUMING_LINE, speechOptsFrom(settings.audio)),
+      stopSpeech: () => cancelSpeech(),
+      schedule: (fn, ms) => window.setTimeout(fn, ms),
+      cancel: (id) => window.clearTimeout(id),
+      onHeard: () => resumeRunRef.current(),
+      log: ({ outcome }) => diag('life', 'count-resume-probe', { outcome }),
+    });
+    return () => probe.stop();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paused, unheardHold]);
 
