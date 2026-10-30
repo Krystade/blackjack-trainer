@@ -143,6 +143,45 @@ describe('wakeLock — stubbed navigator.wakeLock', () => {
 
 });
 
+describe('wakeLock — released while the request is in flight (D20)', () => {
+  afterEach(() => {
+    delete (navigator as { wakeLock?: unknown }).wakeLock;
+  });
+
+  it('a lock that resolves after its only holder let go is released, not kept', async () => {
+    const release = vi.fn().mockResolvedValue(undefined);
+    let resolve!: (v: unknown) => void;
+    const request = vi.fn(() => new Promise((r) => (resolve = r)));
+    (navigator as unknown as { wakeLock: unknown }).wakeLock = { request };
+    const { requestWakeLock, releaseWakeLock, isWakeLockActive } = await freshModule();
+
+    const pending = requestWakeLock('voice');
+    await releaseWakeLock('voice');
+    resolve({ release, addEventListener: vi.fn(), removeEventListener: vi.fn() });
+    await pending;
+
+    expect(release).toHaveBeenCalledTimes(1);
+    expect(isWakeLockActive()).toBe(false);
+  });
+
+  it('is kept when the holder came back before it resolved', async () => {
+    const release = vi.fn().mockResolvedValue(undefined);
+    let resolve!: (v: unknown) => void;
+    const request = vi.fn(() => new Promise((r) => (resolve = r)));
+    (navigator as unknown as { wakeLock: unknown }).wakeLock = { request };
+    const { requestWakeLock, releaseWakeLock, isWakeLockActive } = await freshModule();
+
+    const pending = requestWakeLock('voice');
+    await releaseWakeLock('voice');
+    const again = requestWakeLock('voice');
+    resolve({ release, addEventListener: vi.fn(), removeEventListener: vi.fn() });
+    await Promise.all([pending, again]);
+
+    expect(release).not.toHaveBeenCalled();
+    expect(isWakeLockActive()).toBe(true);
+  });
+});
+
 describe('wakeLock — request() rejects (browsers reject when the tab is hidden)', () => {
   afterEach(() => {
     delete (navigator as { wakeLock?: unknown }).wakeLock;

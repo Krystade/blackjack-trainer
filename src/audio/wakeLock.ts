@@ -71,12 +71,19 @@ async function acquire(): Promise<void> {
       const lock = await navigator.wakeLock.request('screen');
       // Re-check after the await: a visibilitychange could have acquired one
       // while this request was in flight. Keep the winner, release the loser.
-      if (sentinel) {
+      //
+      // D20: and nobody may want it any more. A holder released while the
+      // request was in flight found no sentinel, so it had nothing to free;
+      // keeping this lock would leave the screen awake with no holder until
+      // the page was hidden.
+      if (sentinel || !wantedByAnyone()) {
+        const late = !sentinel;
         try {
           await lock.release();
         } catch {
           // never throw
         }
+        if (late) diag('wake', 'released-late');
         return;
       }
       sentinel = lock;
