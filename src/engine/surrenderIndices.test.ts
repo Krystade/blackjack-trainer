@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { Card, Rank } from './cards';
-import { correctPlay } from './strategy';
+import { correctPlay, basicPlay } from './strategy';
+import { classifyAction } from './grade';
 import type { PlayContext } from './strategy';
 import { indexSetFor, FAB_4_H17, FAB_4_S17 } from './deviations';
 import { getChart } from './charts';
@@ -268,5 +269,34 @@ describe('the advice is attributed to the index, not to basic strategy', () => {
   it('still says basic on an unindexed surrender', () => {
     const advice = correctPlay(hard(16), '10', 0, CAN, H17);
     expect(advice.source).toBe('basic');
+  });
+});
+
+// C5 (audit 2026-10-29): below an index on a cell the chart surrenders, the
+// play was reported as "Basic hit (surrender unavailable)" with no index, so
+// the miss was a basic error and the index never heard of it.
+describe('a play below a surrender index is filed under the index (C5)', () => {
+  it('15 v 10 at TC −1: hit, attributed to sur15v10, and no false "unavailable"', () => {
+    const advice = correctPlay(hard(15), '10', -1, CAN, H17);
+    expect(advice.action).toBe('hit');
+    expect(advice.source).toBe('illustrious18');
+    expect(advice.deviationId).toBe('sur15v10');
+    expect(advice.reason).not.toContain('unavailable');
+  });
+
+  it('surrendering there is a missed deviation on sur15v10', () => {
+    const withCount = correctPlay(hard(15), '10', -1, CAN, H17);
+    const basicOnly = basicPlay(hard(15), '10', CAN, H17);
+    expect(classifyAction('surrender', withCount, basicOnly, hard(15), '10', -1, H17).classification).toBe('missed-deviation');
+  });
+
+  it('surrendering 16 v 8 early (TC +2, index +4) is a phantom deviation on sur16v8', () => {
+    const withCount = correctPlay(hard(16), '8', 2, CAN, H17);
+    const basicOnly = basicPlay(hard(16), '8', CAN, H17);
+    expect(withCount.action).toBe('hit');
+    expect(classifyAction('surrender', withCount, basicOnly, hard(16), '8', 2, H17)).toMatchObject({
+      classification: 'phantom-deviation',
+      phantomOf: 'sur16v8',
+    });
   });
 });

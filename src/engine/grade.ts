@@ -309,6 +309,14 @@ export function phantomDeviationId(
       if (dev.up === undefined) continue; // Should not happen
       if (upIndex(dev.up) !== upIdx) continue; // Different upcard
       return dev.id; // Found a matching active soft deviation with the same action
+    } else if (dev.kind === 'surrender') {
+      // C5: surrendering below a Fab 4 index (16 v 8 at +2) is an early
+      // deviation on that index, not a basic error.
+      if (hv.soft) continue;
+      if (dev.total !== hv.total) continue;
+      if (dev.up === undefined) continue;
+      if (upIndex(dev.up) !== upIdx) continue;
+      return dev.id;
     } else if (dev.kind === 'pair10') {
       // Pair10 deviations only match ten-value pairs
       if (!isTenPair) continue;

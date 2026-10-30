@@ -140,12 +140,14 @@ function resolveAsTotal(
   //
   // Cells with no surrender index keep the old behaviour exactly, which is what
   // leaves 16 v 10, 16 v A and 17 v A surrendering unconditionally.
+  let surBelow: Deviation | undefined;
   if (ctx.canSurrender) {
     const sur = soft ? undefined : findSurrenderDeviation(deviations, total, dealerUp);
     if (sur) {
       if (sur.dir === 'gte' ? tc >= sur.threshold : tc <= sur.threshold) {
         return deviation(sur, 'surrender');
       }
+      surBelow = sur;
       // Below the index: surrender is off for this cell. Fall through rather
       // than returning, so Rh/Rs resolve to hit/stand in step 4 and any
       // hard-total deviation on the same cell still gets its say.
@@ -176,6 +178,15 @@ function resolveAsTotal(
       // 'stand' | 'hit' deviations always apply once triggered.
       return deviation(dev, dev.action as Action);
     }
+  }
+
+  // C5: below a surrender index on a cell the chart SURRENDERS (Rh/Rs), the
+  // index is what takes surrender away -- so the play is the index's, filed
+  // under it, not "basic hit (surrender unavailable)" when it was available.
+  // (Below an index on a plain H cell the play is simply basic.)
+  if (surBelow && (action === 'Rh' || action === 'Rs')) {
+    const play: Action = action === 'Rh' ? 'hit' : 'stand';
+    return { action: play, source: 'illustrious18', deviationId: surBelow.id, reason: `${surBelow.label}; below it, ${play}` };
   }
 
   // Step 4: basic chart, resolving conditionals.
@@ -242,8 +253,12 @@ function pairTotalIndex(
     if (dev.action !== 'double') return deviation(dev, dev.action as Action);
     if (ctx.canDouble) return deviation(dev, 'double');
   }
-  if (surrenderOff && action === 'Rh') return basic('hit', `Basic hit vs dealer ${dealerUp}`);
-  if (surrenderOff && action === 'Rs') return basic('stand', `Basic stand vs dealer ${dealerUp}`);
+  // C5: as in resolveAsTotal, the index took the chart's surrender away.
+  if (surrenderOff && (action === 'Rh' || action === 'Rs')) {
+    const sur = findSurrenderDeviation(deviations, hv.total, dealerUp)!;
+    const play: Action = action === 'Rh' ? 'hit' : 'stand';
+    return { action: play, source: 'illustrious18', deviationId: sur.id, reason: `${sur.label}; below it, ${play}` };
+  }
   return undefined;
 }
 
