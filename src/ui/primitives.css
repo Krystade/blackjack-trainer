@@ -291,10 +291,12 @@ body:has(.fieldtest-running) .fieldtest-screen {
   /* Everything above the screens: status-bar inset plus the mute strip. */
   --chrome-top: calc(var(--safe-top) + var(--mute-h));
 }
+/* D15: only the (retired) strip shrinks on a short viewport. The disc used
+   to shrink to 32px with it, for a strip muteSeat.css no longer draws, while
+   the gear beside it stayed 44px. */
 @media (max-height: 699px) {
   :root {
     --mute-h: 32px;
-    --mute-disc: 32px;
   }
 }
 /* THE FIELD TEST KEEPS ITS HEIGHT. Its answer stack is laid out to the pixel

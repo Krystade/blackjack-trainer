@@ -8,8 +8,8 @@ import { withSettings, withStats, openSettingsScreen, statsTab, shot, openCountO
  *    44px strip above every screen. On every screen, scrolled to the top and
  *    to the bottom, no control and no heading text may be visible under the
  *    disc, and no text may paint under the status bar. Run at no inset, at
- *    the 13 mini's 47px inset, and at 375x667 (Safari with its toolbars up,
- *    where the disc shrinks to 32px).
+ *    the 13 mini's 47px inset, and at 375x667 (Safari with its toolbars up;
+ *    the disc stays 44px there too since D15).
  * 2. Controls the operator hits one-handed are at least 44px in both axes.
  */
 test.use({ viewport: { width: 375, height: 812 } });
@@ -433,3 +433,29 @@ test('B1: a lazily opened screen is never in the document under the last screen\
   const first = await page.evaluate(() => (window as unknown as { __firstTestKit?: unknown }).__firstTestKit);
   expect(first).toEqual({ screen: 'testkit', scrollY: 0 });
 });
+
+/**
+ * D15: THE MUTE DISC IS 44PX ON A SHORT VIEWPORT TOO. It shrank to 32x32
+ * under 700px tall, for a strip that no longer exists, while the gear beside
+ * it stayed 44px.
+ */
+for (const [w, h] of [[375, 667], [320, 568]] as const) {
+  test(`D15: at ${w}x${h} the mute disc is a 44px target on Home, Play and a drill`, async ({ page }) => {
+    await page.setViewportSize({ width: w, height: h });
+    await withSettings(page, { audio: { enabled: true } });
+    await page.goto('/?e2e=1');
+    const disc = page.locator(MUTE).first();
+    const size = async () => (await disc.boundingBox())!;
+    await expect(disc).toBeVisible();
+    for (const where of ['Home', 'Play', 'Flashcards'] as const) {
+      if (where === 'Play') await page.getByRole('button', { name: 'Play', exact: true }).click();
+      if (where === 'Flashcards') {
+        await page.goto('/?e2e=1');
+        await openDrill(page, 'Flashcards');
+      }
+      await expect(disc).toBeVisible();
+      const b = await size();
+      expect(Math.min(b.width, b.height), `${where}: the disc is ${b.width}x${b.height}`).toBeGreaterThanOrEqual(44);
+    }
+  });
+}

@@ -4730,14 +4730,11 @@ details.stats-section > summary::after {
   margin-left: calc(-1 * var(--space-3));
 }
 
-/* The mute disc is the same floor, except in a short viewport (Safari with
-   its toolbars up leaves ~635px): there the strip it lives in shrinks to 32px
-   so the drill screens, which are tuned to fit 635, still do. */
-@media (min-height: 700px) {
-  .mute-btn {
-    min-width: 44px;
-    min-height: 44px;
-  }
+/* The mute disc is the same floor, at every height (D15): the strip it once
+   shrank to 32px for is gone (muteSeat.css seats it in each top bar). */
+.mute-btn {
+  min-width: 44px;
+  min-height: 44px;
 }
 
 /* The field test has no mute strip (primitives.css): its top bar makes room
