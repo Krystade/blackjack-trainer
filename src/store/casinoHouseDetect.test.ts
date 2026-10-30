@@ -48,14 +48,38 @@ describe('house games are detected on import', () => {
     ['label', { label: 'Joker blackjack' }],
     ['label', { label: 'Natural 22' }],
     ['house name', { variantName: 'No-Bust 21' }],
-    ['notes', { notes: 'Card room game, player-dealer rotates' }],
+    ['notes', { notes: 'Card-room house game, player-dealer rotates' }],
     ['notes', { notes: 'two jokers in each deck' }],
+    ['notes', { notes: 'No bust rule: a player 22 pushes' }],
+    ['house name', { variantName: '21st Century Blackjack' }],
   ])('reads the %s', (_where, over) => {
     const c = { ...hustler, games: [{ ...hustler.games[0]!, ...over }] };
     const r = mergeImport(emptyCasinoLog(), file([c]));
     if (!r.ok) throw new Error(r.error);
     expect(gameIn(r.log, 'g-import-hustler-casino-1').houseGame).toBe(true);
     expect(r.report.houseGamesDetected).toHaveLength(1);
+  });
+
+  // R3 (review of C9): ordinary card-room notes and side-bet names are not
+  // house-game signs; each of these used to tick the box.
+  it.each([
+    ['notes', { notes: 'Lucky Ladies, no Buster' }],
+    ['notes', { notes: 'Casino Buster bonus' }],
+    ['label', { label: 'Buster Blackjack side bet' }],
+    ['notes', { notes: '$1 card room collection per hand' }],
+    ['label', { label: 'Cardroom commission game' }],
+    ['notes', { notes: 'Main pit by the cardroom' }],
+    ['notes', { notes: 'Card room game, player-dealer rotates' }],
+    ['notes', { notes: 'no jokers, regular 6D shoe' }],
+    ['notes', { notes: 'Natural 21 pays 3:2' }],
+    ['house name', { variantName: 'Casino Buster 21' }],
+  ])('does not read an ordinary game from its %s', (_where, over) => {
+    const c = { ...hustler, games: [{ ...hustler.games[0]!, ...over }] };
+    const r = mergeImport(emptyCasinoLog(), file([c]));
+    if (!r.ok) throw new Error(r.error);
+    expect(gameIn(r.log, 'g-import-hustler-casino-1').houseGame).toBeUndefined();
+    expect(r.report.houseGamesDetected).toEqual([]);
+    expect(isHouseGame(gameIn(r.log, 'g-import-hustler-casino-1'))).toBe(false);
   });
 
   it('keeps an untick: a game marked not a house game here stays unticked, even when the file is newer', () => {

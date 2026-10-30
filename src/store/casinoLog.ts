@@ -501,7 +501,7 @@ function normGameRules(x: unknown, fallbackId: string, legacy?: Record<string, u
  * blackjack's (the state's filed rule sheets for these games). A name is
  * only a label, so only these, not every variantName, mark a game.
  */
-const HOUSE_GAME_NAME = /21st\s*century|natural\s*22|no[\s-]*bust/i;
+const HOUSE_GAME_NAME = /\b21st\s*century\b|\bnatural\s*22\b|\bno[\s-]*bust\b/i;
 
 /** C9: a game the simulator cannot deal -- marked a house game, or named as one. */
 export function isHouseGame(game: Pick<CasinoGame, 'houseGame' | 'variantName'>): boolean {
@@ -513,10 +513,14 @@ export function isHouseGame(game: Pick<CasinoGame, 'houseGame' | 'variantName'>)
  * C9 follow-up: the words in a game's own text -- its label, house name or
  * notes -- that mark a house game: jokers in the deck, "Natural 22", a
  * no-bust rule, the 21st Century house name, or the game called a card-room
- * game. A casino logged as a card room is not one by itself: Wave M deals
- * card-room commission games as blackjack.
+ * house game. A casino logged as a card room is not one by itself: Wave M
+ * deals card-room commission games as blackjack.
  */
-const HOUSE_GAME_SIGNS = /joker|natural\s*22|no[\s-]*bust|21st\s*century|card\s*-?room/i;
+// R3 (review of C9): whole words only -- "no Buster" (a side bet) and
+// "casi-no Bust-er" are not "no bust" -- and "no jokers" says the opposite.
+// A card room alone is not a sign (its commission games are dealt as
+// blackjack); only the checkbox's own words, "card-room house game", are.
+const HOUSE_GAME_SIGNS = /(?<!\bno\s{1,3})\bjokers?\b|\bnatural\s*22\b|\bno[\s-]*bust\b|\b21st\s*century\b|\bcard[\s-]*room\s+house\s+game\b/i;
 
 /** C9 follow-up: does this game's own text say it is a house game? */
 export function detectHouseGame(game: Pick<CasinoGame, 'label' | 'variantName' | 'notes'>): boolean {
