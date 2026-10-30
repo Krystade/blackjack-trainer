@@ -111,6 +111,8 @@ export function applyImport(plan: ImportPlan, commit: (next: CasinoLog) => boole
   ];
   if (p.kept > 0) parts.push(`${p.kept} already up to date`);
   if (p.skipped > 0) parts.push(`${p.skipped} unreadable skipped`);
+  // C9 follow-up: games ticked as house games from their own text.
+  if (p.houseGamesDetected.length > 0) parts.push(`${p.houseGamesDetected.length} house game${p.houseGamesDetected.length === 1 ? '' : 's'} detected`);
   const extra =
     p.extraRunning > 0
       ? ` ${p.extraRunning} running session${p.extraRunning === 1 ? '' : 's'} from the file left open: end ${p.extraRunning === 1 ? 'it' : 'them'} from history.`

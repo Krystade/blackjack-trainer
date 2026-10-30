@@ -173,8 +173,16 @@ export interface CasinoGame {
    * "Natural 22", a player bust that is not an instant loss -- logged as
    * standard blackjack. The simulator deals standard blackjack only, so the
    * game is not modelled (see isHouseGame). Absent = not marked.
+   * C9 follow-up: `false` is the owner's untick, which outranks a house
+   * name and stops an import ticking it again.
    */
-  houseGame?: true;
+  houseGame?: boolean;
+  /**
+   * C9 follow-up: House game was ticked by an import or a paste, from the
+   * game's own text (see detectHouseGame), not by the owner. The editor says
+   * so until the box is touched. Only ever beside `houseGame: true`.
+   */
+  houseGameDetected?: true;
   /**
    * Wave W (review S2): the current version's id. Always set on a game read
    * from the log (`normGame`); a game being built may leave it to the save.
@@ -483,7 +491,8 @@ function normGameRules(x: unknown, fallbackId: string, legacy?: Record<string, u
   if (sideBets.length > 0) game.sideBets = sideBets;
   Object.assign(game, normWaveMGame(g));
   if (isPresetId(g.variant)) game.variant = g.variant;
-  if (g.houseGame === true) game.houseGame = true;
+  if (typeof g.houseGame === 'boolean') game.houseGame = g.houseGame;
+  if (g.houseGame === true && g.houseGameDetected === true) game.houseGameDetected = true;
   return game;
 }
 
@@ -496,7 +505,53 @@ const HOUSE_GAME_NAME = /21st\s*century|natural\s*22|no[\s-]*bust/i;
 
 /** C9: a game the simulator cannot deal -- marked a house game, or named as one. */
 export function isHouseGame(game: Pick<CasinoGame, 'houseGame' | 'variantName'>): boolean {
-  return game.houseGame === true || (game.variantName !== undefined && HOUSE_GAME_NAME.test(game.variantName));
+  if (game.houseGame !== undefined) return game.houseGame;
+  return game.variantName !== undefined && HOUSE_GAME_NAME.test(game.variantName);
+}
+
+/**
+ * C9 follow-up: the words in a game's own text -- its label, house name or
+ * notes -- that mark a house game: jokers in the deck, "Natural 22", a
+ * no-bust rule, the 21st Century house name, or the game called a card-room
+ * game. A casino logged as a card room is not one by itself: Wave M deals
+ * card-room commission games as blackjack.
+ */
+const HOUSE_GAME_SIGNS = /joker|natural\s*22|no[\s-]*bust|21st\s*century|card\s*-?room/i;
+
+/** C9 follow-up: does this game's own text say it is a house game? */
+export function detectHouseGame(game: Pick<CasinoGame, 'label' | 'variantName' | 'notes'>): boolean {
+  return [game.label, game.variantName, game.notes].some((t) => t !== undefined && HOUSE_GAME_SIGNS.test(t));
+}
+
+/**
+ * C9 follow-up: tick House game on each game the file brought whose box was
+ * never set either way, when its text says so (detectHouseGame). A box set
+ * here (an untick is `false`) is the owner's word: a newer file that never
+ * set it does not undo it, and nothing is detected over it.
+ */
+function tickHouseGames(log: CasinoLog, local: CasinoLog, fileGames: ReadonlySet<string>): { log: CasinoLog; detected: HouseGameDetection[] } {
+  const here = new Map<string, CasinoGame>();
+  for (const c of local.casinos) for (const g of c.games) if (g.houseGame !== undefined) here.set(g.id, g);
+  const detected: HouseGameDetection[] = [];
+  let any = false;
+  const casinos = log.casinos.map((c) => {
+    let changed = false;
+    const games = c.games.map((g) => {
+      if (!fileGames.has(g.id) || g.houseGame !== undefined) return g;
+      const set = here.get(g.id);
+      if (set !== undefined) {
+        changed = true;
+        return set.houseGameDetected === true ? { ...g, houseGame: set.houseGame, houseGameDetected: true as const } : { ...g, houseGame: set.houseGame };
+      }
+      if (!detectHouseGame(g)) return g;
+      changed = true;
+      detected.push({ casinoId: c.id, casino: c.name, gameId: g.id, label: g.label ?? g.variantName ?? null });
+      return { ...g, houseGame: true, houseGameDetected: true as const };
+    });
+    any ||= changed;
+    return changed ? { ...c, games } : c;
+  });
+  return { log: any ? { ...log, casinos } : log, detected };
 }
 
 // ---------------------------------------------------------------- versions (Wave W, review S2)
@@ -1325,6 +1380,15 @@ export function serializeExport(log: CasinoLog, now: number, corrupt: string | n
   return JSON.stringify(out, null, 2);
 }
 
+/** C9 follow-up: a game an import ticked as a house game. */
+export interface HouseGameDetection {
+  casinoId: string;
+  casino: string;
+  gameId: string;
+  /** The game's label, else its house name; null when it has neither. */
+  label: string | null;
+}
+
 export interface MergeReport {
   casinosAdded: number;
   casinosUpdated: number;
@@ -1359,6 +1423,8 @@ export interface MergeReport {
    * unless `restore` names them; `restore` here says which are coming back.
    */
   deleted: { id: string; name: string; restore: boolean; kind?: 'session' }[];
+  /** C9 follow-up: games the file brought that this import ticked as house games. */
+  houseGamesDetected: HouseGameDetection[];
 }
 
 /** Re-review R2: a game whose rules a versionless file changes. */
@@ -1641,7 +1707,9 @@ export function mergeImport(
   const merged = mergeLogs(kept.local, held.inc, fromV1);
   const { casinos, sessions } = merged;
   const applied = applyRules(merged.log, kept.local, held.pending, rules);
-  const log = applied.log;
+  const fileGames = new Set(held.inc.casinos.flatMap((c) => c.games.map((g) => g.id)));
+  const houses = tickHouseGames(applied.log, kept.local, fileGames);
+  const log = houses.log;
   if (applied.changes.length > 0) {
     // A casino whose rules changed only through a choice counts as updated.
     for (const o of casinos.outcomes) {
@@ -1670,6 +1738,7 @@ export function mergeImport(
       nameMatches: matched.matches,
       ruleChanges: applied.changes,
       deleted: kept.deleted,
+      houseGamesDetected: houses.detected,
     },
   };
 }

@@ -1,5 +1,5 @@
 import type { CasinoGame, DeckCount, MidShoeEntry, UNSURE_FIELDS } from '../../../store/casinoLog';
-import { DEFAULT_ROUNDS_PER_HOUR } from '../../../store/casinoLog';
+import { DEFAULT_ROUNDS_PER_HOUR, isHouseGame } from '../../../store/casinoLog';
 import { PRESET_IDS, PRESET_LABEL, isPresetId } from '../../../engine/variants/rules';
 import { Choice, Field, FieldGroup, MoneyInput } from './fields';
 import type { GameText } from './casinoInputs';
@@ -243,11 +243,17 @@ export function GameEditor({
           type="checkbox"
           name={n('houseGame')}
           data-testid="game-house"
-          checked={game.houseGame === true}
-          onChange={(e) => onChange({ houseGame: e.target.checked ? true : undefined })}
+          checked={isHouseGame(game)}
+          onChange={(e) => onChange({ houseGame: e.target.checked, houseGameDetected: undefined })}
         />
         <span>Card-room house game (jokers, Natural 22, no-bust): not modelled</span>
       </label>
+      {/* C9 follow-up: an import ticked it from the game's own text; the owner has the last word. */}
+      {game.houseGame === true && game.houseGameDetected === true && (
+        <p className="cas-field-hint cas-house-detected" data-testid="game-house-detected">
+          Detected house game, untick if wrong.
+        </p>
+      )}
       <Field label="Rounds per hour" hint={`Blank = ${DEFAULT_ROUNDS_PER_HOUR}. Fewer at a full table.`}>
         <input
           className="cas-input"

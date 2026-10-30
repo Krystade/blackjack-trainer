@@ -558,3 +558,59 @@ test('Paste of an older file: a session deleted here stays out unless ticked', a
   await page.getByTestId('import-confirm').click();
   expect((await stored(page)).sessions.map((x: { id: string }) => x.id)).toEqual(['s-dup']);
 });
+
+/**
+ * C9 follow-up: a paste ticks House game on a game whose own text names a
+ * house game, says so in the preview, the import line and the editor, and
+ * an untick is kept. Viejas's two games are copied from Jack's import file
+ * (casino-import-2026-10-20.json); Hustler, a card room with no such text,
+ * stays standard blackjack.
+ */
+test('a pasted house game is detected and ticked, says so, and an untick is kept', async ({ page }) => {
+  await seed(page, { ...LOG, casinos: [] });
+  await page.goto('/?e2e=1');
+  await openCasino(page);
+  const g = { decks: null, s17: false, das: true, surrender: true, payout: '6:5', cutDecksLeft: null, midShoeEntry: 'unknown', csm: false, rsa: false, maxSplitHands: 3 };
+  const file = {
+    app: 'bjtrainer-casino-log',
+    version: 2,
+    exportedAt: AT,
+    casinos: [
+      { ...base, id: 'c-import-viejas', name: 'Viejas', kind: 'casino', notes: '', games: [{ ...g, id: 'g-import-viejas-1', s17: true }, { ...g, id: 'g-import-viejas-2', label: '21st Century', variantName: '21st Century Blackjack', commissionPer100: 1 }] },
+      { ...base, id: 'c-import-hustler-casino', name: 'Hustler Casino', kind: 'cardroom', notes: '', games: [{ ...g, id: 'g-import-hustler-casino-1', s17: true, commissionPer100: 1 }] },
+    ],
+    sessions: [],
+    settings: { startingBankroll: null, updatedAt: null },
+  };
+  await page.getByRole('button', { name: 'Paste JSON' }).click();
+  await page.getByTestId('casino-paste-text').fill(JSON.stringify(file));
+  await page.getByTestId('casino-paste-import').click();
+  await expect(page.getByTestId('import-preview').getByTestId('import-house-detected')).toHaveText(
+    'Detected house game: Viejas 21st Century. Ticked as not modelled; untick in the game if wrong.',
+  );
+  await page.getByTestId('import-confirm').click();
+  await expect(page.getByRole('status').filter({ hasText: 'Imported' })).toHaveText('Imported: 2 casinos added, 0 updated, 0 sessions added, 0 updated, 1 house game detected.');
+  const games = (await stored(page)).casinos.flatMap((c: { games: { id: string; houseGame?: boolean }[] }) => c.games);
+  expect(games.filter((x: { houseGame?: boolean }) => x.houseGame === true).map((x: { id: string }) => x.id)).toEqual(['g-import-viejas-2']);
+
+  await page.getByTestId('casino-row').filter({ hasText: 'Hustler' }).click();
+  await page.getByRole('button', { name: 'Edit casino', exact: true }).click();
+  await expect(page.getByTestId('game-house')).not.toBeChecked();
+  await expect(page.getByTestId('game-house-detected')).toHaveCount(0);
+  await page.getByRole('button', { name: /Back$/ }).first().click();
+  await page.getByRole('button', { name: /Back$/ }).first().click();
+
+  await page.getByTestId('casino-row').filter({ hasText: 'Viejas' }).click();
+  await page.getByRole('button', { name: 'Edit casino', exact: true }).click();
+  const boxes = page.getByTestId('game-house');
+  await expect(boxes).toHaveCount(2);
+  await expect(boxes.nth(0)).not.toBeChecked();
+  await expect(boxes.nth(1)).toBeChecked();
+  await expect(page.getByTestId('game-house-detected')).toHaveText('Detected house game, untick if wrong.');
+  await boxes.nth(1).uncheck();
+  await expect(page.getByTestId('game-house-detected')).toHaveCount(0);
+  await saveFixing(page);
+  const after = (await stored(page)).casinos.find((c: { id: string }) => c.id === 'c-import-viejas').games[1];
+  expect(after.houseGame).toBe(false);
+  expect(after.houseGameDetected).toBeUndefined();
+});

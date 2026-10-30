@@ -418,6 +418,7 @@ describe('export and import', () => {
       nameMatches: [],
       ruleChanges: [],
       deleted: [],
+      houseGamesDetected: [],
     });
   });
 

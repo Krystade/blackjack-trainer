@@ -73,6 +73,12 @@ export function ImportPreview({
         <li data-testid="import-sessions">
           <strong>Sessions:</strong> {r.sessionsAdded} added, {r.sessionsUpdated} updated
         </li>
+        {r.houseGamesDetected.length > 0 && (
+          <li data-testid="import-house-detected">
+            <strong>Detected house game{r.houseGamesDetected.length === 1 ? '' : 's'}:</strong>{' '}
+            {r.houseGamesDetected.map((h) => (h.label === null ? h.casino : `${h.casino} ${h.label}`)).join(', ')}. Ticked as not modelled; untick in the game if wrong.
+          </li>
+        )}
         {r.skipped > 0 && <li data-testid="import-skipped">{count(r.skipped, 'entry', 'entries')} in it could not be read and would be skipped.</li>}
       </ul>
       {r.nameMatches.map((m) => (
