@@ -69,6 +69,16 @@ for (const [w, h] of [[375, 812], [320, 568], [480, 900]] as const) {
       expect(readout.x).toBeGreaterThanOrEqual(0);
       expect(readout.x + readout.width).toBeLessThanOrEqual(w);
       expect(readout.y).toBeGreaterThanOrEqual(0);
+      // D-extra: and it covers no card. At 320x568 its spot 60 px above the
+      // button was inside the player's hand.
+      const onCard = await page.evaluate(() => {
+        const r = document.querySelector('[data-testid="peek-readout"]')!.getBoundingClientRect();
+        return [...document.querySelectorAll('.table-screen .card')].some((c) => {
+          const b = c.getBoundingClientRect();
+          return b.width > 0 && r.left < b.right && b.left < r.right && r.top < b.bottom && b.top < r.bottom;
+        });
+      });
+      expect(onCard, 'readout covers a card').toBe(false);
       // Its text is not clipped by its own box.
       const clipped = await page
         .getByTestId('peek-readout')
