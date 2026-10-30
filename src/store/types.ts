@@ -839,6 +839,9 @@ export interface Stats {
     // Wave B2, R3: bet and play-or-sit decisions graded wrong, counted beside
     // the per-100 figure (which prices play mistakes only).
     betMisses?: number;
+    // C18 (audit 2026-10-29): bet and play-or-sit decisions graded, right or
+    // wrong; absent when none were (bet spread off) and on older rows.
+    betsGraded?: number;
     // G2 (L-8): dealer payout errors made this session, how many were caught
     // with Foul, and Foul calls on a correct payout. Present only on a session
     // that played with Dealer mistakes on; kept out of every accuracy figure.

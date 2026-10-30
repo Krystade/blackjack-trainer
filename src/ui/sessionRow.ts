@@ -32,14 +32,17 @@ export interface SessionRowInput {
   dealerMistakesTraining?: true;
 }
 
+const isBetDecision = (e: GradedEvent) => e.kind === 'bet' || e.kind === 'wong' || e.kind === 'wongIn';
+
 /** Bet-size and play-or-sit decisions graded wrong (Wave J: the back-count entry included). */
 export function betMissCount(events: readonly GradedEvent[]): number {
-  return events.filter((e) => (e.kind === 'bet' || e.kind === 'wong' || e.kind === 'wongIn') && !e.correct).length;
+  return events.filter((e) => isBetDecision(e) && !e.correct).length;
 }
 
 export function sessionRowFor(i: SessionRowInput): SessionRow {
   const plays = i.events.filter((e) => e.kind === 'action');
   const betMisses = betMissCount(i.events);
+  const betsGraded = i.events.filter(isBetDecision).length;
   return {
     id: i.id,
     date: i.date,
@@ -57,6 +60,8 @@ export function sessionRowFor(i: SessionRowInput): SessionRow {
     plays: plays.length,
     playsCorrect: plays.filter((e) => e.correct).length,
     ...(betMisses > 0 ? { betMisses } : {}),
+    // C18: how many bet decisions were graded at all (none with bet spread off).
+    ...(betsGraded > 0 ? { betsGraded } : {}),
     ...(i.provisional ? { provisional: true as const } : {}),
     ...(i.dealerErrors ? { dealerErrors: { ...i.dealerErrors } } : {}),
     ...(i.dealerMistakesTraining ? { dealerMistakesTraining: true as const } : {}),

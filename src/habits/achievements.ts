@@ -453,9 +453,11 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
     how: `A table session of ${SHOE_MIN_ROUNDS}+ rounds with zero bet errors.`,
     tier: 'silver',
     group: 'Play',
-    // `plays` marks a row new enough to have recorded bet misses at all.
+    // C18: a shoe of graded bet decisions with none wrong. With bet spread
+    // off (the default) no bet is graded, so nothing here is earned; older
+    // rows did not record betsGraded and cannot show any bet was asked.
     measure: (c) =>
-      m(playSessions(c.stats).some((s) => s.plays !== undefined && !s.betMisses) ? 1 : 0, 1),
+      m(playSessions(c.stats).some((s) => (s.betsGraded ?? 0) >= SHOE_MIN_ROUNDS && !s.betMisses) ? 1 : 0, 1),
   },
   {
     id: 'wong-25',

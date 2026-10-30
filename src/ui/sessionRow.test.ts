@@ -37,6 +37,10 @@ describe('sessionRowFor (B2, R1/R3/R4)', () => {
     const row = sessionRowFor(input());
     expect(row).toMatchObject({ graded: 6, correct: 3, plays: 2, playsCorrect: 1, betMisses: 2, mistakeUnits: 0.25 });
   });
+  it('C18: records how many bet decisions were graded, and nothing with bet spread off', () => {
+    expect(sessionRowFor(input()).betsGraded).toBe(3);
+    expect('betsGraded' in sessionRowFor(input({ events: [ev('action', true)] }))).toBe(false);
+  });
   it('is provisional until End, then drops the flag', () => {
     expect(sessionRowFor(input()).provisional).toBe(true);
     expect('provisional' in sessionRowFor(input({ provisional: false }))).toBe(false);

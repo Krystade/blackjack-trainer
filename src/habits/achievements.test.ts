@@ -171,8 +171,18 @@ const CASES: Record<string, [AchievementContext, AchievementContext]> = {
     ctx({ stats: { sessions: sessions(1, { plays: 30, playsCorrect: 30 }) } }),
   ],
   'shoe-perfect-bets': [
-    ctx({ stats: { sessions: [...sessions(1, { plays: 30, betMisses: 1 }), ...sessions(1), ...sessions(1, { rounds: 19, plays: 30 })] } }),
-    ctx({ stats: { sessions: sessions(1, { plays: 30 }) } }),
+    ctx({
+      stats: {
+        sessions: [
+          ...sessions(1, { plays: 30, betsGraded: 25, betMisses: 1 }),
+          ...sessions(1),
+          ...sessions(1, { rounds: 19, plays: 30, betsGraded: 19 }),
+          // C18: bet spread off -- no bet was graded, so none was right.
+          ...sessions(1, { plays: 30 }),
+        ],
+      },
+    }),
+    ctx({ stats: { sessions: sessions(1, { plays: 30, betsGraded: 25 }) } }),
   ],
   'wong-25': [
     ctx({ stats: { categories: { ...EMPTY_STATS.categories, wong: { right: 24, wrong: 9 } } } }),
