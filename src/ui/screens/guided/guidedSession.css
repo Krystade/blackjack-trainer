@@ -247,6 +247,11 @@ body:has(.guided-strip) .mute-btn {
   font-variant-numeric: tabular-nums;
 }
 
+/* Drive: what the pause / transition microphone heard (as in the drills). */
+.guided-voice {
+  font-size: var(--fs-sm);
+}
+
 .guided-hint {
   margin: 0;
   font-size: var(--fs-sm);

@@ -47,6 +47,7 @@ import { CountDrillView } from '../drills/CountDrillView';
 import { TrueCountDrillView } from '../drills/TrueCountDrillView';
 import { DeviationQuizView } from '../drills/DeviationQuizView';
 import { BetSizingView } from '../drills/BetSizingView';
+import { VoiceStatusBar } from '../../components/VoiceStatusBar';
 import { GuidedSummaryPanel } from './GuidedSummaryPanel';
 import { formatClock, segmentProgressText } from './guidedFormat';
 import './guidedSession.css';
@@ -66,6 +67,12 @@ import './guidedSession.css';
 export const TAP_TRANSITION_MS = 2500;
 /** Drive: the most a transition line may hold the segment (a line that never reports its end). */
 const DRIVE_TRANSITION_CAP_MS = 12_000;
+/**
+ * Drive: after the transition line, the beat the transition's microphone
+ * listens before the segment starts -- the only moment the bare "skip",
+ * "pause" and "end" are commands (over a running drill they could be answers).
+ */
+export const DRIVE_INTRO_LISTEN_MS = 1500;
 /** After the answer that ends a segment, let its verdict be said: at least this... */
 const END_SETTLE_MIN_MS = 700;
 /** ...and at most this, before the transition cuts in. */
@@ -317,7 +324,7 @@ export function GuidedSessionView({
     let timer: number;
     if (session.drive) {
       // The first line queues behind the protected "Guided session." said in the tap.
-      say(line, { interrupt: reason !== 'first', onEnd: () => window.setTimeout(go, 300) });
+      say(line, { interrupt: reason !== 'first', onEnd: () => window.setTimeout(go, DRIVE_INTRO_LISTEN_MS) });
       timer = window.setTimeout(go, DRIVE_TRANSITION_CAP_MS);
     } else {
       timer = window.setTimeout(go, TAP_TRANSITION_MS);
@@ -384,6 +391,9 @@ export function GuidedSessionView({
           {paused && session.drive && (
             <p className="guided-hint">Say “resume” or press the wheel to go on.</p>
           )}
+          {!paused && session.drive && (
+            <p className="guided-hint">Say “skip”, “pause” or “end”, or wait.</p>
+          )}
         </section>
         <div className="guided-actions">
           {paused ? (
@@ -410,7 +420,12 @@ export function GuidedSessionView({
             )}
           </div>
         </div>
-        {paused && session.drive && <PausedListener onResume={resumeNow} onRepeat={() => say(GUIDED_PAUSED)} />}
+        {session.drive &&
+          (paused ? (
+            <PanelListener key="paused" context="guided-paused" onGo={resumeNow} onRepeat={() => say(GUIDED_PAUSED)} />
+          ) : (
+            <PanelListener key="intro" context="guided-intro" onGo={() => setSession(begin(sessionRef.current))} onRepeat={() => {}} />
+          ))}
       </div>
     );
   }
@@ -477,24 +492,39 @@ function SegmentRail({ session }: { session: GuidedSession }) {
 }
 
 /**
- * Drive, paused: the microphone stays open for "resume" (claimed by the
- * guided commands) and "yes", and the wheel's forward button resumes.
+ * Drive, on the pause and transition screens: a microphone for the session's
+ * commands (claimed by guided/voiceCommands.ts, the bare words included, as no
+ * answer is expected here) and "yes"; the wheel's forward button resumes or
+ * starts the segment. Never over a drill: an open microphone takes the wheel.
  */
-function PausedListener({ onResume, onRepeat }: { onResume: () => void; onRepeat: () => void }) {
-  const [voiceOn] = useVoiceToggle('guided-paused');
-  useWheelCommand((command) => (command === 'forward' ? onResume() : onRepeat()));
-  useVoiceControl({
+function PanelListener({
+  context,
+  onGo,
+  onRepeat,
+}: {
+  context: 'guided-paused' | 'guided-intro';
+  /** "yes" or the wheel's forward: resume (paused), start now (transition). */
+  onGo: () => void;
+  onRepeat: () => void;
+}) {
+  const [voiceOn] = useVoiceToggle(context);
+  useWheelCommand((command) => (command === 'forward' ? onGo() : onRepeat()));
+  const { status } = useVoiceControl({
     enabled: voiceOn,
     onAction: (a) => {
-      if (a === 'yes') onResume();
+      if (a === 'yes') onGo();
       else if (a === 'repeat') onRepeat();
     },
-    // No cue: the pause line has just been said, and a tone after it would
-    // read as a prompt to answer a question nobody asked.
+    // No cue: a line has just been said, and a tone after it would read as a
+    // prompt to answer a question nobody asked.
     onListening: () => {},
-    context: 'guided-paused',
+    context,
   });
-  return null;
+  return voiceOn ? (
+    <div className="guided-voice">
+      <VoiceStatusBar status={status} />
+    </div>
+  ) : null;
 }
 
 /** Settings the segment's drill runs with, in memory only (never saved): see `keepOwn`. */

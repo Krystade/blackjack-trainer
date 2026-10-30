@@ -195,6 +195,20 @@ function fire(page: Page, text: string): Promise<void> {
 }
 
 /**
+ * Answer by voice and judge it by the strip, not by the "heard" line: that
+ * line still shows the previous answer until this one lands, so reading it
+ * cannot tell a dropped word (said into the tail of the app's own speech)
+ * from a counted one. Said again only if the strip did not move.
+ */
+async function answerByVoice(page: Page, word: string, expected: string): Promise<void> {
+  await expect(async () => {
+    await expect(page.locator('.voice-status')).toHaveAttribute('data-voice-state', 'listening', { timeout: 2000 });
+    await fire(page, word);
+    await expect(strip(page)).toHaveText(expected, { timeout: 1500 });
+  }).toPass({ timeout: 20_000 });
+}
+
+/**
  * A command takes the drill (and its status bar) off the screen, so there is
  * no "heard" line to read back: wait for an open microphone where there is a
  * status bar, say it, and judge it by what it does. Said again only if the
@@ -226,8 +240,7 @@ test('Drive: spoken transitions, answers and commands by voice, an answer is nev
   );
 
   // An answer by voice is counted.
-  await sayOnceListening(page, 'stand');
-  await expect(strip(page)).toHaveText(`1/${warm}`);
+  await answerByVoice(page, 'stand', `1/${warm}`);
 
   // While a drill runs, the bare words are not commands: "split" heard as a
   // lone "skip" (the phone gives one reading), with or without a runner-up,
@@ -250,14 +263,22 @@ test('Drive: spoken transitions, answers and commands by voice, an answer is nev
   await sayCommand(page, 'skip segment', () => expect(page.locator('[data-segment="speed"]')).toBeVisible({ timeout: 1000 }));
   await expect.poll(() => spoken(page)).toContain(`Skipped. Next: speed. ${answersSentence(answers(plan[1]!))}`);
 
+  // The transition listens for a beat after its line, and there (no answer
+  // expected) a bare word is a command.
+  const transitionMic = page.locator('[data-testid="guided-transition"][data-segment="speed"] .voice-status');
+  await expect(async () => {
+    await expect(transitionMic).toHaveAttribute('data-voice-state', 'listening', { timeout: 1000 });
+    await fire(page, 'pause');
+    await expect(page.getByTestId('guided-paused')).toBeVisible({ timeout: 500 });
+  }).toPass({ timeout: 15_000 });
+  await sayCommand(page, 'resume', () => expect(page.getByTestId('guided-paused')).toBeHidden({ timeout: 1000 }));
+
   // Speed in Drive is answered by voice like the warm-up, and every answer
   // counts (right or wrong); its microphone also takes the session's commands.
   await expect(running(page, 'speed')).toBeVisible({ timeout: 15_000 });
   const speedN = answers(plan[1]!);
-  await sayOnceListening(page, 'stand');
-  await expect(strip(page)).toHaveText(`1/${speedN}`);
-  await sayOnceListening(page, 'hit');
-  await expect(strip(page)).toHaveText(`2/${speedN}`);
+  await answerByVoice(page, 'stand', `1/${speedN}`);
+  await answerByVoice(page, 'hit', `2/${speedN}`);
   await sayCommand(page, 'skip segment', () => expect(page.locator('[data-segment="count"]')).toBeVisible({ timeout: 1000 }));
   await expect(running(page, 'count')).toBeVisible({ timeout: 15_000 });
 
