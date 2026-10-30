@@ -359,7 +359,8 @@ describe('formatSrCard', () => {
 });
 
 describe('formatReviewPlain', () => {
-  const now = 1_000_000_000_000;
+  // Local noon, so the 4am day turnover is nowhere near (B17), in any zone.
+  const now = new Date(2026, 9, 28, 12).getTime();
   const DAY = 24 * 60 * 60 * 1000;
   const c = (dueAt: number) => ({ box: 1, dueAt, lapses: 0, reviews: 1 }) as Parameters<typeof formatReviewPlain>[0];
   it('says nothing for a card with no history', () => {

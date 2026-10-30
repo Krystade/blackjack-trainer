@@ -30,6 +30,11 @@ export type RetentionRow = Stats['retention']['history'][number];
  * band is normally thin. It is not dropped: an entry there means an item came
  * due early or was answered ahead of schedule, and that is worth seeing rather
  * than silently folding into the 3-7 band.
+ *
+ * B17: cards now come due at 4am on their due day, so a box-2 card answered
+ * one evening and reviewed on the third morning has a gap of about 2.6 days
+ * and lands here. The bands measure the gap actually elapsed, which is the
+ * right axis for a decay curve; they no longer line up with a box exactly.
  */
 export const GAP_BANDS: readonly { label: string; maxDays: number }[] = [
   { label: 'under 3 days', maxDays: 3 },

@@ -37,7 +37,7 @@
  */
 
 import type { SrCard, SrDeck } from './spacedRepetition';
-import { isDue, MAX_BOX } from './spacedRepetition';
+import { isDue, MAX_BOX, SR_ROLLOVER_HOUR } from './spacedRepetition';
 
 /** How far ahead "due soon" looks — a display-only window, independent of
  * any scheduling constant in spacedRepetition.ts (which has no notion of
@@ -282,12 +282,20 @@ export function formatReviewPlain(card: SrCard | undefined, now: number): string
   if (!card || card.reviews === 0) return null;
   const ms = card.dueAt - now;
   if (ms <= 0) return "You'll see this again soon";
-  const hours = ms / (60 * 60 * 1000);
-  if (hours < 20) {
-    const h = Math.max(1, Math.round(hours));
+  // B17: in local days (turning over at 4am, as the scheduler does), so a
+  // card answered on the evening drive and due at 4am says "tomorrow", not
+  // "in 10 hours", and one due later today still counts down in hours.
+  const days = rolloverDay(card.dueAt) - rolloverDay(now);
+  if (days <= 0) {
+    const h = Math.max(1, Math.round(ms / (60 * 60 * 1000)));
     return `You'll see this again in ${h} hour${h === 1 ? '' : 's'}`;
   }
-  const days = Math.round(ms / DAY_MS);
-  if (days <= 1) return "You'll see this again tomorrow";
+  if (days === 1) return "You'll see this again tomorrow";
   return `You'll see this again in ${days} days`;
+}
+
+/** Whole local days since the epoch, the day turning over at SR_ROLLOVER_HOUR. */
+function rolloverDay(ms: number): number {
+  const d = new Date(ms - SR_ROLLOVER_HOUR * 60 * 60 * 1000);
+  return Math.round(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / DAY_MS);
 }

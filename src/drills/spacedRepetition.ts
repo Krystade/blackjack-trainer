@@ -105,6 +105,27 @@ export const BOX_INTERVALS_MS: readonly number[] = [0, 1, 3, 7, 14, 30].map((d) 
 export const MAX_BOX = BOX_INTERVALS_MS.length - 1; // 5
 
 /**
+ * B17: a learned card comes due at the START of a local day, not at the exact
+ * minute it was answered N*24h later. A cell promoted on the 17:45 drive home
+ * was due at 17:45 three days on, so the next morning's commute skipped it
+ * (not due, not a gap review, no retention row). The day turns over at 4am,
+ * as Anki's does, so an answer at 1am still belongs to the evening before.
+ */
+export const SR_ROLLOVER_HOUR = 4;
+
+/**
+ * When a card answered at `now` and placed in `box` comes due. Box 0 is due
+ * at once. Built with the Date constructor so a DST change in between moves
+ * nothing: it is still 4am local on the due day.
+ */
+export function scheduleDueAt(now: number, box: number): number {
+  const days = Math.round((BOX_INTERVALS_MS[box] ?? 0) / DAY_MS);
+  if (days <= 0) return now;
+  const day = new Date(now - SR_ROLLOVER_HOUR * 60 * 60 * 1000);
+  return new Date(day.getFullYear(), day.getMonth(), day.getDate() + days, SR_ROLLOVER_HOUR).getTime();
+}
+
+/**
  * The box at/above which an item has survived at least one real inter-day gap,
  * so a review of it after its interval elapses counts as a RETENTION test (not
  * massed repetition), and missing it counts as a lapse.
@@ -294,7 +315,7 @@ export function reviewCard(
 
   return {
     box,
-    dueAt: now + BOX_INTERVALS_MS[box],
+    dueAt: scheduleDueAt(now, box),
     lastSeenAt: now,
     lapses,
     reviews: prev.reviews + 1,

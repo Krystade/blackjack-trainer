@@ -5,6 +5,7 @@ import {
   isGapReview,
   srWeight,
   BOX_INTERVALS_MS,
+  scheduleDueAt,
   MAX_BOX,
   LEARNED_BOX,
   SR_NEW_WEIGHT,
@@ -29,7 +30,7 @@ describe('reviewCard (RV4 Leitner scheduling)', () => {
   it('a new item answered correctly enters box 1, due after box-1 interval', () => {
     const c = reviewCard(undefined, true, T0);
     expect(c.box).toBe(1);
-    expect(c.dueAt).toBe(T0 + BOX_INTERVALS_MS[1]);
+    expect(c.dueAt).toBe(scheduleDueAt(T0, 1));
     expect(c.lastSeenAt).toBe(T0);
     expect(c.reviews).toBe(1);
     expect(c.lapses).toBe(0);
@@ -52,7 +53,7 @@ describe('reviewCard (RV4 Leitner scheduling)', () => {
       now += 1;
     }
     expect(c!.box).toBe(MAX_BOX); // capped, never exceeds
-    expect(c!.dueAt).toBe(now - 1 + BOX_INTERVALS_MS[MAX_BOX]);
+    expect(c!.dueAt).toBe(scheduleDueAt(now - 1, MAX_BOX));
   });
 
   it('missing a LEARNED item (box >= LEARNED_BOX) resets to box 0 and counts a lapse', () => {
@@ -161,7 +162,7 @@ describe('a full review journey with an advancing clock', () => {
     for (let box = 1; box <= MAX_BOX; box++) {
       c = reviewCard(c, true, now);
       expect(c.box).toBe(box);
-      expect(c.dueAt).toBe(now + BOX_INTERVALS_MS[box]);
+      expect(c.dueAt).toBe(scheduleDueAt(now, box));
       // Advance the clock to exactly when it comes due, then review again.
       now = c.dueAt;
       expect(isDue(c, now)).toBe(true);
@@ -192,7 +193,7 @@ describe('reviewCard: how fast the answer came', () => {
     expect(hesitant.box).toBe(2);
     // Held at box 2 means due after the BOX-2 interval -- the gap it already
     // earned, not the longer one it did not.
-    expect(hesitant.dueAt).toBe(T0 + BOX_INTERVALS_MS[2]);
+    expect(hesitant.dueAt).toBe(scheduleDueAt(T0, 2));
   });
 
   it('the boundary is inclusive on the slow side, so FLUENT_MS exactly is hesitant', () => {
@@ -294,7 +295,7 @@ describe('reviewCard: which channel the answer came through', () => {
     const mastered: SrCard = { box: MAX_BOX, dueAt: T0, lastSeenAt: T0, lapses: 0, reviews: 20 };
     const tapped = reviewCard(mastered, true, T0, { elapsedMs: 500, channel: SCREEN_CHANNEL });
     expect(tapped.box).toBe(MAX_BOX);
-    expect(tapped.dueAt).toBe(T0 + BOX_INTERVALS_MS[MAX_BOX]);
+    expect(tapped.dueAt).toBe(scheduleDueAt(T0, MAX_BOX));
   });
 
   it('an omitted channel is uncapped: unknown provenance is not held against you', () => {
@@ -387,7 +388,7 @@ describe('E2 (W2-2): the learning step after a miss', () => {
 
     const second = reviewCard(first, true, T0 + 60_000);
     expect(second.box).toBe(1);
-    expect(second.dueAt).toBe(T0 + 60_000 + BOX_INTERVALS_MS[1]);
+    expect(second.dueAt).toBe(scheduleDueAt(T0 + 60_000, 1));
     expect(second.learningStep).toBeUndefined();
   });
 
