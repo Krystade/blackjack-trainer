@@ -57,6 +57,31 @@ describe('matchRouteAnswer', () => {
   });
 });
 
+describe('A4: a negated destination is not an answer', () => {
+  it.each([
+    ['phone, not the car', 'Phone loud speaker'],
+    ['it was the phone not the car', 'Phone loud speaker'],
+    ['not the car', null],
+    ['nothing from the car', 'Heard nothing'],
+    ['no sound in the car', 'Heard nothing'],
+    ["didn't hear the car", 'Heard nothing'],
+    ['not the phone, the car', 'Car speakers'],
+    ['top of the phone', 'Earpiece'],
+    ['bottom of the phone', 'Phone loud speaker'],
+    // The correction form is unchanged.
+    ['phone, no, car', 'Car speakers'],
+    ['car, sorry, earpiece', 'Earpiece'],
+  ])('%j -> %s', (said, want) => {
+    expect(matchRouteAnswer(said)).toBe(want);
+  });
+
+  it('takes a sound-alike only from the top reading', () => {
+    expect(matchRouteAlternatives(['Fun', 'Fan', 'Card'])).toEqual({ answer: null, rank: -1 });
+    expect(matchRouteAlternatives(['Card'])).toEqual({ answer: 'Car speakers', rank: 0 });
+    expect(matchRouteAlternatives(['Fun', 'car'])).toEqual({ answer: 'Car speakers', rank: 1 });
+  });
+});
+
 describe('ROUTE_KITS', () => {
   it('every kit starts with the snapshot and every step id is unique within it', () => {
     for (const kit of Object.values(ROUTE_KITS)) {

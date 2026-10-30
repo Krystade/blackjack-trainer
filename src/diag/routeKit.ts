@@ -28,21 +28,50 @@ export const ROUTE_LINES = {
  * What a transcript means, or null. Whole words only, and the LAST answer word
  * wins, so "phone, no, car" is car -- the drill matcher's rule, for the same
  * reason (a change of mind mid-sentence).
+ *
+ * A NEGATED destination is not an answer (audit A4): "not the car", "phone,
+ * not the car", "nothing from the car", "no sound in the car". The comma form
+ * "no, car" is a correction and is kept.
  */
 const WORDS: ReadonlyArray<[RegExp, RouteAnswer]> = [
   // Longest alternative first in each: a regex alternation takes the first
   // that fits, and "car speaker" must match whole, not as "car".
-  [/\b(car speakers?|the car|stereo|dashboard|cars|card|car)\b/g, 'Car speakers'],
-  [/\b(speaker ?phone|loud ?speaker|phones|phone|speaker|bottom|foam)\b/g, 'Phone loud speaker'],
-  [/\b(headphones?|headsets?|air ?pods?|earbuds?|buds|ears)\b/g, 'Headset'],
-  [/\b(earpiece|ear piece|ear peace|receiver|top|quiet)\b/g, 'Earpiece'],
+  [/\b(car speakers?|the car|stereo|dashboard|cars|car)\b/g, 'Car speakers'],
+  [/\b(bottom of the phone|speaker ?phone|loud ?speaker|phones|phone|speaker|bottom)\b/g, 'Phone loud speaker'],
+  [/\b(headphones?|headsets?|air ?pods?|earbuds?)\b/g, 'Headset'],
+  [/\b(top of the phone|earpiece|ear piece|receiver|top)\b/g, 'Earpiece'],
   [/\b(didn'?t hear|did not hear|no sound|nothing|none|silent|silence)\b/g, 'Heard nothing'],
 ];
 
-export function matchRouteAnswer(transcript: string): RouteAnswer | null {
-  const t = transcript.toLowerCase();
+/**
+ * Sound-alikes: what the engine makes of an answer word over road noise. Taken
+ * from the engine's TOP reading only. In a lower-ranked alternative they are
+ * just as likely to be the engine reaching for anything ("Fun", "Fan",
+ * "Card" gave the car at rank 2), and a wrong route is the finding this kit
+ * exists to make.
+ */
+const SOUNDS_LIKE: ReadonlyArray<[RegExp, RouteAnswer]> = [
+  [/\b(card)\b/g, 'Car speakers'],
+  [/\b(foam)\b/g, 'Phone loud speaker'],
+  [/\b(buds|ears)\b/g, 'Headset'],
+  [/\b(ear peace|quiet)\b/g, 'Earpiece'],
+];
+
+/** "not" / "n't" within this many words before a destination negates it. */
+const NEGATION_REACH_WORDS = 3;
+
+function wordsBetween(t: string, from: number, to: number): string[] {
+  return t
+    .slice(from, to)
+    .split(/[^a-z']+/)
+    .filter(Boolean);
+}
+
+export function matchRouteAnswer(transcript: string, opts: { soundsLike?: boolean } = {}): RouteAnswer | null {
+  const t = transcript.toLowerCase().replace(/’/g, "'");
   const hits: Array<{ start: number; end: number; answer: RouteAnswer }> = [];
-  for (const [re, answer] of WORDS) {
+  const tables = opts.soundsLike === false ? WORDS : [...WORDS, ...SOUNDS_LIKE];
+  for (const [re, answer] of tables) {
     re.lastIndex = 0;
     let m: RegExpExecArray | null;
     while ((m = re.exec(t))) hits.push({ start: m.index, end: m.index + m[0].length, answer });
@@ -52,15 +81,36 @@ export function matchRouteAnswer(transcript: string): RouteAnswer | null {
   const whole = hits.filter(
     (h) => !hits.some((o) => o !== h && o.start <= h.start && o.end >= h.end && o.end - o.start > h.end - h.start),
   );
-  let best: (typeof whole)[number] | null = null;
-  for (const h of whole) if (!best || h.start > best.start) best = h;
+  const nothings = whole.filter((h) => h.answer === 'Heard nothing');
+  const negated = (h: (typeof whole)[number]): boolean => {
+    if (h.answer === 'Heard nothing') return false;
+    // The words just before it, cut at the last comma: "phone, no, car" is a
+    // correction, and whatever came before the comma is not about this word.
+    const before = t.slice(0, h.start);
+    const clause = before.slice(before.lastIndexOf(',') + 1);
+    const near = wordsBetween(clause, 0, clause.length).slice(-NEGATION_REACH_WORDS);
+    if (near.some((w) => w === 'not' || w === 'never' || w.endsWith("n't") || w === 'dont' || w === 'didnt')) return true;
+    // "nothing from the car", "no sound in the car": a nothing-phrase whose
+    // object is this destination.
+    return nothings.some((n) => {
+      if (n.end > h.start) return false;
+      const gap = wordsBetween(t, n.end, h.start);
+      return gap.length <= NEGATION_REACH_WORDS && !t.slice(n.end, h.start).includes(',');
+    });
+  };
+  const kept = whole.filter((h) => !negated(h));
+  let best: (typeof kept)[number] | null = null;
+  for (const h of kept) if (!best || h.start > best.start) best = h;
   return best?.answer ?? null;
 }
 
-/** The first of several readings that names an answer. */
+/**
+ * The first of several readings that names an answer. Sound-alikes count only
+ * in the top reading (see SOUNDS_LIKE).
+ */
 export function matchRouteAlternatives(alternatives: readonly string[]): { answer: RouteAnswer | null; rank: number } {
   for (let i = 0; i < alternatives.length; i++) {
-    const a = matchRouteAnswer(alternatives[i]!);
+    const a = matchRouteAnswer(alternatives[i]!, { soundsLike: i === 0 });
     if (a) return { answer: a, rank: i };
   }
   return { answer: null, rank: -1 };
