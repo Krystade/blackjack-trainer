@@ -6,6 +6,7 @@ import { methodsFor, type BetMethod } from '../engine/betMethods';
 import type { Accum, SimSpec } from '../engine/casinoSim';
 import type { RunStatus } from '../engine/casinoRun';
 import { simCutDecks } from '../engine/cut';
+import { CUT_FOR_DECKS } from '../engine/sideBets/plan';
 import { MULBERRY32_STEP } from '../engine/cards';
 import type { RuleSet } from '../engine/ruleset';
 
@@ -15,7 +16,7 @@ import type { RuleSet } from '../engine/ruleset';
  *
  * THE INPUT. Unknown rules are simulated as the conservative choice and the
  * screen says "assumed" beside each one: 6 decks, H17, no DAS, no surrender,
- * 6:5 (the worse payout), the cut 1.5 decks from the end, the profile's unit
+ * 6:5 (the worse payout), the cut a quarter of the shoe from the end (assumedCutFor), the profile's unit
  * as the minimum bet. Two exceptions, by the owner's ruling (Wave P): an
  * unknown split cap is 4 hands and an unknown double-on is any two cards --
  * the best case, so those two can only flatter a game (BEST_CASE_ASSUMED).
@@ -90,7 +91,20 @@ export interface SimInput {
   commissionPer100: number;
 }
 
-export const ASSUMED_CUT = 1.5;
+/**
+ * C8 (audit 2026-10-29): the cut an unlogged game is simulated at, by shoe.
+ * It was 1.5 decks for every shoe, which is 75% dealt on six decks but 25%
+ * on double deck (and clamped to half on single). Now the same depth for
+ * every shoe -- a quarter of it behind the cut, the six-deck figure the app
+ * already assumed -- and never shallower than the app's per-deck standard
+ * cut (sideBets/plan.ts CUT_FOR_DECKS: half a deck on 1 and 2 decks), so
+ * single deck is assumed at 50% dealt. Whichever is the larger (shallower)
+ * of the two is used, as an unknown is filled with the worse choice.
+ */
+export const ASSUMED_PENETRATION_LEFT = 0.25;
+export function assumedCutFor(shoeDecks: number): number {
+  return Math.max(shoeDecks * ASSUMED_PENETRATION_LEFT, CUT_FOR_DECKS[shoeDecks] ?? 0);
+}
 export const ASSUMED_DECKS = 6;
 export const FALLBACK_UNIT = 25;
 
@@ -165,8 +179,9 @@ export function simInputFor(
   const shoeDecks = wm.extras.shoeDecks ?? rules.decks;
   let cut = game.cutDecksLeft;
   if (cut === null || cut === undefined) {
-    assumed.push('cut');
-    cut = ASSUMED_CUT;
+    // C8: a continuous shuffler has no cut, so nothing is assumed of one.
+    if (!game.csm) assumed.push('cut');
+    cut = assumedCutFor(shoeDecks);
   }
   // C4: the simulator's own quarter-deck bound, not Play's half deck, so a
   // single-deck game is dealt at the cut it was logged with.

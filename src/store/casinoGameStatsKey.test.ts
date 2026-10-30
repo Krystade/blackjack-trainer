@@ -18,6 +18,7 @@ import {
   SPACED_RUNS,
   saveGameResult,
   simInputFor,
+  assumedCutFor,
   type GameResult,
 } from './casinoGameStats';
 import { blankGame, type CasinoGame } from './casinoLog';
@@ -352,5 +353,28 @@ describe('the simulator cut follows the logged cut on single deck (C4)', () => {
     const zero = simInputFor({ ...GAME, cutDecksLeft: 0 }, profile, []);
     expect(zero.cutUsed).toBe(0.25);
     expect(zero.cutClamped).toBe(true);
+  });
+});
+
+// C8 (audit 2026-10-29): an unlogged cut was 1.5 decks on every shoe, so a
+// double-deck game was simulated at 25% dealt.
+describe('an unlogged cut is assumed per shoe (C8)', () => {
+  const noCut = (decks: CasinoGame['decks']): CasinoGame => ({ ...GAME, decks, cutDecksLeft: null });
+
+  it('a quarter of the shoe behind the cut, never shallower than half a deck on 1 and 2 decks', () => {
+    expect(assumedCutFor(1)).toBe(0.5);
+    expect(assumedCutFor(2)).toBe(0.5);
+    expect(assumedCutFor(6)).toBe(1.5);
+    expect(assumedCutFor(8)).toBe(2);
+  });
+
+  it('a double-deck game is simulated at 75% dealt, not 25%', () => {
+    const input = simInputFor(noCut(2), profile, []);
+    expect(input.cutUsed).toBe(0.5);
+    expect(input.assumed).toContain('cut');
+  });
+
+  it('a continuous shuffler assumes no cut', () => {
+    expect(simInputFor({ ...noCut(6), csm: true }, profile, []).assumed).not.toContain('cut');
   });
 });

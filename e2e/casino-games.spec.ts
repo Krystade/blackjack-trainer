@@ -215,7 +215,8 @@ test('figures appear on their own, the ranking follows them, and the cards say w
   await csmRow.click();
   await expect(card).toContainText('Continuous shuffler: not countable');
   await expect(card.getByTestId('gs-method')).toHaveCount(0);
-  await expect(card.getByTestId('gs-assumed')).toContainText('cut');
+  // C8: a continuous shuffler has no cut, so none is assumed.
+  await expect(card.getByTestId('gs-assumed')).not.toContainText('cut');
   await back(page);
 
   // No mid-shoe entry at El Cortez: no back-count method was even worked out.
@@ -262,8 +263,9 @@ test('rows and stats cards mark the rules their figures assumed', async ({ page 
     'no resplitting aces; no doubling split aces; split to 4 hands (best case); double on any two cards (best case)',
   );
   await expect(goodRow.getByTestId('assumed-badge')).toHaveCount(0);
-  // The shuffler's unknown cut is assumed too, but it is not a rule: still 4.
   await expect(rows(page).and(page.locator('[data-game="g-csm"]')).getByTestId('assumed-badge')).toHaveText('4 rules assumed');
+  // C8: a shuffler has no cut to assume; the logged games have theirs.
+  await expect(rows(page).getByTestId('cut-assumed-badge')).toHaveCount(0);
 
   await deepRow.click();
   const head = page.getByTestId('gs-assumed-rules');
@@ -292,7 +294,9 @@ test('rows flag only material assumptions; the card lists all; a variant row fla
   // The same with no double after a split logged: split aces can never double, so it is moot.
   const moot = { ...dsaOnly, id: 'g-moot', das: false };
   const variant = { id: 'g-var', decks: null, s17: null, das: null, surrender: null, payout: null, cutDecksLeft: null, minBet: 25, maxBet: null, midShoeEntry: 'unknown', csm: false, variant: 'freebet' };
-  const log = { ...LOG, casinos: [{ ...base, id: 'c1', name: 'Pala', games: [dsaOnly, moot, variant] }] };
+  // C8: a double-deck game with no cut logged.
+  const noCut = { ...good, id: 'g-nocut', decks: 2, cutDecksLeft: null };
+  const log = { ...LOG, casinos: [{ ...base, id: 'c1', name: 'Pala', games: [dsaOnly, moot, variant, noCut] }] };
   await page.addInitScript(
     ([k, l]) => {
       if (!sessionStorage.getItem('seeded')) {
@@ -310,6 +314,10 @@ test('rows flag only material assumptions; the card lists all; a variant row fla
   await expect(row('g-moot').getByTestId('assumed-badge')).toHaveCount(0);
   await expect(row('g-var').getByTestId('rank-ev')).toHaveText('not modelled');
   await expect(row('g-var').getByTestId('assumed-badge')).toHaveCount(0);
+  // C8: an unlogged cut is flagged on the row; a logged one and a variant are not.
+  await expect(row('g-nocut').getByTestId('cut-assumed-badge')).toHaveText('Cut ?');
+  await expect(row('g-dsa').getByTestId('cut-assumed-badge')).toHaveCount(0);
+  await expect(row('g-var').getByTestId('cut-assumed-badge')).toHaveCount(0);
 
   await row('g-moot').click();
   await expect(page.getByTestId('gs-assumed-rules')).toContainText('no doubling split aces');

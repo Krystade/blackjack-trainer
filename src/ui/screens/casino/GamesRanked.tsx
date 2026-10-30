@@ -214,6 +214,9 @@ function RankItem({ row, place, sort, running, failed, onOpen }: { row: RankRow;
   // behind anything on its row. Nor is anything assumed of a game with no
   // rules logged at all ("Game not logged"): every rule is a guess there.
   const assumed = row.notModelled || !gameLogged(row.game) ? [] : materialAssumedRules(row.input.assumed, row.game);
+  // C8: the cut is not a rule, but an unlogged one decides a game's depth --
+  // and so its place -- as much as any rule; the row says it was assumed.
+  const cutAssumed = !row.notModelled && gameLogged(row.game) && row.input.assumed.includes('cut');
   return (
     <li>
       <button
@@ -306,6 +309,11 @@ function RankItem({ row, place, sort, running, failed, onOpen }: { row: RankRow;
           {assumed.length > 0 && (
             <span className="cas-badge" data-tone="warn" data-testid="assumed-badge" title={assumed.map(assumedLabel).join('; ')}>
               {assumedRulesBadge(assumed.length)}
+            </span>
+          )}
+          {cutAssumed && (
+            <span className="cas-badge" data-tone="warn" data-testid="cut-assumed-badge" title={`Cut not logged: ${assumedLabel('cut')}`}>
+              Cut ?
             </span>
           )}
           {sort === 'trip' && f && row.tripEv === null && <span className="cas-badge">No drive time</span>}

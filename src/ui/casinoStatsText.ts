@@ -68,7 +68,7 @@ export const ASSUMED_TEXT: Record<AssumedField, string> = {
   das: 'no double after split',
   surrender: 'no surrender',
   payout: 'blackjack pays 6:5',
-  cut: 'cut 1.5 decks from the end',
+  cut: 'cut a quarter of the shoe from the end (half a deck on single deck)',
   minBet: 'min bet = your profile unit',
   // Wave M
   rsa: 'no resplitting aces',
