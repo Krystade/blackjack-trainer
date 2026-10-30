@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { sayOnceListening, submitZero, withProfile, withSettings } from './helpers';
+import { readStoredDiagnostics, sayOnceListening, submitZero, withProfile, withSettings } from './helpers';
 import { answersSentence } from '../src/guided/lines';
 
 /**
@@ -523,4 +523,40 @@ test('320: the summary keeps its heading clear of the achievement toast that lan
     const b = (await page.locator(sel).boundingBox())!;
     expect(b.y, `${sel} is under the toast`).toBeGreaterThanOrEqual(t.y + t.height);
   }
+});
+
+/**
+ * A9: the beat after a Drive transition line is the only place a bare "skip"
+ * is a command, and starting the segment unmounts that microphone, throwing
+ * away a result still in flight. The car has delivered results 2258ms after
+ * the speech ended, so the window must outlast that.
+ */
+test('Drive: the transition microphone listens long enough after its line for a late result', async ({ page }) => {
+  test.setTimeout(60_000);
+  await withFakeEngine(page);
+  await base(page);
+  await page.addInitScript(() => {
+    const w = window as unknown as { __transitionGoneAt?: number };
+    new MutationObserver(() => {
+      if (w.__transitionGoneAt === undefined && document.querySelector('[data-testid="guided-running"]')) {
+        w.__transitionGoneAt = Math.round(performance.now());
+      }
+    }).observe(document, { childList: true, subtree: true });
+  });
+  await page.goto('/?e2e=1');
+  const card = page.locator('.guided-card');
+  await card.getByRole('radio', { name: /^5/ }).click();
+  await card.getByRole('button', { name: 'Drive', exact: true }).click();
+  await expect(running(page, 'warmup')).toBeVisible({ timeout: 15_000 });
+
+  const goneAt = await page.evaluate(() => (window as unknown as { __transitionGoneAt?: number }).__transitionGoneAt);
+  expect(goneAt).toBeDefined();
+  await expect
+    .poll(async () => {
+      const raw = await readStoredDiagnostics(page);
+      const rows = raw ? (JSON.parse(raw) as Array<{ event?: string; ms?: number; detail?: Record<string, unknown> }>) : [];
+      const ends = rows.filter((r) => r.event === 'deafen-until-now' && r.detail?.context === 'guided-intro' && (r.ms ?? 0) <= goneAt!);
+      return ends.length > 0 ? goneAt! - ends[ends.length - 1]!.ms! : null;
+    }, { timeout: 10_000 })
+    .toBeGreaterThanOrEqual(2500);
 });

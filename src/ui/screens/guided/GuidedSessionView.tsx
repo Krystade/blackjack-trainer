@@ -72,8 +72,14 @@ const DRIVE_TRANSITION_CAP_MS = 12_000;
  * Drive: after the transition line, the beat the transition's microphone
  * listens before the segment starts -- the only moment the bare "skip",
  * "pause" and "end" are commands (over a running drill they could be answers).
+ *
+ * 3000ms (audit A9), not the 1500ms it shipped with. A word said after the
+ * line has to be endpointed and delivered before the segment starts, because
+ * starting it unmounts this microphone and its stop() throws away a result
+ * still in flight -- and the car has delivered results 2258ms after the
+ * speech ended (2026-10-02). At 1500ms the window existed on paper only.
  */
-export const DRIVE_INTRO_LISTEN_MS = 1500;
+export const DRIVE_INTRO_LISTEN_MS = 3000;
 /** After the answer that ends a segment, let its verdict be said: at least this... */
 const END_SETTLE_MIN_MS = 700;
 /** ...and at most this, before the transition cuts in. */
