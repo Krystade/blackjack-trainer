@@ -63,7 +63,7 @@ import { looksLikeAnAttempt } from '../../audio/voiceRecognition';
 import { looksLikeSelfEcho } from '../../audio/selfEcho';
 import { narrateCard, narrateCountAnswer, narrateCountPrompt, narrateReadback } from '../../audio/narrate';
 import { COUNT_PAUSED_LINE } from '../../drills/countPause';
-import { drawSpeedQuestion, speedModeOf } from '../../drills/speedDrill';
+import { drawSpeedQuestion, medianMs, speedModeOf } from '../../drills/speedDrill';
 import {
   narrateBetProposition,
   narrateBetVerdict,
@@ -335,15 +335,25 @@ export function DriveChecks({
   const checks: Record<DriveCheckId, (def: DriveCheckDef, run: string) => Promise<void>> = {
     'voice-timing': async (def, run) => {
       const from = mark(def.id);
+      // The instruction goes out BEFORE the microphone opens, so the
+      // controller never holds it as its last line, and nothing spoken during
+      // the trials contains the answer word (review of A14).
       await say(DC_LINES.voiceTimingIntro);
       setVoiceOn(true);
       let timeouts = 0;
+      const toneToAnswer: number[] = [];
       try {
         for (let i = 0; i < VOICE_TIMING_PROMPTS; i++) {
-          await say(DC_LINES.voiceTimingPrompt);
+          setLine(`Tone ${i + 1} of ${VOICE_TIMING_PROMPTS}`);
+          await sleep(400);
+          guard();
+          chime('turn', { volume: settingsRef.current.audio.volume });
+          diag('test', 'drive-check-tone', { trial: i + 1 });
+          const toneAt = performance.now();
           const got = await waitVoice(7_000);
           guard();
           if (got === null) timeouts += 1;
+          else toneToAnswer.push(performance.now() - toneAt);
           await sleep(600);
         }
       } finally {
@@ -353,9 +363,11 @@ export function DriveChecks({
       guard();
       const rows = voiceTimingRows(readDiagnosticLog(), from);
       const why = rows.length > 0 ? voiceTimingFailWhy(rows) : null;
+      const toneMedian = medianMs(toneToAnswer);
       settle(def, run, voiceTimingStatus(rows), {
         prompts: VOICE_TIMING_PROMPTS,
         timeouts,
+        toneMedianMs: toneMedian === null ? null : Math.round(toneMedian),
         ...summariseVoiceTiming(rows),
         ...(why ? { why } : {}),
       });

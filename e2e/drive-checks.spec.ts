@@ -250,28 +250,44 @@ async function fakeRecognition(page: Page): Promise<void> {
   });
 }
 
-test('voice timing: five prompts answered, D-R6 timings summarised into the result', async ({ page }) => {
+/** One voice-timing trial: its tone, then (unless `answer` is false) "hit". */
+async function timingTrial(page: Page, i: number, answer: boolean): Promise<void> {
+  await expect(page.getByTestId('drive-checks-line')).toHaveText(`Tone ${i + 1} of 5`, { timeout: 20_000 });
+  if (!answer) return;
+  await page.waitForTimeout(900);
+  await waitForMic(page);
+  await page.evaluate(() => {
+    const rec = (window as unknown as { __rec?: { onresult?: (e: unknown) => void } }).__rec;
+    rec?.onresult?.({ results: [[{ transcript: 'hit' }]] });
+  });
+}
+
+test('voice timing: five tones answered, timings summarised into the result', async ({ page }) => {
   test.setTimeout(120_000);
   await fakeRecognition(page);
   await openDriveChecks(page);
   await page.getByTestId('drive-check-run-voice-timing').click();
-  for (let i = 0; i < 5; i++) {
-    await expect
-      .poll(() => page.evaluate((l) => (window.__speechLog ?? []).filter((x) => x === l).length, DC_LINES.voiceTimingPrompt), { timeout: 20_000 })
-      .toBe(i + 1);
-    // Past SPEECH_TAIL_MS, so the answer is a clean one: this pins the
-    // plumbing, not the tail (the unit tests pin the tail arithmetic).
-    await page.waitForTimeout(900);
-    await waitForMic(page);
-    await page.evaluate(() => {
-      const rec = (window as unknown as { __rec?: { onresult?: (e: unknown) => void } }).__rec;
-      rec?.onresult?.({ results: [[{ transcript: 'hit' }]] });
-    });
-  }
+  await spoke(page, DC_LINES.voiceTimingIntro);
+  for (let i = 0; i < 5; i++) await timingTrial(page, i, true);
   const r = await result(page, 'voice-timing');
-  expect(r).toMatchObject({ status: 'pass', prompts: 5, timeouts: 0, tailMs: SPEECH_TAIL_MS, answers: 5, accepted: 5, tailSuppressed: 0 });
-  expect(typeof r.medianMs).toBe('number');
+  expect(r).toMatchObject({ status: 'pass', prompts: 5, timeouts: 0, tailMs: SPEECH_TAIL_MS, answers: 5, accepted: 5, ownWords: 0 });
+  expect(typeof r.toneMedianMs).toBe('number');
   expect(String(r.rows).split(',').length).toBe(r.answers);
+});
+
+/**
+ * Review of A14: no trial prompt contains its own answer, so a real "hit" is
+ * never scored as the app's own words, and a good run whose first answer is
+ * lost (the mic still opening on a route flip) passes on the other four.
+ */
+test('voice timing: a run whose first answer is lost still passes on 4 of 5', async ({ page }) => {
+  test.setTimeout(120_000);
+  await fakeRecognition(page);
+  await openDriveChecks(page);
+  await page.getByTestId('drive-check-run-voice-timing').click();
+  for (let i = 0; i < 5; i++) await timingTrial(page, i, i > 0);
+  const r = await result(page, 'voice-timing');
+  expect(r).toMatchObject({ status: 'pass', prompts: 5, timeouts: 1, answers: 4, accepted: 4, ownWords: 0 });
 });
 
 test('misheard: two mumbles give tone then re-ask, read back from the log', async ({ page }) => {

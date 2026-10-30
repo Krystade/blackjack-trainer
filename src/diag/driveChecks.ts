@@ -74,8 +74,10 @@ export const DC_LINES = {
   yesNo: 'Forward for yes, back for no.',
   skipped: 'Skipped.',
   finished: 'Drive checks finished. Send the diagnostic log.',
-  voiceTimingIntro: 'Check one, voice timing. After each prompt, say hit straight away.',
-  voiceTimingPrompt: 'Say hit.',
+  // Review of A14: said ONCE, before the microphone opens; each trial is then
+  // only a tone. A trial prompt containing its answer ("Say hit.") made every
+  // real "hit" read as the app's own words, so a good run could fail.
+  voiceTimingIntro: 'Check one, voice timing. Say hit after each tone.',
   misheardIntro: 'Check two. When asked, mumble something that is not an answer. Do it twice.',
   misheardPrompt: 'Say stand.',
   misheardQuestion: 'Did you hear a tone, the question again, then a tone?',
