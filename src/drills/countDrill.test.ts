@@ -91,6 +91,29 @@ describe('makeCountDrill bias (R8/CM#1; Wave X item 6: a lean, not a sort)', () 
     });
   }
 
+  for (const n of [52, 104]) {
+    it(`a biased end count is as big as an unbiased one of the same sign, not pulled to 0 or ±1 (${n} cards)`, () => {
+      // Reference: unbiased runs, split by the sign they end on.
+      const plain = seeds.map((seed) => makeCountDrill(n, 1, seed).finalRc);
+      const up = plain.filter((x) => x > 0);
+      const down = plain.filter((x) => x < 0);
+      const share = (xs: number[], v: number) => xs.filter((x) => x === v).length / xs.length;
+      const meanAbs = (xs: number[]) => xs.reduce((s, x) => s + Math.abs(x), 0) / xs.length;
+      // A biased run ends up, down or level a third of the time each; level
+      // is |0| <= 1 always, up is +1 as often as an unbiased up-run is.
+      const expectedNear = (share(down, -1) + 1 + share(up, 1)) / 3;
+      for (const bias of ['negative', 'positive'] as const) {
+        const finals = seeds.map((seed) => makeCountDrill(n, 1, seed, bias).finalRc);
+        const near = finals.filter((x) => Math.abs(x) <= 1).length / RUNS;
+        expect(Math.abs(near - expectedNear), `${bias}: P(|end| <= 1) ${near.toFixed(3)} vs ${expectedNear.toFixed(3)}`).toBeLessThan(0.06);
+        const bUp = finals.filter((x) => x > 0);
+        const bDown = finals.filter((x) => x < 0);
+        expect(Math.abs(meanAbs(bUp) - meanAbs(up)), `${bias} up: ${meanAbs(bUp).toFixed(2)} vs ${meanAbs(up).toFixed(2)}`).toBeLessThan(0.6);
+        expect(Math.abs(meanAbs(bDown) - meanAbs(down)), `${bias} down: ${meanAbs(bDown).toFixed(2)} vs ${meanAbs(down).toFixed(2)}`).toBeLessThan(0.6);
+      }
+    });
+  }
+
   it("an unbiased slice ends level far less than a third of the time, so the sign draw is the bias's doing", () => {
     const level = seeds.filter((seed) => makeCountDrill(52, 1, seed).finalRc === 0).length;
     expect(level / RUNS).toBeLessThan(0.2);
