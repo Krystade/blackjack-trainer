@@ -26,7 +26,7 @@ import type { GradedEvent } from './grade';
 import type { Action } from './deviations';
 import { DEFAULT_RULES } from './ruleset';
 import { indexSetFor } from './deviations';
-import { redundantForChart } from '../drills/deviationQuiz';
+import { redundantForChart } from './redundantIndex';
 import type { StrategyRules } from './ruleset';
 import {
   dealerErrorRate,

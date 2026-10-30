@@ -91,27 +91,9 @@ export function entryCtx(entry: Deviation): PlayContext {
   return entry.kind === 'surrender' ? QUIZ_CTX_SURRENDER : QUIZ_CTX;
 }
 
-/**
- * Wave A (s08 high): an index the profile's OWN basic chart already plays.
- *
- * The index set is the 6-deck one. On 2 decks basic strategy already doubles
- * 9 v 2 and 11 v A, so "9 v 2: double at TC >= +1" was asked at TC 0 and
- * graded against basic -- Double -- while the label on the same card said to
- * hit below +1. The quiz contradicted itself. Such an index teaches nothing
- * at this table and is left out of the quiz (and shown as inactive in its
- * picker). Judged with the ctx the item would be asked under.
- */
-export function redundantForChart(entry: Deviation, rules: StrategyRules): boolean {
-  if (entry.kind === 'insurance') return false;
-  // Only a contradiction when TC 0 is on the index's NON-deviation side: there
-  // the label says "not yet" while the chart already plays the index's action.
-  // "Surrender at TC >= 0" over a chart that surrenders is consistent at 0.
-  const zeroBeforeIndex = entry.dir === 'gte' ? entry.threshold > 0 : entry.threshold < 0;
-  if (!zeroBeforeIndex) return false;
-  const cards = handFor(entry, mulberry32(1));
-  if (!cards || !entry.up) return false;
-  return basicPlay(cards, entry.up, entryCtx(entry), rules).action === entry.action;
-}
+// Wave A (s08): the rule lives in the engine now (Play uses it too).
+import { redundantForChart } from '../engine/redundantIndex';
+export { redundantForChart };
 
 /** The indexes the quiz asks under these rules (see redundantForChart). */
 export function quizIndexSet(rules: StrategyRules): Deviation[] {
