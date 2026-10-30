@@ -18,6 +18,7 @@ import { diag } from '../diag/diagnosticLog';
 import { reassertAudioFocus } from '../audio/audioFocus';
 import { markMicSessionOpened, setVoiceCaptureActive } from '../audio/micSessionCost';
 import { markInputDeviceChanged } from '../diag/deviceChurn';
+import { monoNow } from '../audio/monoClock';
 import { audioSessionSupported, readAudioSessionType } from '../audio/audioSession';
 import { beginCaptureRoute, endCaptureRoute, forcedAutoPlan, logRouteSnapshot } from '../audio/audioRoute';
 import { logAudioInputs, logHardwareRate, logMicPermission } from '../diag/environment';
@@ -265,7 +266,7 @@ export function useVoiceControl({
 
     const controller = createVoiceController({
       createRecognition: browserRecognition,
-      now: () => Date.now(),
+      now: monoNow,
       schedule: (fn, ms) => window.setTimeout(fn, ms),
       cancel: (handle) => window.clearTimeout(handle),
       onAction: (action) => {
@@ -565,7 +566,7 @@ export function useVoiceControl({
     };
     const onOnline = wake('online');
     const onDeviceChange = () => {
-      markInputDeviceChanged(Date.now());
+      markInputDeviceChanged(monoNow());
       void logAudioInputs('devicechange-voice');
       wake('devicechange')();
     };

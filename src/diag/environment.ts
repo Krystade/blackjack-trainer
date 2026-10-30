@@ -30,6 +30,7 @@
 import { diag, flushDiagnostics } from './diagnosticLog';
 import { runningBuildId, runningBuiltAt } from '../updateCheck';
 import { markInputDeviceChanged } from './deviceChurn';
+import { monoNow } from '../audio/monoClock';
 import { openMicStream } from '../audio/openMicStream';
 
 /** Kept so a second mount (React strict mode, a remount) cannot double-log. */
@@ -425,7 +426,7 @@ export function startDiagnostics(): void {
       // Stamped before anything async: the correlation on a `session-error`
       // is only worth having if it is accurate to the event rather than to
       // whenever `enumerateDevices` happened to come back.
-      markInputDeviceChanged(Date.now());
+      markInputDeviceChanged(monoNow());
       diag('route', 'devicechange');
       void logAudioInputs('devicechange');
     });
