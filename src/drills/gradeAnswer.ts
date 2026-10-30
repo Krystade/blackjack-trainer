@@ -18,7 +18,7 @@ import { priceMistake as enginePriceMistake } from '../engine/mistakeCost';
 import type { GradedEvent, EventSource, MistakeClass } from '../engine/grade';
 import { classifyAction, actionCategory, classifyInsurance, phantomDeviationId } from '../engine/grade';
 import type { Card, Rank } from '../engine/cards';
-import type { PlayContext } from '../engine/strategy';
+import type { Advice, PlayContext } from '../engine/strategy';
 import { correctPlay, basicPlay } from '../engine/strategy';
 import type { StrategyRules } from '../engine/ruleset';
 import type { Action, DeviationId } from '../engine/deviations';
@@ -258,6 +258,29 @@ function indexFieldFor(
 }
 
 /**
+ * R1 (review of C10): the play the Mastery challenge shows as right for the
+ * hand on screen. The view reads this, never its own strategy call, so what
+ * it shows and what gradeMasteryAnswer grades cannot drift apart.
+ */
+export function masteryExpectedPlay(cards: Card[], up: Rank, ctx: PlayContext | undefined, rules: StrategyRules): Action {
+  return flashcardAdvice({ cards, up, ...(ctx ? { ctx } : {}) }, rules).withCount.action;
+}
+
+/**
+ * What buildFlashcardEvent grades a card against: the chart's play, and the
+ * play at the count shown -- the chart's again when no count is shown (C10).
+ */
+function flashcardAdvice(card: Pick<Flashcard, 'cards' | 'up' | 'ctx' | 'tc'>, rules: StrategyRules): { basicOnly: Advice; withCount: Advice } {
+  const ctx: PlayContext = flashCtx(card);
+  // Wave A review: an index the profile's chart already plays is not one
+  // (withCount.ts) -- same play, no index id, so no index review.
+  const basicOnly = basicPlay(card.cards, card.up, ctx, rules);
+  // C10: no count shown, so the chart alone is the answer.
+  const withCount = card.tc === undefined ? basicOnly : withCountAdvice(card.cards, card.up, card.tc, ctx, rules);
+  return { basicOnly, withCount };
+}
+
+/**
  * Build the GradedEvent + correct action for a flashcard answer. Pure: no
  * weight/stats writes, no audio. `elapsedMs` (R1) is captured by the caller
  * via performance.now() and passed in, so this stays deterministic and the
@@ -274,11 +297,7 @@ export function buildFlashcardEvent(
   // "With count" card at the count it showed. Both absent = as before.
   const ctx: PlayContext = flashCtx(card);
   const tc = card.tc ?? 0;
-  // Wave A review: an index the profile's chart already plays is not one
-  // (withCount.ts) -- same play, no index id, so no index review.
-  const basicOnly = basicPlay(card.cards, card.up, ctx, rules);
-  // C10: no count shown, so the chart alone is the answer.
-  const withCount = card.tc === undefined ? basicOnly : withCountAdvice(card.cards, card.up, tc, ctx, rules);
+  const { basicOnly, withCount } = flashcardAdvice(card, rules);
   // A timeout never reaches classifyAction, and neither does a self-report:
   // that function asks which of the five plays was chosen, and the answer in
   // both cases is none of them. Routed through it with any stand-in action,

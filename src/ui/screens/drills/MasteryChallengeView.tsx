@@ -17,10 +17,9 @@ import type { MasteryRun } from '../../../drills/masteryChallenge';
 import { generateAllCells } from '../../../drills/flashcards';
 import { deckLabel } from '../../../drills/deckSource';
 import { handDeckFor } from './handDeckFor';
-import { gradeMasteryAnswer, loadFlashSr } from '../../../drills/gradeAnswer';
+import { gradeMasteryAnswer, loadFlashSr, masteryExpectedPlay } from '../../../drills/gradeAnswer';
 import { gateDrillAnswer } from '../../../drills/answerGate';
 import { drillLegalActions, rulesChipLabels } from '../../../drills/legalActions';
-import { correctPlay } from '../../../engine/strategy';
 import { PlayingCard } from '../../components/PlayingCard';
 import { MarkableHand } from '../../components/MarkableHand';
 import { ActionBar } from '../../components/ActionBar';
@@ -128,9 +127,8 @@ export function MasteryChallengeView({
   const cellCtx = fallback?.ctx;
   const complete = isMasteryRunComplete(run);
 
-  const cellCorrectAction: Action | undefined = cell
-    ? correctPlay(cell.cards, cell.up, 0, cellCtx ?? FULL_CTX, activeProfile.rules).action
-    : undefined;
+  // R1: the grader's own expected play (gradeAnswer.ts), never a second strategy call.
+  const cellCorrectAction: Action | undefined = cell ? masteryExpectedPlay(cell.cards, cell.up, cellCtx, activeProfile.rules) : undefined;
 
   // B1 (#8, #10, #17): the answered hand, frozen when it was graded. The run
   // moves on in the same handler, so the hand on screen is already the next
