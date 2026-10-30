@@ -422,7 +422,7 @@ export function CountDrillView({
   // checked-but-disabled control.
   useEffect(() => {
     if (!settings.audio.enabled) setEyesFree(false);
-  }, [settings.audio.enabled]);
+  }, [settings.audio.enabled, setEyesFree]);
 
   // Timed Challenge is only offered for the main count drill (see the
   // `!countdownMode` guard around its setup checkbox); drop it if the user

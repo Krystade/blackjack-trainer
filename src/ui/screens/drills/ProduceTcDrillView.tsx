@@ -185,7 +185,7 @@ export function ProduceTcDrillView({
 
   useEffect(() => {
     if (!settings.audio.enabled) setEyesFree(false);
-  }, [settings.audio.enabled]);
+  }, [settings.audio.enabled, setEyesFree]);
 
   /** Say something, unconditionally -- eyes-free, a reply IS the output. */
   const sayBack = (text: string, interrupt = false) => {

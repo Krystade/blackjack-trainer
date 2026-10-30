@@ -236,7 +236,7 @@ export function useAnswerSession(settings: Settings, context: string) {
   // disabled control.
   useEffect(() => {
     if (!settings.audio.enabled) setEyesFree(false);
-  }, [settings.audio.enabled]);
+  }, [settings.audio.enabled, setEyesFree]);
 
   // Wake lock lifecycle: held for as long as eyes-free is active, released
   // the moment it's turned off (and unconditionally on unmount below).

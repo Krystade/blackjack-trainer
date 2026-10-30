@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { diag } from '../diag/diagnosticLog';
 
 /**
@@ -67,7 +67,9 @@ export function useEyesFreeToggle(context: string): [boolean, (on: boolean) => v
       listeners.delete(sync);
     };
   }, []);
-  return [on, (next: boolean) => setEyesFreeOn(next, context)];
+  // Stable, like useState's setter, so an effect can list it as a dependency.
+  const set = useCallback((next: boolean) => setEyesFreeOn(next, context), [context]);
+  return [on, set];
 }
 
 /** Test seam: reset the page-scoped fact between cases. */

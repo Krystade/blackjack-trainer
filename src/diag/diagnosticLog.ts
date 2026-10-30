@@ -1244,6 +1244,7 @@ function renderDetail(detail: Record<string, unknown> | undefined): string {
  * A value must be quoted if it carries a delimiter or a control character:
  * whitespace, `=`, a double quote, a backslash, or anything below U+0020.
  */
+// eslint-disable-next-line no-control-regex -- control characters are exactly what must be quoted
 const NEEDS_QUOTING = /[\s="\\\u0000-\u001f]/;
 
 function renderValue(v: unknown): string {

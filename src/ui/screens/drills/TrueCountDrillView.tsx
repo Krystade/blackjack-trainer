@@ -235,7 +235,7 @@ export function TrueCountDrillView({
   // checked-but-disabled control.
   useEffect(() => {
     if (!settings.audio.enabled) setEyesFree(false);
-  }, [settings.audio.enabled]);
+  }, [settings.audio.enabled, setEyesFree]);
 
   // Announce the question when entering 'answering' (visual mode: only at
   // verbosity 'full'; eyes-free "strict mode", which also lands on
