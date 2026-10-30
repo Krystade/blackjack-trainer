@@ -69,6 +69,8 @@ export interface StartTarget {
    * it rather than on whatever scope was saved last. Absent = the whole chart.
    */
   scope?: HandScope;
+  /** C14: Start asks exactly these indexes (the quiz's review mode), as an index review does. */
+  reviewIndexes?: string[];
 }
 
 export interface RungResult {
@@ -282,6 +284,8 @@ function deviationsCard(stats: Stats, rules?: IndexRules): Card | null {
       kind: 'quiz',
       title: 'Learn the deviations',
       why: `${short.length} of ${active.length} indices below ${pctDown(INDEX_TARGET)}% on their last answers: ${named}.`,
+      // Start drills exactly the short ones, worst first.
+      reviewIndexes: short.map((x) => x.d.id),
     };
   }
   return null;
@@ -396,7 +400,9 @@ export function ladder(stats: Stats, ctx: LadderContext): Ladder {
     label: RUNG_LABELS[d.id],
     passed: d.card === null,
     progress: d.progress,
-    start: d.card ? { kind: d.card.kind, ...(d.card.scope ? { scope: d.card.scope } : {}) } : d.passedStart,
+    start: d.card
+      ? { kind: d.card.kind, ...(d.card.scope ? { scope: d.card.scope } : {}), ...(d.card.reviewIndexes ? { reviewIndexes: d.card.reviewIndexes } : {}) }
+      : d.passedStart,
   }));
   const first = rungs.findIndex((r) => !r.passed);
   const current = first === -1 ? null : first;

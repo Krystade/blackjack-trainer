@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { EMPTY_STATS } from '../../store/types';
 import type { Stats } from '../../store/types';
 import { generateAllCells } from '../../drills/flashcards';
-import { cellLabel, masterySweepDone, nextStep } from './nextStep';
+import { cellLabel, ladder, masterySweepDone, nextStep } from './nextStep';
 import { ctxFor, runs, stateAt, withIndices } from './ladderFixtures';
 
 /** Strategy learned: 30 answers per category, all right, spread over cells. */
@@ -214,6 +214,9 @@ describe('nextStep (#28)', () => {
     const n = nextStep(s, ctxFor(5));
     expect(n.kind).toBe('quiz');
     expect(n.why).toMatch(/^2 of 17 indices below 90%.*: Insurance 1 of 3, 16 v 10 1 of 3\.$/);
+    // Start asks exactly those indexes, worst first (C14 follow-up).
+    expect(n.reviewIndexes).toEqual(['ins', '16v10']);
+    expect(ladder(s, ctxFor(5)).rungs.find((r) => r.id === 'deviations')!.start).toMatchObject({ kind: 'quiz', reviewIndexes: ['ins', '16v10'] });
     // The recent store wins over the lifetime tally: old misses age out ...
     const healed = withIndices(stateAt(5), 30, 0);
     healed.perIndex['ins'] = { right: 10, wrong: 20 };
