@@ -168,6 +168,28 @@ test('the import question shows the file beside the phone and names what it repl
   expect(await page.evaluate(() => localStorage.getItem('bjtrainer.progress.v1'))).toBe(progressBefore);
 });
 
+test('after an import the app plays the imported active profile, not the one it had', async ({ page }) => {
+  // B2/B28: App kept its pre-import activeProfile until a relaunch or a Profiles visit.
+  await withProfile(page, { id: 'phone-6d', name: 'Phone 6D H17' });
+  await page.goto('/?e2e=1');
+  await expect(page.locator('.home-profile-chip-name')).toHaveText('Phone 6D H17');
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('bjtrainer.profiles.v1')!) as Record<string, unknown>[]);
+  const imported = { ...stored[0]!, id: 'file-2d', name: 'File 2D S17', rules: { ...(stored[0]!.rules as object), decks: 2, s17: true } };
+  await page.locator('.home-stats-link').click();
+
+  page.once('dialog', (dialog) => void dialog.accept());
+  await page.locator('input.stats-file-input').setInputFiles({
+    name: 'b.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(
+      JSON.stringify({ settings: { version: 1 }, stats: { version: 1 }, profiles: [imported], activeProfile: 'file-2d' }),
+    ),
+  });
+  await expect(page.locator('.stats-message')).toHaveText('Backup imported.');
+  await page.locator('.tab-bar').getByRole('button', { name: 'Home', exact: true }).click();
+  await expect(page.locator('.home-profile-chip-name')).toHaveText('File 2D S17');
+});
+
 test('importing a valid export blob restores stats (success path)', async ({ page }) => {
   // T0 gap #28 (docs/research/2026-07-26-test-coverage-matrix.md): the
   // existing "importing garbage" spec above only proves the failure path.

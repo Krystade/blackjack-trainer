@@ -24,6 +24,7 @@ import {
 } from '../../store/persist';
 import { backupDateText, clearUndo, importConfirmText, readUndo, storeUndo, type ImportUndo } from './backupText';
 import { backupFileName, saveTextFile, type SaveResult } from '../saveFile';
+import { useTabSettings } from '../tabSettingsContext';
 import {
   summarize,
   bestSecondsPerDeck,
@@ -526,6 +527,7 @@ export function Stats({ activeProfile, settings, onSettingsChange, onNavigate }:
 
   // B4: the undo for the last import, until the app is closed.
   const [undo, setUndo] = useState<ImportUndo | null>(() => readUndo());
+  const tabSettings = useTabSettings();
 
   // After an import or its undo: everything above re-reads the stores.
   const afterReplace = () => {
@@ -533,6 +535,10 @@ export function Stats({ activeProfile, settings, onSettingsChange, onNavigate }:
     // One hop now: this lifts the imported settings into App, which hands
     // them straight back down as the `settings` prop.
     onSettingsChange(loadSettings());
+    // B2/B28: and the shell's ACTIVE PROFILE, which only a Profiles visit or
+    // a relaunch re-read -- until then Play, the drills and Charts graded
+    // against the pre-import rules while storage held the imported ones.
+    tabSettings?.applyProfile(null);
   };
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
