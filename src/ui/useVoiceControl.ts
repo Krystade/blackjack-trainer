@@ -291,6 +291,9 @@ export function useVoiceControl({
         speak(micDeadLine(state), { ...speechOptsFrom(loadSettings().audio), tag: 'mic-dead' });
         if (canRestartByTap(state)) armTapRestart();
       },
+      onDeferred: (state) => {
+        if (canRestartByTap(state)) armTapRestart();
+      },
     });
 
     /*
@@ -299,10 +302,12 @@ export function useVoiceControl({
      * the click, and the click is consumed: a tap meant to wake the mic must
      * not also answer the card under the finger.
      *
-     * Review of A5: armed only while the mic is actually dead. It disarms the
-     * moment the mic is listening again (onState below), and it consumes a
-     * tap only in 'denied' or 'error'. A tap during a 'starting' or
-     * 'restarting' still restarts inside the gesture but goes on to answer.
+     * Review of A5: armed only while the mic is actually dead -- from the
+     * announcement, or from a death whose line the 30 s limit deferred -- and
+     * disarmed the moment the mic is listening again (onState below). So
+     * every tap it sees is the tap the line asked for, and it consumes every
+     * one (review R2): a 'starting' or 'restarting' mic that was announced
+     * stuck must not let the waking tap answer the card under the finger.
      */
     let tapRestart: ((e: Event) => void) | null = null;
     const disarmTapRestart = () => {
@@ -316,12 +321,9 @@ export function useVoiceControl({
         disarmTapRestart();
         const now = ctl?.state();
         if (!ctl || now === 'listening' || now === 'off') return;
-        const consume = now === 'denied' || now === 'error';
-        if (consume) {
-          e.preventDefault();
-          e.stopPropagation();
-        }
-        diag('mic', 'dead-tap-restart', { from: now, consumed: consume, context: contextRef.current });
+        e.preventDefault();
+        e.stopPropagation();
+        diag('mic', 'dead-tap-restart', { from: now, consumed: true, context: contextRef.current });
         deadWatch.rearm();
         ctl.stop();
         ctl.start();

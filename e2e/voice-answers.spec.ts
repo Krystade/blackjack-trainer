@@ -281,6 +281,36 @@ test('an answer tap during a routine restart, after a stuck mic recovered, is no
     .toBe(true);
 });
 
+/**
+ * Review R2: every tap the armed handler sees is a tap on a mic that has not
+ * come back since it was announced -- the tap the line asked for. A "stuck"
+ * announcement made while the controller sits in 'starting' must not let the
+ * waking tap answer the card under the finger.
+ */
+test('the waking tap after a stuck announcement does not also answer the card', async ({ page }) => {
+  await page.addInitScript(() => {
+    (window as unknown as { __e2eMicStuckMs?: number }).__e2eMicStuckMs = 600;
+  });
+  await openFlashcardsWithVoice(page);
+  const LINE = 'The microphone has stopped listening. Tap the screen once to turn the microphone back on.';
+  // A restart whose start never confirms: stuck in 'starting'.
+  await page.evaluate(() => {
+    const w = window as unknown as { __holdStart?: boolean; __rec?: { onend?: () => void } };
+    w.__holdStart = true;
+    w.__rec?.onend?.();
+  });
+  await expect
+    .poll(() => page.evaluate((line) => ((window as unknown as { __speechLog?: string[] }).__speechLog ?? []).includes(line), LINE), { timeout: 10_000 })
+    .toBe(true);
+  await expect(page.locator('.voice-status')).not.toHaveAttribute('data-voice-state', 'listening');
+  const words = () =>
+    page.evaluate(() => ((window as unknown as { __speechLog?: string[] }).__speechLog ?? []).filter((t) => !t.startsWith('chime:')));
+  const before = (await words()).length;
+  await page.getByRole('button', { name: 'Stand', exact: true }).click();
+  await page.waitForTimeout(800);
+  expect((await words()).slice(before), 'the waking tap also answered the card').toEqual([]);
+});
+
 test('the whole vocabulary is on screen, so nothing has to be remembered', async ({ page }) => {
   await openFlashcardsWithVoice(page);
   const words = page.locator('.voice-status-words');

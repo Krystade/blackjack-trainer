@@ -8,6 +8,7 @@ function rig() {
   const timers = new Map<number, { at: number; fn: () => void }>();
   let state: ListenState = 'off';
   const said: Array<[ListenState, string]> = [];
+  const deferred: ListenState[] = [];
   const watch = createMicDeadWatch({
     schedule: (fn, ms) => {
       const h = next++;
@@ -18,6 +19,7 @@ function rig() {
     now: () => clock,
     currentState: () => state,
     announce: (s, why) => said.push([s, why]),
+    onDeferred: (s) => deferred.push(s),
   });
   const to = (s: ListenState) => {
     state = s;
@@ -32,7 +34,7 @@ function rig() {
       }
     }
   };
-  return { said, to, advance, watch };
+  return { said, deferred, to, advance, watch };
 }
 
 describe('A5: a microphone that gives up says so', () => {
@@ -122,6 +124,17 @@ describe('A5: a microphone that gives up says so', () => {
     expect(r.said).toHaveLength(1);
     r.advance(1);
     expect(r.said).toEqual([['error', 'stuck'], ['denied', 'terminal']]);
+  });
+
+  it('a death inside the 30 s window is reported to the tap at once, only the line waits', () => {
+    const r = rig();
+    r.to('denied');
+    r.to('listening');
+    r.advance(1000);
+    expect(r.deferred).toEqual([]);
+    r.to('denied');
+    expect(r.said).toHaveLength(1);
+    expect(r.deferred, 'the tap was not armed during the deferral').toEqual(['denied']);
   });
 
   it('drops a deferred announcement whose mic came back meanwhile', () => {

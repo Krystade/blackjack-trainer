@@ -64,6 +64,11 @@ export function createMicDeadWatch(deps: {
   now: () => number;
   currentState: () => ListenState;
   announce: (state: ListenState, why: 'terminal' | 'stuck') => void;
+  /**
+   * Review: a death inside the re-announce window. Only the spoken line is
+   * rate-limited -- Jack was already told to tap, so the tap is armed now.
+   */
+  onDeferred?: (state: ListenState) => void;
   stuckMs?: number;
   reannounceMs?: number;
 }): MicDeadWatch {
@@ -86,6 +91,7 @@ export function createMicDeadWatch(deps: {
     if (announced) return;
     const wait = lastAnnouncedAt + (deps.reannounceMs ?? MIC_DEAD_REANNOUNCE_MS) - deps.now();
     if (wait > 0) {
+      deps.onDeferred?.(state);
       if (deferTimer === null) {
         deferTimer = deps.schedule(() => {
           deferTimer = null;
