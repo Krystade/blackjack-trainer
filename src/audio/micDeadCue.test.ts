@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MIC_STUCK_ANNOUNCE_MS, createMicDeadWatch, isMicDead } from './micDeadCue';
+import { MIC_STOPPED_LINE, MIC_STUCK_ANNOUNCE_MS, MIC_TAP_TO_RESTART_LINE, createMicDeadWatch, isMicDead, micDeadLine } from './micDeadCue';
 import type { ListenState } from './voiceControl';
 
 function rig() {
@@ -111,5 +111,24 @@ describe('A5: a microphone that gives up says so', () => {
     expect(isMicDead('listening')).toBe(false);
     expect(isMicDead('restarting')).toBe(false);
     expect(isMicDead('starting')).toBe(false);
+  });
+});
+
+describe('A5: tap to restart', () => {
+  it('tells Jack exactly what to do, except where a tap cannot help', () => {
+    expect(micDeadLine('denied')).toBe('The microphone has stopped listening. Tap the screen once to turn the microphone back on.');
+    expect(micDeadLine('error')).toContain(MIC_TAP_TO_RESTART_LINE);
+    expect(micDeadLine('unsupported')).toBe(MIC_STOPPED_LINE);
+  });
+
+  it('announces again after a rearm (a tap that restarted it)', () => {
+    const said: string[] = [];
+    const w = createMicDeadWatch({ schedule: () => 1, cancel: () => {}, currentState: () => 'denied', announce: (s) => said.push(s) });
+    w.onState('denied');
+    w.onState('denied');
+    expect(said).toEqual(['denied']);
+    w.rearm();
+    w.onState('denied');
+    expect(said).toEqual(['denied', 'denied']);
   });
 });

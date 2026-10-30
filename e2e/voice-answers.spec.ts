@@ -202,7 +202,8 @@ test('a blocked microphone is reported once, not retried forever', async ({ page
 test('a microphone that gives up says so out loud, once', async ({ page }) => {
   await openFlashcardsWithVoice(page);
   const before = await page.evaluate(() => [...((window as unknown as { __speechLog?: string[] }).__speechLog ?? [])]);
-  expect(before).not.toContain('The microphone has stopped listening.');
+  const LINE = 'The microphone has stopped listening. Tap the screen once to turn the microphone back on.';
+  expect(before).not.toContain(LINE);
   await page.evaluate(() => {
     const rec = (window as unknown as {
       __rec?: { onerror?: (e: { error: string }) => void; onend?: () => void };
@@ -212,8 +213,17 @@ test('a microphone that gives up says so out loud, once', async ({ page }) => {
   });
   await expect(page.locator('.voice-status')).toHaveAttribute('data-voice-state', 'denied');
   await expect
-    .poll(() => page.evaluate(() => ((window as unknown as { __speechLog?: string[] }).__speechLog ?? []).filter((t) => t === 'The microphone has stopped listening.').length))
+    .poll(() => page.evaluate((line) => ((window as unknown as { __speechLog?: string[] }).__speechLog ?? []).filter((t) => t === line).length, LINE))
     .toBe(1);
+
+  // And it says what to do: one tap anywhere asks for the microphone again,
+  // without answering the card under the finger.
+  const spokenBefore = await page.evaluate(() => ((window as unknown as { __speechLog?: string[] }).__speechLog ?? []).length);
+  await page.getByRole('button', { name: 'Stand', exact: true }).click();
+  await expect(page.locator('.voice-status')).toHaveAttribute('data-voice-state', 'listening');
+  await page.waitForTimeout(500);
+  const after = await page.evaluate((n) => ((window as unknown as { __speechLog?: string[] }).__speechLog ?? []).slice(n), spokenBefore);
+  expect(after, 'the waking tap also answered the card').toEqual([]);
 });
 
 test('the whole vocabulary is on screen, so nothing has to be remembered', async ({ page }) => {

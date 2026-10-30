@@ -1,4 +1,4 @@
-import { MIC_STOPPED_LINE } from './micDeadCue';
+import { MIC_STOPPED_LINE, MIC_TAP_TO_RESTART_LINE } from './micDeadCue';
 import type { Card, Rank, Suit } from '../engine/cards';
 import type { Action } from '../engine/deviations';
 import type { GradedEvent, MistakeClass } from '../engine/grade';
@@ -505,6 +505,7 @@ export const ALL_DONE = 'All done.';
 /** Every fixed conversational line, for the clip derivation to walk. */
 export const VOICE_CONVERSATION_LINES: readonly string[] = [
   MIC_STOPPED_LINE,
+  MIC_TAP_TO_RESTART_LINE,
   REVIEW_DONE,
   ALL_DONE,
   COUNTDOWN_TAG_PROMPT,

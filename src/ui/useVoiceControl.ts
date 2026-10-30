@@ -8,7 +8,7 @@ import {
   type VoiceController,
 } from '../audio/voiceControl';
 import { chime, isAppSpeaking, setSpeechActivityListener, speak } from '../audio/speech';
-import { MIC_STOPPED_LINE, createMicDeadWatch, isMicDead } from '../audio/micDeadCue';
+import { canRestartByTap, createMicDeadWatch, isMicDead, micDeadLine } from '../audio/micDeadCue';
 import { recordHeard } from '../audio/voiceHistory';
 import { looksLikeAnAttempt, type VoiceAction } from '../audio/voiceRecognition';
 import { looksLikeSelfEcho } from '../audio/selfEcho';
@@ -281,9 +281,38 @@ export function useVoiceControl({
       announce: (state, why) => {
         diag('mic', 'dead-cue', { state, why, context: contextRef.current });
         chime('blocked');
-        speak(MIC_STOPPED_LINE, { tag: 'mic-dead' });
+        speak(micDeadLine(state), { tag: 'mic-dead' });
+        if (canRestartByTap(state)) armTapRestart();
       },
     });
+
+    /*
+     * A5: one tap anywhere re-requests the microphone. iOS starts a
+     * recogniser only inside a gesture, so the restart runs synchronously in
+     * the click, and the click is consumed: a tap meant to wake the mic must
+     * not also answer the card under the finger.
+     */
+    let tapRestart: ((e: Event) => void) | null = null;
+    const disarmTapRestart = () => {
+      if (tapRestart) document.removeEventListener('click', tapRestart, true);
+      tapRestart = null;
+    };
+    const armTapRestart = () => {
+      if (tapRestart) return;
+      tapRestart = (e: Event) => {
+        const ctl = controllerRef.current;
+        disarmTapRestart();
+        const now = ctl?.state();
+        if (!ctl || now === 'listening' || now === 'off') return;
+        e.preventDefault();
+        e.stopPropagation();
+        diag('mic', 'dead-tap-restart', { from: ctl.state(), context: contextRef.current });
+        deadWatch.rearm();
+        ctl.stop();
+        ctl.start();
+      };
+      document.addEventListener('click', tapRestart, true);
+    };
 
     const controller = createVoiceController({
       createRecognition: browserRecognition,
@@ -654,6 +683,7 @@ export function useVoiceControl({
       setSpeechActivityListener(null);
       if (readyTimer !== null) clearTimeout(readyTimer);
       deadWatch.dispose();
+      disarmTapRestart();
       controller.stop();
       setVoiceCaptureActive(false);
       endCaptureRoute('voice-off');

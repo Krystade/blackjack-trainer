@@ -18,6 +18,23 @@ import type { ListenState } from './voiceControl';
 /** Spoken once when the microphone has stopped for good. Recorded as a clip. */
 export const MIC_STOPPED_LINE = 'The microphone has stopped listening.';
 
+/**
+ * Said after it when a tap can bring the microphone back (everything but
+ * 'unsupported'). iOS only lets a recogniser start inside a gesture, so one
+ * tap anywhere is the floor; useVoiceControl listens for exactly that.
+ */
+export const MIC_TAP_TO_RESTART_LINE = 'Tap the screen once to turn the microphone back on.';
+
+/** Whether one tap can re-request the microphone in this state. */
+export function canRestartByTap(state: ListenState): boolean {
+  return state !== 'unsupported';
+}
+
+/** What is said when the microphone gives up in `state`. */
+export function micDeadLine(state: ListenState): string {
+  return canRestartByTap(state) ? `${MIC_STOPPED_LINE} ${MIC_TAP_TO_RESTART_LINE}` : MIC_STOPPED_LINE;
+}
+
 /** How long an error or restart must last before it is announced. */
 export const MIC_STUCK_ANNOUNCE_MS = 10_000;
 
@@ -28,6 +45,8 @@ export function isMicDead(state: ListenState): boolean {
 
 export interface MicDeadWatch {
   onState: (state: ListenState) => void;
+  /** A fresh attempt (the tap): the next give-up is announced again. */
+  rearm: () => void;
   dispose: () => void;
 }
 
@@ -70,6 +89,10 @@ export function createMicDeadWatch(deps: {
           fire(now, 'stuck');
         }, deps.stuckMs ?? MIC_STUCK_ANNOUNCE_MS);
       }
+    },
+    rearm() {
+      clear();
+      announced = false;
     },
     dispose: clear,
   };
