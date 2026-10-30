@@ -3,7 +3,7 @@ import type { CasinoLog } from '../../../store/casinoLog';
 import { buildRanking } from '../../casinoRanking';
 import { newEditTracker, noteKeys, orderCandidates, sessionHolds } from '../../casinoAutoSim';
 import { attachAuto, setAutoPlan } from './simRunner';
-import { requestSideRow } from './sideRunner';
+import { attachSide, requestSideRow, setSideHold } from './sideRunner';
 import { sideRowFor, sideRowSpec } from '../../../store/casinoSideRows';
 import { pinGameKeys } from '../../../store/casinoGameStats';
 import { earlierVersionKeys } from '../../casinoVersions';
@@ -42,6 +42,10 @@ export function AutoSim({ log, openGame }: { log: CasinoLog; openGame: string | 
     setAutoPlan(orderCandidates(rows, tracker.editedAt, profile.name), openGame, { sessionRunning });
   }, [rows, openGame, profile.name, sessionRunning]);
   useEffect(() => attachAuto(), []);
+  // D22: the side-bet runner too -- the hold first, so attaching never starts
+  // a row a running session should have held.
+  useEffect(() => setSideHold(sessionRunning), [sessionRunning]);
+  useEffect(() => attachSide(), []);
   // Wave W (review S2): an earlier version's figures stay in the cache, however many newer ones land.
   useEffect(() => pinGameKeys(earlierVersionKeys(log, profile)), [log, profile]);
   useEffect(() => {

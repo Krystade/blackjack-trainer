@@ -46,7 +46,7 @@ export function SideBetsCard({
   const figs = variant ? [] : gameSideFigures(game, roundsPerHour);
   // A game cut off the standard cut is simulated at its own, on opening the card.
   useEffect(() => {
-    for (const f of figs) if (!f.row) requestSideRow(sideRowSpec(game, f.sb));
+    for (const f of figs) if (!f.row) requestSideRow(sideRowSpec(game, f.sb), { forOpenCard: true });
   });
   if (variant) return <VariantSideBets game={game} variantLabel={PRESET_LABEL[variant]} />;
   if (figs.length === 0) return null;
