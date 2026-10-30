@@ -180,12 +180,16 @@ export function GuidedSessionView({
     finishCurrent(true);
   };
 
+  // "Paused." is said from an effect once the pause has committed, never
+  // here: the drill unmounting with the pause cancels speech on its way out
+  // (the count drill does), which cut the line off before it was heard.
+  const sayPausedRef = useRef(false);
   const pauseNow = (spoken = true) => {
     const s = sessionRef.current;
     if (s.phase !== 'running' && s.phase !== 'intro') return;
     endingRef.current = false;
+    sayPausedRef.current = spoken;
     setSession(pause(banked(s)));
-    if (spoken) say(GUIDED_PAUSED);
   };
 
   const resumeNow = () => {
@@ -280,6 +284,15 @@ export function GuidedSessionView({
     // Per segment and per phase.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.phase, session.index]);
+
+  // The pause line, after the drill's unmount cleanups have run (passive
+  // effects run every unmount's cleanup before any new effect).
+  useEffect(() => {
+    if (session.phase !== 'paused' || !sayPausedRef.current) return;
+    sayPausedRef.current = false;
+    say(GUIDED_PAUSED);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session.phase]);
 
   // Every phase change is a resume point (and the end records the session).
   useEffect(() => {

@@ -184,6 +184,15 @@ async function withFakeEngine(page: Page): Promise<void> {
     const w = window as unknown as Record<string, unknown>;
     w.SpeechRecognition = FakeRecognition;
     w.webkitSpeechRecognition = FakeRecognition;
+    // A cancel goes in the speech log too, so a line cut off by one shows as
+    // followed by it.
+    const synth = window.speechSynthesis;
+    if (synth) {
+      synth.cancel = () => {
+        const log = ((window as unknown as { __speechLog?: string[] }).__speechLog ??= []);
+        log.push('cancel');
+      };
+    }
   });
 }
 
@@ -281,6 +290,12 @@ test('Drive: spoken transitions, answers and commands by voice, an answer is nev
   await answerByVoice(page, 'hit', `2/${speedN}`);
   await sayCommand(page, 'skip segment', () => expect(page.locator('[data-segment="count"]')).toBeVisible({ timeout: 1000 }));
   await expect(running(page, 'count')).toBeVisible({ timeout: 15_000 });
+
+  // Paused over the count, whose unmount cancels speech: the line is said
+  // after that, not cut off by it.
+  await sayCommand(page, 'pause session', () => expect(page.getByTestId('guided-paused')).toBeVisible({ timeout: 1000 }));
+  await expect.poll(async () => (await spoken(page)).filter((x) => x === 'Paused.' || x === 'cancel').at(-1)).toBe('Paused.');
+  expect((await spoken(page)).slice(-6)).toContain('cancel');
 
   await sayCommand(page, 'end session', () => expect(page.getByTestId('guided-summary')).toBeVisible({ timeout: 1000 }));
   await expect(page.getByTestId('guided-summary')).toHaveAttribute('data-outcome', 'ended');
