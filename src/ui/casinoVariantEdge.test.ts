@@ -228,7 +228,7 @@ describe('variantEdgeRunner watchdog and retry (R6)', () => {
     });
     requestVariantEdge(b);
     expect(variantEdgeState(b)).toEqual({ state: 'failed', message: 'no workers' });
-    stuckWorkers().made;
+    stuckWorkers();
     retryVariantEdge(b);
     expect(variantEdgeState(b)).toEqual({ state: 'running' });
     // Retry on a job that has not failed does nothing.
