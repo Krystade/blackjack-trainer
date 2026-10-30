@@ -1460,9 +1460,18 @@ export function formatDiagnosticLog(entries: readonly DiagEntry[], scope?: strin
     // `flushDiagnostics()`, so it read the counter in the one window the
     // device never exports from: it could not fail.
     ...(dropped > 0
-      ? [`# TRIMMED: ${dropped} older entries dropped to fit the cap`]
+      ? [
+          // A22: the count is for the whole log, and a scoped copy says so.
+          scope
+            ? `# TRIMMED: ${dropped} older entries dropped to fit the cap (whole log, mostly before this scope)`
+            : `# TRIMMED: ${dropped} older entries dropped to fit the cap`,
+        ]
       : []),
     /*
+     * A22: SUPERSEDED. Flushes are append-only segments since G5, so another
+     * tab adds its own lines rather than overwriting these, and gaps are
+     * trustworthy again. The old warning below told readers to distrust them.
+     *
      * ...AND WHAT TWO TABS DO TO EACH OTHER, which nothing said.
      *
      * The flush is a read-modify-write on one key with no coordination
@@ -1481,11 +1490,7 @@ export function formatDiagnosticLog(entries: readonly DiagEntry[], scope?: strin
      * log that has already been written.
      */
     ...(sessions > 1
-      ? [
-          `# ${sessions} page loads share this log. Writes are last-one-wins per flush,`,
-          `# so a gap in one session may be another tab's write rather than a gap in`,
-          `# what happened. Entries within a single session are complete or counted.`,
-        ]
+      ? [`# ${sessions} page loads in this log (each reload starts a new session)`]
       : []),
     // The export leaves the device -- pasted into a chat, mailed to whoever is
     // helping. The Settings panel warns; the artefact did not.

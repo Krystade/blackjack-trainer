@@ -725,6 +725,19 @@ describe('the parts of the log that were never pinned', () => {
     expect(after, 'a cleared log still claims losses').not.toContain('# TRIMMED');
   });
 
+  it('A22: a multi-load header is neutral, and a scoped TRIMMED says it is whole-log', async () => {
+    const log = await fresh();
+    for (let i = 0; i < log.MAX_ENTRIES + 500; i += 1) log.diag('mic', 'e' + i);
+    log.flushDiagnostics();
+    const entries = log.readDiagnosticLog();
+    const two = [...entries.slice(-3), { ...entries[entries.length - 1]!, session: 'other' }];
+    const text = log.formatDiagnosticLog(two);
+    expect(text).toContain('# 2 page loads in this log (each reload starts a new session)');
+    expect(text).not.toMatch(/last-one-wins|another tab/);
+    expect(log.formatDiagnosticLog(entries.slice(-3), 'kit-start')).toContain('(whole log, mostly before this scope)');
+    expect(log.formatDiagnosticLog(entries.slice(-3))).not.toContain('whole log, mostly');
+  });
+
   it('renders an empty value as something a reader can see', async () => {
     // `text=` with nothing after it is indistinguishable from a missing key
     // in a grep-read export, and an empty transcript is a real case.

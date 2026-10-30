@@ -74,7 +74,7 @@ Then, in order:
 ## What is NOT in it
 
 No audio, ever — text only. It never leaves the device unless you copy it out yourself. It is
-capped at 3000 entries and 400KB, oldest dropped first, and **Clear** deletes it outright.
+capped at 3000 entries and about 1.2MB (`MAX_BYTES`), oldest dropped first, and **Clear** deletes it outright.
 
 It is a record of what an open microphone heard, so it can contain conversation that happened
 near the phone. That is worth knowing before pasting one into a chat window.
