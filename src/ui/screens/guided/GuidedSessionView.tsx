@@ -172,21 +172,23 @@ export function GuidedSessionView({
   };
 
   /** The segment has met its target: let the drill's verdict be said, then move on. */
+  const settleTimer = useRef<number | null>(null);
   const endSoon = () => {
     if (endingRef.current || sessionRef.current.phase !== 'running') return;
     endingRef.current = true;
     const started = Date.now();
     const settle = () => {
+      settleTimer.current = null;
       if (!endingRef.current) return;
       const waited = Date.now() - started;
       const drive = sessionRef.current.drive;
       if (waited < END_SETTLE_MIN_MS || (drive && isAppSpeaking() && waited < END_SETTLE_MAX_MS)) {
-        window.setTimeout(settle, 150);
+        settleTimer.current = window.setTimeout(settle, 150);
         return;
       }
       finishCurrent(false);
     };
-    window.setTimeout(settle, 150);
+    settleTimer.current = window.setTimeout(settle, 150);
   };
 
   const skip = () => {
@@ -349,6 +351,9 @@ export function GuidedSessionView({
   // Left mid-session (a tab, Home): kept as a paused resume point.
   useEffect(
     () => () => {
+      // A segment ending as the view goes: its settle timer goes with it.
+      if (settleTimer.current !== null) window.clearTimeout(settleTimer.current);
+      endingRef.current = false;
       const s = sessionRef.current;
       if (s.phase !== 'done') saveActive({ ...banked(s), phase: 'paused' });
     },
