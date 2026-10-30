@@ -116,6 +116,8 @@ interface ProbeSummary {
   verdict: string;
   highRatio: number;
   error?: string;
+  /** The track's own sample rate. 8000 is the hands-free link's signature. */
+  trackSampleRate?: number | null;
 }
 
 /** Everything the kit measures. Any step can be skipped, so every measurement is optional. */
@@ -169,8 +171,23 @@ export function phoneMicSummary(run: PhoneRun): { lines: SummaryLine[]; overall:
     lines.push({ id: 'probe', question: q2, verdict: 'yes', text: `Energy above 4kHz (share ${p.highRatio.toFixed(3)}). The hands-free link cannot carry that.` });
   } else if (p.verdict === 'narrowband') {
     lines.push({ id: 'probe', question: q2, verdict: 'no', text: 'Nothing above 4kHz: this input is going through the hands-free link.' });
+  } else if (p.verdict === 'narrowband-by-rate') {
+    // The strongest reading the probe can make (micSpectrum.ts
+    // verdictFromTrackRate): at an 8kHz track rate nothing above 4kHz can
+    // exist, whatever the spectrum looked like.
+    const rate = p.trackSampleRate ? `${Math.round(p.trackSampleRate / 100) / 10} kHz` : '8 kHz';
+    lines.push({
+      id: 'probe',
+      question: q2,
+      verdict: 'no',
+      text: `Track opened at ${rate}: nothing above 4kHz can pass, so this input is going through the hands-free link.`,
+    });
+  } else if (p.verdict === 'no-signal') {
+    lines.push({ id: 'probe', question: q2, verdict: 'unclear', text: 'Nothing was heard. Talk louder while it measures.' });
+  } else if (p.verdict === 'unmeasurable') {
+    lines.push({ id: 'probe', question: q2, verdict: 'unclear', text: 'The browser gave no spectrum, so this could not be measured.' });
   } else {
-    lines.push({ id: 'probe', question: q2, verdict: 'unclear', text: `Reading was "${p.verdict}". Talk louder while it measures.` });
+    lines.push({ id: 'probe', question: q2, verdict: 'unclear', text: `Reading was "${p.verdict}".` });
   }
 
   const q3 = 'Covering the phone mic silences the input';

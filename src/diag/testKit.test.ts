@@ -304,6 +304,27 @@ describe('bt-phone-mic kit', () => {
     expect(phoneMicSummary({ answers: {} }).overall).toBe('unclear');
     expect(phoneMicSummary({ answers: {} }).lines.every((l) => l.verdict === 'skipped' || l.id === 'route')).toBe(true);
   });
+
+  it('A2: an 8kHz track rate is the decisive "no", not "talk louder"', () => {
+    const s = phoneMicSummary({
+      phoneProbe: { verdict: 'narrowband-by-rate', highRatio: 0.01, trackSampleRate: 8000 },
+      answers: {},
+    });
+    const probe = s.lines.find((l) => l.id === 'probe')!;
+    expect(probe.verdict).toBe('no');
+    expect(probe.text).toContain('8 kHz');
+    expect(probe.text).not.toMatch(/louder/i);
+    expect(s.overall).toBe('no');
+  });
+
+  it('A2: only silence asks to talk louder; an unmeasurable probe says so', () => {
+    const line = (verdict: string) =>
+      phoneMicSummary({ phoneProbe: { verdict, highRatio: 0 }, answers: {} }).lines.find((l) => l.id === 'probe')!;
+    expect(line('no-signal').text).toMatch(/louder/i);
+    expect(line('unmeasurable').text).not.toMatch(/louder/i);
+    expect(line('unmeasurable').text).toMatch(/no spectrum/i);
+    expect(line('unmeasurable').verdict).toBe('unclear');
+  });
 });
 
 describe('Words at speed', () => {

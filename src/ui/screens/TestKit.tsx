@@ -968,7 +968,7 @@ function PhoneProbeStep({ run, onAnswer }: StepProps) {
     const out: Array<{ name: string; r: MicProbeResult }> = [];
     const phone = run.current.phone ?? { deviceId: 'default', label: 'default', matched: false };
     const pr = await probeMicSpectrum({ deviceId: phone.deviceId, ms: 4000 });
-    run.current.phoneProbe = { verdict: pr.verdict, highRatio: pr.highRatio, error: pr.error };
+    run.current.phoneProbe = { verdict: pr.verdict, highRatio: pr.highRatio, error: pr.error, trackSampleRate: pr.trackSampleRate };
     diag('test', 'kit-phone-probe', {
       which: 'phone',
       deviceId: phone.deviceId,
@@ -985,7 +985,7 @@ function PhoneProbeStep({ run, onAnswer }: StepProps) {
     const car = run.current.car;
     if (car) {
       const cr = await probeMicSpectrum({ deviceId: car.deviceId, ms: 4000 });
-      run.current.carProbe = { verdict: cr.verdict, highRatio: cr.highRatio, error: cr.error };
+      run.current.carProbe = { verdict: cr.verdict, highRatio: cr.highRatio, error: cr.error, trackSampleRate: cr.trackSampleRate };
       diag('test', 'kit-phone-probe', {
         which: 'car',
         deviceId: car.deviceId,
