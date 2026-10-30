@@ -16,7 +16,7 @@ import {
   worstHeat,
   type Standing,
 } from '../../casinoFigures';
-import { bestGameOf, buildRanking, rankedEvHour, type RankRow } from '../../casinoRanking';
+import { bestGameOf, buildRanking, rankScore, rankedEvHour, type RankRow } from '../../casinoRanking';
 import { gameExtras, matchesQuery, readDirectorySort, sortDirectory, writeDirectorySort, type DirectorySort } from '../../casinoDirectory';
 import { FigureBadges } from './FigureBadges';
 import { figureLine } from '../../casinoFigureLine';
@@ -54,14 +54,15 @@ export function CasinoDirectory({ log, go, now, here }: { log: CasinoLog; go: (v
     let best: RankRow | null = null;
     for (const r of ranked) {
       if (r.casino.id !== c.id) continue;
-      const v = rankedEvHour(r);
-      if (v !== null && (best === null || v > rankedEvHour(best)!)) best = r;
+      // C17: chosen and sorted on the rank score; the row still shows its figure.
+      const v = rankScore(r);
+      if (v !== null && (best === null || v > rankScore(best)!)) best = r;
     }
     return best;
   };
   const bestEv = (c: Casino): number | null => {
     const r = bestRow(c);
-    return r ? rankedEvHour(r) : null;
+    return r ? rankScore(r) : null;
   };
   const found = log.casinos.filter((c) => matchesQuery(c, query, now));
   const shown = sortDirectory(log, found, sort, now, here, bestEv);

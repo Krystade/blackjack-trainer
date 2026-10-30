@@ -239,6 +239,21 @@ export function rankedEvHour(r: RankRow): number | null {
 }
 
 /**
+ * C17 (audit 2026-10-29): the figure a row is SORTED by. A run that has not
+ * met its targets (an estimate, or stopped at its cap) shows the best of
+ * several methods' noisy point estimates, and the largest of several noisy
+ * figures reads high -- more so with more methods (mid-shoe entry adds the
+ * back-count ones; a shuffler has none). Until the run is done the row ranks
+ * on that figure less half its 95% interval; the figure shown is unchanged.
+ */
+export function rankScore(r: RankRow): number | null {
+  const ev = rankedEvHour(r);
+  if (ev === null || !r.figures || !r.figures.partial) return ev;
+  const ci = r.withSide?.method ? r.withSide.method.hours.evHourCi : r.figures.evHourCi;
+  return Number.isFinite(ci) ? ev - ci / 2 : ev;
+}
+
+/**
  * The rows, sorted. Burned casinos are left out until their cool-off is over;
  * Avoid casinos stay in, greyed. Under the EV sorts, every game with a figure
  * by that figure -- whether its run met both targets, stopped at its cap, or
@@ -310,7 +325,7 @@ export function buildRanking(
   // Games with a figure, then none (review S3: never by how far the run got).
   const done = (r: RankRow) => (r.figures === null ? 1 : 0);
   if (sort === 'ev') {
-    return rows.sort((a, b) => done(a) - done(b) || desc(rankedEvHour)(a, b));
+    return rows.sort((a, b) => done(a) - done(b) || desc(rankScore)(a, b));
   }
   if (sort === 'trip') {
     // Among games with figures: games with a drive time
@@ -323,7 +338,7 @@ export function buildRanking(
       const t = tier(a) - tier(b);
       if (t !== 0) return t;
       if (a.figures && tier(a) === 0) return desc((r) => r.tripEv)(a, b);
-      return desc(rankedEvHour)(a, b);
+      return desc(rankScore)(a, b);
     });
   }
   return rows.sort((a, b) => {
@@ -331,7 +346,7 @@ export function buildRanking(
     const t = tier(a) - tier(b);
     if (t !== 0) return t;
     const v = (r: RankRow) => (r.distance === null ? 0 : distanceMinutes(r.distance));
-    return v(a) - v(b) || desc(rankedEvHour)(a, b);
+    return v(a) - v(b) || desc(rankScore)(a, b);
   });
 }
 
@@ -354,7 +369,7 @@ export function bestGameOf(casino: Casino, rows: readonly RankRow[]): CasinoGame
   let best: RankRow | null = null;
   for (const r of rows) {
     if (r.casino.id !== casino.id || !r.figures) continue;
-    if (!best || rankedEvHour(r)! > rankedEvHour(best)!) best = r;
+    if (!best || rankScore(r)! > rankScore(best)!) best = r;
   }
   return best?.game ?? casino.games[0]!;
 }

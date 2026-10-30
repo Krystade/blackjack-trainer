@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { holdOrder, buildRanking, bestGameOf, evTargetMet, exitMinutesOf, gameFigures, rankedEvHour, seatedThroughout, sideCombinedText, withSideBet, type GameFigures } from './casinoRanking';
+import { holdOrder, buildRanking, bestGameOf, evTargetMet, exitMinutesOf, gameFigures, rankScore, rankedEvHour, seatedThroughout, sideCombinedText, withSideBet, type GameFigures, type RankRow } from './casinoRanking';
 import { emptyCasinoLog, blankGame, normGame, type Casino, type CasinoGame, type CasinoLog } from '../store/casinoLog';
 import { resultState, simInputFor, type GameResult } from '../store/casinoGameStats';
 import { workFor } from './casinoAutoSim';
@@ -497,5 +497,23 @@ describe('card-room house games are not modelled (C9)', () => {
   it('the mark survives the log being read back', () => {
     expect(normGame(JSON.parse(JSON.stringify(game('h', { houseGame: true }))), 'x').houseGame).toBe(true);
     expect(normGame(JSON.parse(JSON.stringify(game('s'))), 'x').houseGame).toBeUndefined();
+  });
+});
+
+// C17 (audit 2026-10-29): the best of several noisy method estimates reads
+// high, so an unfinished run ranks on its figure less half its interval.
+describe('C17: unfinished runs rank on a shrunk figure', () => {
+  const row = (id: string, evHour: number, evHourCi: number, partial: boolean) =>
+    ({ casino: { id: 'c' }, game: { id }, figures: { evHour, evHourCi, partial } }) as unknown as RankRow;
+  it('ranks on the figure less half its interval until done; shows the figure as is', () => {
+    const noisy = row('noisy', 100, 80, true);
+    const tight = row('tight', 90, 10, true);
+    expect(rankScore(noisy)).toBe(60);
+    expect(rankScore(tight)).toBe(85);
+    expect(rankedEvHour(noisy)).toBe(100);
+    expect(bestGameOf({ id: 'c', games: [{ id: 'noisy' }, { id: 'tight' }] } as never, [noisy, tight]).id).toBe('tight');
+    // A finished run ranks on its figure.
+    expect(rankScore(row('done', 100, 80, false))).toBe(100);
+    expect(bestGameOf({ id: 'c', games: [] } as never, [row('noisy', 100, 80, false), tight]).id).toBe('noisy');
   });
 });
