@@ -206,10 +206,30 @@ export function summariseVoiceTiming(rows: readonly VoiceTimingRow[]): VoiceTimi
  * Pass when nothing the DRIVER said was thrown away. The app hearing its own
  * words and dropping them is the tail working; a real answer dropped is the
  * tail costing an answer, which is the failure SPEECH_TAIL_MS is tuned against.
+ *
+ * AND WHEN AT LEAST ONE OF THE DRIVER'S ANSWERS ARRIVED (audit A14). A run
+ * where the mic heard only the app's own "Say hit." and every wait timed out
+ * passed -- the deaf-mic failure the check exists to catch.
  */
+export function voiceTimingFailWhy(rows: readonly VoiceTimingRow[]): string | null {
+  if (rows.some((r) => r.outcome === 'suppressed' && !r.ownWords)) return 'real-answer-suppressed';
+  if (!rows.some((r) => r.outcome === 'accepted' && !r.ownWords)) return 'no-real-answer-accepted';
+  return null;
+}
+
 export function voiceTimingStatus(rows: readonly VoiceTimingRow[]): DriveCheckStatus {
   if (rows.length === 0) return 'skipped';
-  return rows.some((r) => r.outcome === 'suppressed' && !r.ownWords) ? 'fail' : 'pass';
+  return voiceTimingFailWhy(rows) === null ? 'pass' : 'fail';
+}
+
+/**
+ * Did a push-to-talk window actually go live since `from`? (audit A13) The
+ * window opens 'waiting' and only `ptt-live` says the recogniser started; a
+ * window that closed `never-opened` left the car out of call mode, so a back
+ * press arriving afterwards proves nothing about the mic.
+ */
+export function pushToTalkWentLive(entries: readonly DiagEntry[], from: { session: string; ms: number }): boolean {
+  return entries.some((e) => inWindow(e, from) && e.category === 'mic' && e.event === 'ptt-live');
 }
 
 /* ------------------------------------------------------------------ */

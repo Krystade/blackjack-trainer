@@ -34,6 +34,8 @@ import {
   summariseVoiceTiming,
   voiceTimingRows,
   voiceTimingStatus,
+  voiceTimingFailWhy,
+  pushToTalkWentLive,
   type CountRunFacts,
   type DriveCheckDef,
   type DriveCheckId,
@@ -58,6 +60,7 @@ import { requestWakeLock, releaseWakeLock } from '../../audio/wakeLock';
 import { prewarmClips, setClipsEnabled, setClipVoice } from '../../audio/clips';
 import { createWheelNumberEntry, type WheelNumberEntry } from '../../audio/wheelNumber';
 import { looksLikeAnAttempt } from '../../audio/voiceRecognition';
+import { looksLikeSelfEcho } from '../../audio/selfEcho';
 import { narrateCard, narrateCountAnswer, narrateCountPrompt, narrateReadback } from '../../audio/narrate';
 import { COUNT_PAUSED_LINE } from '../../drills/countPause';
 import { drawSpeedQuestion, speedModeOf } from '../../drills/speedDrill';
@@ -134,6 +137,8 @@ export function DriveChecks({
   const pttOpen = usePushToTalk();
 
   const stoppedRef = useRef(false);
+  /** The line last spoken, so its own echo is not taken as an answer arriving. */
+  const lineRef = useRef('');
   const wheelWaiter = useRef<((a: Answer) => void) | null>(null);
   const voiceWaiter = useRef<((what: string) => void) | null>(null);
   const muteWaiter = useRef<(() => void) | null>(null);
@@ -211,7 +216,11 @@ export function DriveChecks({
   }, [settings.audio.muted]);
 
   useEffect(() => {
-    if (voiceStatus.heard !== null && voiceStatus.verdict) voiceWaiter.current?.(`heard:${voiceStatus.verdict}`);
+    if (voiceStatus.heard === null || !voiceStatus.verdict) return;
+    // A14: the app's own words, dropped, are not an answer arriving; letting
+    // them end the wait let an echo stand in for the driver.
+    if (voiceStatus.verdict === 'suppressed' && (voiceStatus.why === 'echo' || looksLikeSelfEcho(voiceStatus.heard, lineRef.current))) return;
+    voiceWaiter.current?.(`heard:${voiceStatus.verdict}`);
   }, [voiceStatus]);
 
   /* ---------------- primitives ---------------- */
@@ -224,6 +233,7 @@ export function DriveChecks({
     guard();
     // The yes/no reminder is not shown: the question stays on screen.
     if (opts?.show !== false) setLine(text);
+    lineRef.current = text;
     await speakAsync(text, { ...speechOptsFrom(settingsRef.current.audio), interrupt: opts?.interrupt ?? false });
     guard();
   };
@@ -342,7 +352,13 @@ export function DriveChecks({
       await sleep(MIC_RELEASE_SETTLE_MS);
       guard();
       const rows = voiceTimingRows(readDiagnosticLog(), from);
-      settle(def, run, voiceTimingStatus(rows), { prompts: VOICE_TIMING_PROMPTS, timeouts, ...summariseVoiceTiming(rows) });
+      const why = rows.length > 0 ? voiceTimingFailWhy(rows) : null;
+      settle(def, run, voiceTimingStatus(rows), {
+        prompts: VOICE_TIMING_PROMPTS,
+        timeouts,
+        ...summariseVoiceTiming(rows),
+        ...(why ? { why } : {}),
+      });
     },
 
     misheard: async (def, run) => {
@@ -395,6 +411,7 @@ export function DriveChecks({
           settle(def, run, 'skipped', { wheelMode: 'talk', micOpened: false, press: opened ?? 'none' });
           return;
         }
+        const pttFrom = mark(def.id);
         startPushToTalk(DRIVE_CHECKS_CONTEXT);
         const deadline = Date.now() + PUSH_TO_TALK_CAP_MS + 3_000;
         while (isPushToTalkOpen() && Date.now() < deadline) {
@@ -402,6 +419,12 @@ export function DriveChecks({
           guard();
         }
         const closedAt = Date.now();
+        // A13: from the log, not sampled: a word heard ends the window at once,
+        // so a short live phase can open and close between two samples.
+        if (!pushToTalkWentLive(readDiagnosticLog(), pttFrom)) {
+          settle(def, run, 'fail', { wheelMode: 'talk', micOpened: false, why: 'mic-never-live' });
+          return;
+        }
         await sleep(MIC_RELEASE_SETTLE_MS);
         const from = mark(def.id);
         await say(DC_LINES.talkBackPress);

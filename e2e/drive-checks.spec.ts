@@ -316,3 +316,58 @@ test('a run that had to switch audio on gives it back off afterwards', async ({ 
   const after = await page.evaluate(() => JSON.parse(localStorage.getItem('bjtrainer.settings.v1') ?? '{}'));
   expect(after.audio.enabled).toBe(false);
 });
+
+/**
+ * A13: "Talk mode: back after the mic" is about the car leaving call mode
+ * after the mic closes. If the mic never went live the car never entered call
+ * mode, so a back press proves nothing: the check fails as mic-never-live
+ * instead of passing with micOpened=true.
+ */
+test('talk-back: a push-to-talk window that never goes live fails, without asking for back', async ({ page }) => {
+  test.setTimeout(90_000);
+  // An engine that accepts start() and never confirms it.
+  await page.addInitScript(() => {
+    class DeadRecognition {
+      continuous = false;
+      interimResults = true;
+      lang = '';
+      onstart: (() => void) | null = null;
+      onend: (() => void) | null = null;
+      onerror: ((e: { error?: string }) => void) | null = null;
+      onresult: ((e: unknown) => void) | null = null;
+      start(): void {}
+      stop(): void {
+        this.onend?.();
+      }
+      abort(): void {
+        this.onend?.();
+      }
+    }
+    const w = window as unknown as Record<string, unknown>;
+    w.SpeechRecognition = DeadRecognition;
+    w.webkitSpeechRecognition = DeadRecognition;
+  });
+  await openDriveChecks(page);
+  await page.getByTestId('drive-check-run-talk-back').click();
+  await spoke(page, DC_LINES.talkBackIntro);
+  await waitFor(page, 'answer');
+  await press(page, 'forward');
+  const r = await result(page, 'talk-back');
+  expect(r).toMatchObject({ status: 'fail', micOpened: false, why: 'mic-never-live' });
+  expect(await page.evaluate((l) => (window.__speechLog ?? []).includes(l), DC_LINES.talkBackPress)).toBe(false);
+});
+
+test('talk-back: a window that went live asks for back, and a back press passes', async ({ page }) => {
+  test.setTimeout(90_000);
+  await fakeRecognition(page);
+  await openDriveChecks(page);
+  await page.getByTestId('drive-check-run-talk-back').click();
+  await spoke(page, DC_LINES.talkBackIntro);
+  await waitFor(page, 'answer');
+  await press(page, 'forward');
+  await spoke(page, DC_LINES.talkBackPress);
+  await waitFor(page, 'answer');
+  await press(page, 'back');
+  const r = await result(page, 'talk-back');
+  expect(r).toMatchObject({ status: 'pass', micOpened: true, reached: true });
+});

@@ -16,6 +16,8 @@ import {
   summariseVoiceTiming,
   voiceTimingRows,
   voiceTimingStatus,
+  voiceTimingFailWhy,
+  pushToTalkWentLive,
   statusFromYes,
   type CountRunFacts,
 } from './driveChecks';
@@ -74,10 +76,22 @@ describe('voice timing (D-R6 echo-timing lines)', () => {
     expect(s.rows).toBe('50/real/suppressed,-100/own/suppressed,800/real/accepted,1200/real/accepted');
   });
 
-  it('fails only when a real answer was thrown away', () => {
+  it('fails when a real answer was thrown away', () => {
+    const own = { sincePromptEndMs: 100, ownWords: true, outcome: 'suppressed', tailMs: 700 };
+    const real = { sincePromptEndMs: 300, ownWords: false, outcome: 'accepted', tailMs: 700 };
     expect(voiceTimingStatus([])).toBe('skipped');
-    expect(voiceTimingStatus([{ sincePromptEndMs: 100, ownWords: true, outcome: 'suppressed', tailMs: 700 }])).toBe('pass');
-    expect(voiceTimingStatus([{ sincePromptEndMs: 100, ownWords: false, outcome: 'suppressed', tailMs: 700 }])).toBe('fail');
+    expect(voiceTimingStatus([own, real])).toBe('pass');
+    expect(voiceTimingStatus([{ sincePromptEndMs: 100, ownWords: false, outcome: 'suppressed', tailMs: 700 }, real])).toBe('fail');
+  });
+
+  it("A14: fails when none of the driver's answers arrived", () => {
+    const own = { sincePromptEndMs: 100, ownWords: true, outcome: 'suppressed', tailMs: 700 };
+    const rejected = { sincePromptEndMs: 400, ownWords: false, outcome: 'rejected', tailMs: 700 };
+    expect(voiceTimingStatus([own])).toBe('fail');
+    expect(voiceTimingFailWhy([own])).toBe('no-real-answer-accepted');
+    expect(voiceTimingStatus([rejected, rejected])).toBe('fail');
+    // The app accepting its own words is not the driver answering either.
+    expect(voiceTimingStatus([{ ...own, outcome: 'accepted' }])).toBe('fail');
   });
 });
 
@@ -222,5 +236,18 @@ describe('the export block', () => {
     expect(head).toBeGreaterThan(0);
     expect(lines[head + 1]).toMatch(/^# {2}4 speech-queue +fail +overlapOrCut=yes$/);
     expect(lines.findIndex((l) => / note\b/.test(l) && !l.startsWith('#'))).toBeGreaterThan(head);
+  });
+});
+
+describe('A13: talk mode needs the mic to have gone live', () => {
+  it('reads ptt-live in the window, and only there', () => {
+    ms = 0;
+    const before = e('mic', 'ptt-live', { forMs: 4000 });
+    const from = { session: 's1', ms: before.ms + 1 };
+    const waiting = e('mic', 'ptt-open', { context: DRIVE_CHECKS_CONTEXT });
+    const neverOpened = e('mic', 'ptt-close', { why: 'never-opened' });
+    expect(pushToTalkWentLive([before, waiting, neverOpened], from)).toBe(false);
+    expect(pushToTalkWentLive([before, waiting, e('mic', 'ptt-live', { forMs: 4000 })], from)).toBe(true);
+    expect(pushToTalkWentLive([e('mic', 'ptt-live', {}, 's0')], from)).toBe(false);
   });
 });
