@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { matchVoiceAction, resolveSpoken, VOICE_PHRASES, SPOKEN_FORM } from '../audio/voiceRecognition';
+import { matchVoiceAction, resolveSpoken, setUserVoiceAliases, VOICE_PHRASES, SPOKEN_FORM } from '../audio/voiceRecognition';
 import { COUNT_BIAS_PHRASES, parseCountSpeech } from '../audio/voiceNumber';
 import { looksLikeSelfEcho } from '../audio/selfEcho';
 import { allGuidedSentences } from './lines';
@@ -14,7 +14,10 @@ import {
 
 const PHRASES = Object.keys(COMMAND_PHRASES);
 
-afterEach(() => _resetGuidedCommandsForTest());
+afterEach(() => {
+  _resetGuidedCommandsForTest();
+  setUserVoiceAliases({});
+});
 
 describe('guided commands never collide with an answer', () => {
   it('no command is a drill answer, a fuzzy near-miss of one, or a count', () => {
@@ -70,6 +73,17 @@ describe('matching', () => {
 
   it('every command is at most two words (the self-echo length contract)', () => {
     for (const p of PHRASES) expect(p.split(' ').length, p).toBeLessThanOrEqual(2);
+  });
+});
+
+describe("the operator's voice aliases", () => {
+  it('a command he has made an answer in Settings is his answer, not a command', () => {
+    expect(matchGuidedCommand('end session', ['end session'], null, 'running')).toBe('end');
+    setUserVoiceAliases({ 'end session': 'stand', resume: 'hit' });
+    expect(matchGuidedCommand('end session', ['end session'], null, 'running')).toBeNull();
+    expect(matchGuidedCommand('resume', ['resume'], null, 'panel')).toBeNull();
+    // The rest are untouched.
+    expect(matchGuidedCommand('pause session', ['pause session'], null, 'running')).toBe('pause');
   });
 });
 

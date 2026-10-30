@@ -1,4 +1,4 @@
-import { resolveSpoken } from '../audio/voiceRecognition';
+import { matchVoiceAction, resolveSpoken } from '../audio/voiceRecognition';
 import { looksLikeSelfEcho } from '../audio/selfEcho';
 import { parseCountSpeech } from '../audio/voiceNumber';
 
@@ -30,6 +30,8 @@ import { parseCountSpeech } from '../audio/voiceNumber';
  *   - Bare "skip" only when no reading of the utterance is an answer: it is one
  *     sound from "spit", which IS an alias of split, and losing a segment to a
  *     misheard Split is worse than saying "skip segment".
+ *   - The operator's aliases win: a phrase he has made an answer in Settings
+ *     is his answer, whatever it says.
  *   - Not the app's own voice: a command whose words are in the line the app
  *     last said is dropped (the claim is asked before the controller's own
  *     late-echo checks, so it must make its own). No guided line contains a
@@ -91,6 +93,9 @@ export function matchGuidedCommand(
   const cmd = (screen === 'running' ? RUNNING_PHRASES : COMMAND_PHRASES)[phrase];
   if (!cmd) return null;
   if (lastSaid && looksLikeSelfEcho(phrase, lastSaid)) return null;
+  // The operator's own alias wins: no shipped answer is a command (tested),
+  // but an alias added in Settings ("end session" = stand) is his answer.
+  if (matchVoiceAction(phrase) !== null) return null;
   if (YIELDS_TO_ANSWERS.has(phrase)) {
     const readings = offered.length > 0 ? offered : [heard];
     if (resolveSpoken(readings) !== null) return null;
