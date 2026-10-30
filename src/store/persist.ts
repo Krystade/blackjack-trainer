@@ -1,4 +1,5 @@
 import { DEFAULT_SETTINGS, EMPTY_STATS, type AudioSettings, type Settings, type Stats } from './types';
+import { backupDevice, deviceAudioNote, deviceClass, withDeviceAudio } from './deviceAudio';
 import { capHistories } from './retention';
 import { diag } from '../diag/diagnosticLog';
 import { diffSettings, formatChanges } from '../diag/settingsDiff';
@@ -553,7 +554,8 @@ export function exportAll(): string {
   // B4: WHEN, AND HOW MUCH. Several backups in Files were indistinguishable
   // inside; the import confirm reads this to show the file beside the phone.
   // importAll ignores it (it reads only the fields it knows).
-  blob.meta = { app: 'bjtrainer', exportedAt: new Date().toISOString(), summary: summarizeBackupBlob(blob) };
+  // B16: the kind of device, so a restore elsewhere keeps that device's sound settings.
+  blob.meta = { app: 'bjtrainer', exportedAt: new Date().toISOString(), summary: summarizeBackupBlob(blob), device: deviceClass() };
 
   return JSON.stringify(blob);
 }
@@ -608,7 +610,7 @@ export function summarizeBackupBlob(blob: Record<string, unknown>): BackupSummar
 
 /** A backup file read and checked, before anything is written. */
 export type ParsedBackup =
-  | { ok: true; exportedAt: string | null; summary: BackupSummary; replaces: string[] }
+  | { ok: true; exportedAt: string | null; summary: BackupSummary; replaces: string[]; deviceNote?: string }
   | { ok: false; error: string };
 
 /**
@@ -623,7 +625,8 @@ export function inspectBackup(json: string): ParsedBackup {
   const meta = obj.meta as { exportedAt?: unknown } | undefined;
   const exportedAt =
     meta && typeof meta.exportedAt === 'string' && Number.isFinite(Date.parse(meta.exportedAt)) ? meta.exportedAt : null;
-  return { ok: true, exportedAt, summary: summarizeBackupBlob(obj), replaces: replacedLabels(obj) };
+  const deviceNote = deviceAudioNote(backupDevice(obj), deviceClass());
+  return { ok: true, exportedAt, summary: summarizeBackupBlob(obj), replaces: replacedLabels(obj), ...(deviceNote ? { deviceNote } : {}) };
 }
 
 /**
@@ -734,7 +737,11 @@ export function importAll(json: string): { ok: boolean; error?: string } {
      */
     const extras = parsed as Record<string, unknown>;
     const pending: { key: string; value: string }[] = [
-      { key: SETTINGS_KEY, value: JSON.stringify(mergeSettings(obj.settings)) },
+      {
+        key: SETTINGS_KEY,
+        // B16: a file from another kind of device leaves this one's sound route, voice and chime.
+        value: JSON.stringify(withDeviceAudio(mergeSettings(obj.settings), loadSettings(), backupDevice(parsed), deviceClass())),
+      },
       { key: 'bjtrainer.stats.v1', value: JSON.stringify(capHistories(mergeStats(obj.stats))) },
     ];
     for (const { key, field } of EXTRA_KEYS) {

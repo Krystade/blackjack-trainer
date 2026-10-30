@@ -37,7 +37,7 @@ function listText(xs: readonly string[]): string {
 }
 
 export function importConfirmText(
-  file: { exportedAt: string | null; summary: BackupSummary; replaces: readonly string[] },
+  file: { exportedAt: string | null; summary: BackupSummary; replaces: readonly string[]; deviceNote?: string },
   phone: BackupSummary,
   undoKept: boolean,
 ): string {
@@ -55,6 +55,7 @@ export function importConfirmText(
     lines.push('', 'The file is older than this phone: what you practised since it was made will be replaced.');
   }
   lines.push('', `It replaces your ${listText(file.replaces)}.`);
+  if (file.deviceNote) lines.push(file.deviceNote);
   lines.push(
     undoKept
       ? 'You can undo the import from this screen until the app is closed.'
