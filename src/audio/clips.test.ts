@@ -797,6 +797,32 @@ describe('playClipsAsync — happy path (fake Audio + fetch)', () => {
     }
   });
 
+  /** A12: a watchdog is only "played" when the clip actually advanced. */
+  for (const advanced of [false, true]) {
+    it(`a watchdog on a clip that ${advanced ? 'advanced' : 'never advanced'} settles as ${advanced ? 'played' : 'not played'}`, async () => {
+      vi.useFakeTimers();
+      try {
+        const env = installFakeAudioEnv();
+        mockFetchRouter({
+          'index.json': async () => ({ voices: [{ id: 'aria', label: 'Aria' }], default: 'aria' }),
+          'manifest.json': async () => ({ clips: { queen: 'queen.mp3' } }),
+        });
+        const playPromise = playClipsAsync('queen');
+        await vi.advanceTimersByTimeAsync(0);
+        await vi.advanceTimersByTimeAsync(0);
+        const el = env.instances[0] as unknown as { currentTime: number; ontimeupdate: (() => void) | null };
+        if (advanced) {
+          el.currentTime = 0.4;
+          el.ontimeupdate?.();
+        }
+        await vi.advanceTimersByTimeAsync(20_000);
+        await expect(playPromise).resolves.toBe(advanced);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  }
+
   it('uses an explicitly set clip voice over the index default', async () => {
     const env = installFakeAudioEnv();
     (globalThis as any).fetch = vi.fn(async (url: string) => {
@@ -966,7 +992,10 @@ describe('the element that plays a clip outlives the clip', () => {
     // Both are idle now, so a third chain reuses one rather than building a
     // locked third element.
     const third = playClipsAsync('queen');
-    await vi.waitFor(() => expect(env.instances.some((a) => a.src.includes('queen.mp3'))).toBe(true));
+    // Armed, not just pointed at queen.mp3: the first chain's element already
+    // had that src, so the old wait passed before the handler existed and the
+    // watchdog (which reported a stall as played until A12) settled it.
+    await vi.waitFor(() => expect(env.instances.some((a) => a.src.includes('queen.mp3') && a.onended)).toBeTruthy());
     expect(env.instances.length, 'a finished element was never reused').toBe(2);
     for (const a of env.instances) a.onended?.();
     await expect(third).resolves.toBe(true);

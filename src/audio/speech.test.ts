@@ -376,18 +376,18 @@ describe('speakAsync()', () => {
   afterEach(teardownFakeSpeechEnv);
 
   it('resolves immediately in an unsupported environment (no window)', async () => {
-    await expect(speakAsync('hello')).resolves.toBeUndefined();
+    await expect(speakAsync('hello')).resolves.toBe('unheard');
   });
 
   it('resolves and logs in e2e mode, without touching real speech APIs', async () => {
     (globalThis as any).window = { location: { search: '?e2e=1' } };
-    await expect(speakAsync('Win, plus two')).resolves.toBeUndefined();
+    await expect(speakAsync('Win, plus two')).resolves.toBe('spoken');
     expect((globalThis as any).window.__speechLog).toEqual(['Win, plus two']);
   });
 
   it('resolves once the utterance fires onend', async () => {
     installFakeSpeechEnv([], { autoEnd: true });
-    await expect(speakAsync('hi')).resolves.toBeUndefined();
+    await expect(speakAsync('hi')).resolves.toBe('spoken');
   });
 
   it('resolves once the utterance fires onerror', async () => {
@@ -400,7 +400,7 @@ describe('speakAsync()', () => {
         cancel: () => {},
       },
     };
-    await expect(speakAsync('hi')).resolves.toBeUndefined();
+    await expect(speakAsync('hi')).resolves.toBe('unheard');
   });
 
   it('cancelSpeech() settles a pending speakAsync promise (onend never fires)', async () => {
@@ -840,7 +840,7 @@ describe('the microphone is told when the app actually stopped', () => {
   it('reports the ending of a line nobody is listening to without throwing', async () => {
     installFakeSpeechEnv([]);
     setSpeechActivityListener(null);
-    await expect(speakAsync('Queen.')).resolves.toBeUndefined();
+    await expect(speakAsync('Queen.')).resolves.toBe('spoken');
   });
 
   it('survives a listener that throws on the ending', async () => {
@@ -851,7 +851,7 @@ describe('the microphone is told when the app actually stopped', () => {
     try {
       // A consumer's bookkeeping must never take out the utterance that was
       // trying to tell it something.
-      await expect(speakAsync('Queen.')).resolves.toBeUndefined();
+      await expect(speakAsync('Queen.')).resolves.toBe('spoken');
     } finally {
       setSpeechActivityListener(null);
     }

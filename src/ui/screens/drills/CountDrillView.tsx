@@ -730,8 +730,17 @@ export function CountDrillView({
         const g = groups[i];
         if (!g) return;
 
-        await speakAsync(narrateCards(g, 'rank'), speechOptsFrom(settings.audio));
+        const outcome = await speakAsync(narrateCards(g, 'rank'), speechOptsFrom(settings.audio));
         if (isStale()) return;
+        // A12: a card nobody heard (a call, Siri, a dead route: the clip and
+        // the live fallback both failed) is not dealt past. Hold the run on
+        // it; resuming says it again instead of moving on.
+        if (outcome === 'unheard') {
+          diag('life', 'count-paused-unheard', { index: i });
+          replayOnResumeRef.current = true;
+          pauseRun();
+          return;
+        }
 
         const isLast = i >= groups.length - 1;
 
@@ -1026,6 +1035,9 @@ export function CountDrillView({
     }
   };
 
+  /** A12: the run is held on a card that went unheard, so resuming replays it. */
+  const replayOnResumeRef = useRef(false);
+
   /** C-R2: stop the run where it is. Only while the cards are flashing. */
   const pauseRun = () => {
     if (phaseRef.current !== 'flashing' || pausedAtRef.current !== null) return;
@@ -1048,6 +1060,13 @@ export function CountDrillView({
     if (timedStartRef.current !== null) timedStartRef.current += pausedMs;
     if (lastCardAtRef.current !== null) lastCardAtRef.current += pausedMs;
     setPaused(false);
+    // A12: held on a card that was never heard: the loop remounts on it and
+    // says it again, rather than skipping a card Jack must count.
+    if (replayOnResumeRef.current) {
+      replayOnResumeRef.current = false;
+      diag('life', 'count-unheard-replayed', { index: shownIndex });
+      return;
+    }
     // Wave X (item 8): a table round picks up where it stopped -- skipping on
     // would take away cards still to be dealt.
     if (tablePlan !== null) return;
@@ -1204,6 +1223,7 @@ export function CountDrillView({
     }
     setShownIndex(0);
     pausedAtRef.current = null;
+    replayOnResumeRef.current = false;
     setPaused(false);
     // #20: Timed Challenge ignores Next card, so it is never a manual run.
     runManualRef.current = settings.drill.countManual && !timedChallenge;

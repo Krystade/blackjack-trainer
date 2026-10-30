@@ -535,6 +535,7 @@ function returnIdleAudio(audio: HTMLAudioElement): void {
   // must not advance whichever chain takes it next.
   audio.onended = null;
   audio.onerror = null;
+  audio.ontimeupdate = null;
   if (!idleAudio.includes(audio)) idleAudio.push(audio);
 }
 
@@ -979,6 +980,7 @@ async function playChainThroughWebAudio(
       src.connect(gain);
       current = src;
       clearActiveWatchdog(chain);
+      const ctxStart = ctx.currentTime;
       chain.watchdog = setTimeout(
         () => {
           // onended never came: on 2026-10-07 this was a context whose clock
@@ -986,7 +988,8 @@ async function playChainThroughWebAudio(
           // probes the clock instead of trusting it.
           diag('speak', 'clip-webaudio-stall', { file: opts.files[index] ?? '(none)', ctxTime: ctx.currentTime });
           markAudioClockSuspect('watchdog');
-          settleChain(chain, true, 'watchdog');
+          // A12: a clock that never moved rendered nothing: not played.
+          settleChain(chain, ctx.currentTime > ctxStart + 0.05, 'watchdog');
         },
         (buffer.duration / Math.max(opts.rate, 0.1)) * 1000 + 3000,
       );
@@ -1161,10 +1164,14 @@ export function playClipsResumable(
         activeChain = chain;
 
         let index = 0;
+        // A12: whether the current clip ever advanced. A watchdog on a clip
+        // that never did is a clip nobody heard (a call, Siri, a dead sink),
+        // so it settles as NOT played and the caller can say so or fall back.
+        let clipProgressed = false;
 
         const armWatchdog = () => {
           clearActiveWatchdog(chain);
-          chain.watchdog = setTimeout(() => settleChain(chain, true, 'watchdog'), CLIP_WATCHDOG_PER_CLIP_MS);
+          chain.watchdog = setTimeout(() => settleChain(chain, clipProgressed, 'watchdog'), CLIP_WATCHDOG_PER_CLIP_MS);
         };
 
         const playNext = () => {
@@ -1232,6 +1239,10 @@ export function playClipsResumable(
             if (index === 0 && Math.abs(audio.volume - wantedVolume) > 0.01) {
               diag('speak', 'volume-ignored', { wanted: wantedVolume, got: audio.volume });
             }
+            clipProgressed = false;
+            audio.ontimeupdate = () => {
+              if (audio.currentTime > 0) clipProgressed = true;
+            };
             armWatchdog();
 
             audio.onended = () => {

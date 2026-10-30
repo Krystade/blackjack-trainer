@@ -1265,11 +1265,25 @@ export function ensureMediaSessionHandlers(): boolean {
 /** Why a live utterance stopped. Mirrors `ClipEndReason` in clips.ts. */
 export type TtsEndReason = "ended" | "error" | "watchdog" | "cancelled";
 
+/**
+ * A12: how a speakAsync line ended, for a caller whose next step depends on
+ * the line having been HEARD (the count drill must not deal past a card that
+ * a phone call or a dead route swallowed).
+ *  - "spoken": a clip played, or live speech reported its end.
+ *  - "unheard": nothing reached the speaker (error, watchdog, no synthesiser).
+ *  - "cancelled": the app interrupted it on purpose.
+ */
+export type SpeakOutcome = "spoken" | "unheard" | "cancelled";
+
+function outcomeOf(reason: TtsEndReason): SpeakOutcome {
+  return reason === "ended" ? "spoken" : reason === "cancelled" ? "cancelled" : "unheard";
+}
+
 type PendingSpeech = {
   // Kept even though nothing else reads it: holding the utterance here is
   // what stops the engine from garbage-collecting it mid-speech.
   utterance: SpeechSynthesisUtterance;
-  resolve: () => void;
+  resolve: (reason: TtsEndReason) => void;
   watchdog: ReturnType<typeof setTimeout>;
   /** For the `tts-end` entry: what was said, when it started, and how it went. */
   text: string;
@@ -1336,7 +1350,7 @@ function settlePendingSpeech(
     // surely as one that ran to the end.
     notifySpeechEnded();
   }
-  pending.resolve();
+  pending.resolve(reason);
 }
 
 function settleAllPendingSpeeches(): void {
@@ -1355,7 +1369,7 @@ function settleAllPendingSpeeches(): void {
         said: p.text,
       });
     }
-    p.resolve();
+    p.resolve("cancelled");
   }
 }
 
@@ -1375,7 +1389,7 @@ function estimateWatchdogMs(text: string): number {
 /** The one live-`speechSynthesis` path, for `speak()` and `speakAsync()`
  * both: used directly when clips are disabled/absent, and as the fallback
  * when a clip lookup misses or playback fails. */
-function speakAsyncLive(text: string, opts?: SpeechOpts): Promise<void> {
+function speakAsyncLive(text: string, opts?: SpeechOpts): Promise<SpeakOutcome> {
   if (!isSpeechSupported()) {
     // SAID SO, rather than resolving as though it had spoken. The path record
     // is already written by the caller at this point, so without this line the
@@ -1386,10 +1400,11 @@ function speakAsyncLive(text: string, opts?: SpeechOpts): Promise<void> {
       said: text,
       why: "unsupported",
     });
-    return Promise.resolve();
+    return Promise.resolve<SpeakOutcome>("unheard");
   }
 
-  return new Promise<void>((resolve) => {
+  return new Promise<SpeakOutcome>((done) => {
+    const resolve = (reason: TtsEndReason = "error") => done(outcomeOf(reason));
     try {
       if (opts?.interrupt) {
         // A fresh interrupting call must settle whatever was previously
@@ -1471,7 +1486,7 @@ function speakAsyncLive(text: string, opts?: SpeechOpts): Promise<void> {
  * after `cancel()` (`cancelSpeech()`/`{interrupt:true}` settle explicitly),
  * and a lost/never-fired `onend` (watchdog timeout settles it anyway).
  */
-export function speakAsync(text: string, opts?: SpeechOpts): Promise<void> {
+export function speakAsync(text: string, opts?: SpeechOpts): Promise<SpeakOutcome> {
   rememberSpoken(text, opts);
   // BEFORE THE E2E SHORT-CIRCUIT, exactly as `speak` does -- and missing here
   // until 2026-09-24. `speak` has notified the microphone since echo
@@ -1493,17 +1508,19 @@ export function speakAsync(text: string, opts?: SpeechOpts): Promise<void> {
     // utterance REPORTS that it stopped, so a harness path that never reports
     // would hold it shut for the whole safety margin.
     e2eUtterancesSounding += 1;
-    return new Promise<void>((resolve) =>
+    return new Promise<SpeakOutcome>((resolve) =>
       setTimeout(() => {
         e2eUtterancesSounding = Math.max(0, e2eUtterancesSounding - 1);
         notifySpeechEnded();
-        resolve();
+        // A12: a test can make a line go unheard, as a call or Siri would.
+        const unheard = hasWindow() && (window as { __e2eSpeechUnheard?: string }).__e2eSpeechUnheard;
+        resolve(unheard && (unheard === "*" || text.includes(unheard)) ? "unheard" : "spoken");
       }, typeof delay === "number" && delay > 0 ? delay : 0),
     );
   }
 
   if (isMutedRequest(opts)) {
-    return new Promise<void>((resolve) => runMutedUtterance(text, opts, resolve));
+    return new Promise<SpeakOutcome>((resolve) => runMutedUtterance(text, opts, () => resolve("spoken")));
   }
 
   // RECORDED HERE TOO, and it was not until 2026-09-23. `speak` has logged
@@ -1542,7 +1559,7 @@ export function speakAsync(text: string, opts?: SpeechOpts): Promise<void> {
         // the failures did -- so counting `speak path` would have counted
         // exactly the utterances that went wrong.
         recordSpeechPath({ path: "clip", text, for: text, tag: opts?.tag });
-        return;
+        return "spoken" as const;
       }
       recordSpeechPath({
         path: "clip-failed-to-tts",
@@ -1561,9 +1578,10 @@ export function speakAsync(text: string, opts?: SpeechOpts): Promise<void> {
       // chain never got to. This path also drives drill PACING, so repeating
       // the whole utterance here stretched the gap between cards as well as
       // saying the opening twice.
-      return speakAsyncLive(remainder ?? text, opts).then(() =>
-        reassertAudioFocus("after-speech"),
-      );
+      return speakAsyncLive(remainder ?? text, opts).then((outcome) => {
+        reassertAudioFocus("after-speech");
+        return outcome;
+      });
     });
   }
 
@@ -1586,9 +1604,10 @@ export function speakAsync(text: string, opts?: SpeechOpts): Promise<void> {
    * the count drill's narration, and the paused gate's cue, the active media
    * app with no handlers registered.
    */
-  return speakAsyncLive(text, opts).then(() =>
-    reassertAudioFocus("after-speech"),
-  );
+  return speakAsyncLive(text, opts).then((outcome) => {
+    reassertAudioFocus("after-speech");
+    return outcome;
+  });
 }
 
 /**
