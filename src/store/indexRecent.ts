@@ -46,15 +46,26 @@ export function indexRecentUndone(current: IndexRecent | undefined): IndexRecent
 }
 
 /**
- * Whether a day or timestamp falls in the last `maxAgeDays` days, by UTC day:
- * today (`nowMs`'s day) is day 0, so one `maxAgeDays` days old is out. A
+ * Whether a day or timestamp falls in the last `maxAgeDays` days: today (`nowMs`'s day) is day 0, so one `maxAgeDays` days old is out. A
  * missing or unreadable date is never recent -- its age cannot be shown.
  */
 export function isRecent(at: unknown, nowMs: number, maxAgeDays: number): boolean {
   if (typeof at !== 'string' || at === '') return false;
   const t = Date.parse(at);
   if (Number.isNaN(t)) return false;
+  // B32: a full timestamp (a latency row) is aged in LOCAL days, like every
+  // other day in the app. A bare day ('YYYY-MM-DD', the stored days[]) has
+  // lost its time of day, so it stays a UTC day against today's UTC day.
+  if (!DAY_ONLY.test(at)) return localDayNumber(nowMs) - localDayNumber(t) < maxAgeDays;
   return Math.floor(nowMs / DAY_MS) - Math.floor(t / DAY_MS) < maxAgeDays;
+}
+
+const DAY_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Whole local calendar days since the epoch (DST-proof: built from the local date). */
+function localDayNumber(ms: number): number {
+  const d = new Date(ms);
+  return Math.round(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / DAY_MS);
 }
 
 /**
