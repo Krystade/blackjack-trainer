@@ -455,16 +455,18 @@ export function saveStats(s: Stats): boolean {
 /** Keys the export carries beyond settings+stats, with the blob field each
  * maps to. Raw strings: this layer must not depend on profiles.ts or the
  * drills' SR modules just to copy their storage across. */
-const EXTRA_KEYS: { key: string; field: string; label: string }[] = [
+const EXTRA_KEYS: { key: string; field: string; label: string; raw?: true }[] = [
   { key: 'bjtrainer.profiles.v1', field: 'profiles', label: 'profiles' },
-  { key: 'bjtrainer.activeProfile.v1', field: 'activeProfile', label: 'profiles' },
+  { key: 'bjtrainer.activeProfile.v1', field: 'activeProfile', label: 'profiles', raw: true },
   { key: 'bjtrainer.flashsr.v1', field: 'flashSr', label: 'both review schedules' },
   { key: 'bjtrainer.quizsr.v1', field: 'quizSr', label: 'both review schedules' },
   { key: 'bjtrainer.masteryrun.v1', field: 'masteryRun', label: 'the Mastery run in progress' },
   // A reading preference rather than part of the game definition, which is
   // why it has its own key (see Charts.tsx) -- and why it was missed. It is
   // still something the operator chose and would have to choose again.
-  { key: 'bjtrainer.chartOrder.v1', field: 'chartOrder', label: 'the chart row order' },
+  // B21: stored as a bare string ('ascending'), not JSON -- so `raw`, or the
+  // JSON.parse below threw and the key never reached a backup.
+  { key: 'bjtrainer.chartOrder.v1', field: 'chartOrder', label: 'the chart row order', raw: true },
   // Wave N: streaks, daily-goal days and earned achievements (habits/progressStore.ts).
   { key: 'bjtrainer.progress.v1', field: 'progress', label: 'streaks and achievements' },
   // Wave L: the Variant hands drill's right/wrong tally -- practice history,
@@ -528,11 +530,12 @@ export function exportAll(): string {
     if (raw !== null) blob[grave] = raw;
   }
 
-  for (const { key, field } of EXTRA_KEYS) {
+  for (const { key, field, raw: bare } of EXTRA_KEYS) {
     const raw = store.getItem(key);
     if (raw === null) continue;
-    // activeProfile is a bare id string; the rest are JSON documents.
-    if (field === 'activeProfile') {
+    // Bare strings (the active profile's id, the chart order) travel as they
+    // are; the rest are JSON documents.
+    if (bare) {
       blob[field] = raw;
       continue;
     }

@@ -362,6 +362,12 @@ describe('import says what it actually did', () => {
  * backup existed; its completeness is what this protects.
  */
 
+/** Keys whose stored text is not a JSON object, in the form the app writes them (B21). */
+const REAL_SHAPE: Record<string, string> = {
+  'bjtrainer.activeProfile.v1': 'an-id',
+  'bjtrainer.chartOrder.v1': 'ascending',
+};
+
 /** Keys deliberately left out of a backup, each with the reason. */
 const NOT_BACKED_UP: Record<string, string> = {
   'bjtrainer.diagnostics.v1':
@@ -424,13 +430,31 @@ describe('every key the app writes is either backed up or deliberately not', () 
 
   it('actually carries every key it claims to', () => {
     for (const key of BACKED_UP_KEYS) {
-      store.setItem(key, key === 'bjtrainer.activeProfile.v1' ? 'an-id' : '{"version":1}');
+      store.setItem(key, REAL_SHAPE[key] ?? '{"version":1}');
     }
     const blob = exportAll();
     store.map.clear();
     expect(importAll(blob).ok).toBe(true);
     for (const key of BACKED_UP_KEYS) {
       expect(store.getItem(key), `${key} did not survive the round trip`).not.toBeNull();
+    }
+  });
+
+  /*
+   * B21: seeded in the format each key is REALLY written in. With every key
+   * seeded as '{"version":1}', the chart order (a bare 'ascending', not JSON)
+   * passed the round trip above while exportAll silently dropped the real
+   * value. Byte-for-byte, so a key that is re-encoded on the way is caught too.
+   */
+  it('round-trips each key byte for byte in the format the app writes it', () => {
+    for (const key of BACKED_UP_KEYS) store.setItem(key, REAL_SHAPE[key] ?? '{"version":1}');
+    const before = new Map(BACKED_UP_KEYS.map((k) => [k, store.getItem(k)]));
+    const blob = exportAll();
+    store.map.clear();
+    expect(importAll(blob).ok).toBe(true);
+    for (const key of BACKED_UP_KEYS) {
+      if (key === 'bjtrainer.settings.v1' || key === 'bjtrainer.stats.v1') continue; // merged over defaults on import
+      expect(store.getItem(key), key).toBe(before.get(key));
     }
   });
 });
