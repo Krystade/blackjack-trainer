@@ -95,11 +95,11 @@ test('importing garbage shows an error and leaves the app navigable', async ({ p
   await page.goto('/?e2e=1');
   await page.locator('.home-stats-link').click();
 
-  // The warning names everything a backup replaces (Wave W review S6: the saved Custom lists too).
-  let warning = '';
-  page.once('dialog', (dialog) => {
-    warning = dialog.message();
-    void dialog.accept();
+  // B4: a file that is not a backup is refused BEFORE the replace question.
+  let asked = false;
+  page.on('dialog', (dialog) => {
+    asked = true;
+    void dialog.dismiss();
   });
   const fileInput = page.locator('input.stats-file-input');
   await fileInput.setInputFiles({
@@ -108,12 +108,64 @@ test('importing garbage shows an error and leaves the app navigable', async ({ p
     buffer: Buffer.from('not valid json {{{'),
   });
 
-  await expect(page.locator('.stats-message')).toContainText('Import failed');
-  expect(warning).toBe('Import replaces your stats, settings, profiles, both review schedules and saved Custom lists. Continue?');
+  await expect(page.locator('.stats-message')).toContainText('Import failed: not a backup file');
+  expect(asked).toBe(false);
   await shot(page, '25-stats-import-error');
 
   await page.locator('.tab-bar').getByRole('button', { name: 'Home', exact: true }).click();
   await expect(page.locator('.home-title')).toBeVisible();
+});
+
+test('the import question shows the file beside the phone and names what it replaces, and the import can be undone', async ({ page }) => {
+  // B4/B22: the confirm said nothing about which file this was, and left
+  // streaks, achievements and guided sessions out of what it replaces.
+  await withStats(page, {
+    sessions: [{ date: new Date().toISOString(), rounds: 3, graded: 3, correct: 3, bankrollDelta: 5, profileName: 'Phone Profile' }],
+  });
+  await page.goto('/?e2e=1');
+  await page.locator('.home-stats-link').click();
+  const progressBefore = await page.evaluate(() => localStorage.getItem('bjtrainer.progress.v1'));
+
+  const file = JSON.stringify({
+    settings: { version: 1 },
+    stats: {
+      version: 1,
+      sessions: [
+        { date: '2026-01-02T20:00:00.000Z', rounds: 1, graded: 1, correct: 1, bankrollDelta: 1, profileName: 'File Profile' },
+      ],
+    },
+    progress: { version: 1, days: {} },
+    guided: { version: 1 },
+    meta: { app: 'bjtrainer', exportedAt: '2026-01-02T20:30:00.000Z' },
+  });
+  let warning = '';
+  page.once('dialog', (dialog) => {
+    warning = dialog.message();
+    void dialog.accept();
+  });
+  await page.locator('input.stats-file-input').setInputFiles({
+    name: 'bjtrainer-backup-2026-01-02-1230.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(file),
+  });
+  await expect(page.locator('.stats-message')).toHaveText('Backup imported.');
+  expect(warning).toMatch(/^Import this backup\?\n\nThe file: made 2 Jan 2026, \d\d:30\. 0 answers, 1 table session, 0 profiles, 0 review cards, newest practice 2 Jan 2026/);
+  expect(warning).toContain('\nThis phone: 0 answers, 1 table session,');
+  expect(warning).toContain('It replaces your stats, settings, streaks and achievements and guided sessions.');
+  expect(warning).toContain('You can undo the import from this screen until the app is closed.');
+
+  await statsTab(page, 'Over time');
+  await expect(page.locator('.session-row', { hasText: 'File Profile' })).toBeVisible();
+
+  page.once('dialog', (dialog) => void dialog.accept());
+  await page.getByRole('button', { name: 'Undo import' }).click();
+  await expect(page.locator('.stats-message')).toHaveText('Import undone.');
+  await expect(page.locator('.session-row', { hasText: 'Phone Profile' })).toBeVisible();
+  await expect(page.locator('.session-row', { hasText: 'File Profile' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Undo import' })).toHaveCount(0);
+  // The keys the import added are gone again, not left behind.
+  expect(await page.evaluate(() => localStorage.getItem('bjtrainer.guided.v1'))).toBeNull();
+  expect(await page.evaluate(() => localStorage.getItem('bjtrainer.progress.v1'))).toBe(progressBefore);
 });
 
 test('importing a valid export blob restores stats (success path)', async ({ page }) => {

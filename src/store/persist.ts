@@ -470,28 +470,28 @@ export function saveStats(s: Stats): boolean {
 /** Keys the export carries beyond settings+stats, with the blob field each
  * maps to. Raw strings: this layer must not depend on profiles.ts or the
  * drills' SR modules just to copy their storage across. */
-const EXTRA_KEYS: { key: string; field: string }[] = [
-  { key: 'bjtrainer.profiles.v1', field: 'profiles' },
-  { key: 'bjtrainer.activeProfile.v1', field: 'activeProfile' },
-  { key: 'bjtrainer.flashsr.v1', field: 'flashSr' },
-  { key: 'bjtrainer.quizsr.v1', field: 'quizSr' },
-  { key: 'bjtrainer.masteryrun.v1', field: 'masteryRun' },
+const EXTRA_KEYS: { key: string; field: string; label: string }[] = [
+  { key: 'bjtrainer.profiles.v1', field: 'profiles', label: 'profiles' },
+  { key: 'bjtrainer.activeProfile.v1', field: 'activeProfile', label: 'profiles' },
+  { key: 'bjtrainer.flashsr.v1', field: 'flashSr', label: 'both review schedules' },
+  { key: 'bjtrainer.quizsr.v1', field: 'quizSr', label: 'both review schedules' },
+  { key: 'bjtrainer.masteryrun.v1', field: 'masteryRun', label: 'the Mastery run in progress' },
   // A reading preference rather than part of the game definition, which is
   // why it has its own key (see Charts.tsx) -- and why it was missed. It is
   // still something the operator chose and would have to choose again.
-  { key: 'bjtrainer.chartOrder.v1', field: 'chartOrder' },
+  { key: 'bjtrainer.chartOrder.v1', field: 'chartOrder', label: 'the chart row order' },
   // Wave N: streaks, daily-goal days and earned achievements (habits/progressStore.ts).
-  { key: 'bjtrainer.progress.v1', field: 'progress' },
+  { key: 'bjtrainer.progress.v1', field: 'progress', label: 'streaks and achievements' },
   // Wave L: the Variant hands drill's right/wrong tally -- practice history,
   // backed up like the SR decks. The variant being studied
   // (bjtrainer.variant.v1) is a device preference and stays out.
-  { key: 'bjtrainer.variantTally.v1', field: 'variantTally' },
+  { key: 'bjtrainer.variantTally.v1', field: 'variantTally', label: 'the Variant hands tally' },
   // Wave W: the Custom deck's saved lists (drills/customLists.ts) -- painted
   // by hand, so as unrecoverable as a profile.
-  { key: 'bjtrainer.customLists.v1', field: 'customLists' },
+  { key: 'bjtrainer.customLists.v1', field: 'customLists', label: 'saved Custom lists' },
   // Wave L (lane v): finished guided sessions (what improved, two achievements)
   // and today's unfinished one (guided/store.ts).
-  { key: 'bjtrainer.guided.v1', field: 'guided' },
+  { key: 'bjtrainer.guided.v1', field: 'guided', label: 'guided sessions' },
 ];
 
 /**
@@ -557,29 +557,151 @@ export function exportAll(): string {
     }
   }
 
+  // B4: WHEN, AND HOW MUCH. Several backups in Files were indistinguishable
+  // inside; the import confirm reads this to show the file beside the phone.
+  // importAll ignores it (it reads only the fields it knows).
+  blob.meta = { app: 'bjtrainer', exportedAt: new Date().toISOString(), summary: summarizeBackupBlob(blob) };
+
   return JSON.stringify(blob);
+}
+
+/** What a backup holds, in the terms the import confirm shows it. */
+export interface BackupSummary {
+  /** Graded answers in the category tallies (drills and table play). */
+  answers: number;
+  /** Table sessions recorded. */
+  sessions: number;
+  profiles: number;
+  /** Cards in both spaced-repetition decks. */
+  reviewCards: number;
+  /** The newest dated history row, ISO; null when nothing is dated. */
+  newest: string | null;
+}
+
+function countObjectKeys(v: unknown): number {
+  return typeof v === 'object' && v !== null && !Array.isArray(v) ? Object.keys(v).length : 0;
+}
+
+/** Summarise a parsed backup blob (or this phone's, via `exportAll`). Never throws. */
+export function summarizeBackupBlob(blob: Record<string, unknown>): BackupSummary {
+  let answers = 0;
+  let sessions = 0;
+  let newest: string | null = null;
+  const stats = blob.stats as Record<string, unknown> | undefined;
+  if (stats && typeof stats === 'object') {
+    const cats = stats.categories;
+    if (cats && typeof cats === 'object') {
+      for (const t of Object.values(cats as Record<string, unknown>)) {
+        const r = (t as { right?: unknown })?.right;
+        const w = (t as { wrong?: unknown })?.wrong;
+        if (typeof r === 'number') answers += r;
+        if (typeof w === 'number') answers += w;
+      }
+    }
+    if (Array.isArray(stats.sessions)) sessions = stats.sessions.length;
+    for (const v of Object.values(stats)) {
+      const rows = Array.isArray(v) ? v : (v as { history?: unknown })?.history;
+      if (!Array.isArray(rows)) continue;
+      for (const row of rows) {
+        const d = (row as { date?: unknown })?.date;
+        if (typeof d === 'string' && Number.isFinite(Date.parse(d)) && (newest === null || d > newest)) newest = d;
+      }
+    }
+  }
+  const profiles = Array.isArray(blob.profiles) ? blob.profiles.length : 0;
+  const reviewCards = countObjectKeys(blob.flashSr) + countObjectKeys(blob.quizSr);
+  return { answers, sessions, profiles, reviewCards, newest };
+}
+
+/** A backup file read and checked, before anything is written. */
+export type ParsedBackup =
+  | { ok: true; exportedAt: string | null; summary: BackupSummary; replaces: string[] }
+  | { ok: false; error: string };
+
+/**
+ * B4: read a backup file WITHOUT importing it, so the confirm can show what
+ * it is (when it was made, what it holds) next to what the phone holds, and
+ * a file that is not a backup is refused before the question is asked.
+ */
+export function inspectBackup(json: string): ParsedBackup {
+  const v = validateBackup(json);
+  if (!v.ok) return v;
+  const obj = v.obj;
+  const meta = obj.meta as { exportedAt?: unknown } | undefined;
+  const exportedAt =
+    meta && typeof meta.exportedAt === 'string' && Number.isFinite(Date.parse(meta.exportedAt)) ? meta.exportedAt : null;
+  return { ok: true, exportedAt, summary: summarizeBackupBlob(obj), replaces: replacedLabels(obj) };
+}
+
+/**
+ * B22: what an import of this blob overwrites, in words, built from the keys
+ * the file actually carries -- a fixed sentence drifted every time a key was
+ * added (streaks, achievements and guided sessions went unmentioned).
+ */
+function replacedLabels(obj: Record<string, unknown>): string[] {
+  const out = ['stats', 'settings'];
+  for (const { field, label } of EXTRA_KEYS) {
+    if (obj[field] !== undefined && !out.includes(label)) out.push(label);
+  }
+  return out;
+}
+
+function validateBackup(json: string): { ok: true; obj: Record<string, unknown> } | { ok: false; error: string } {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json) as unknown;
+  } catch {
+    return { ok: false, error: 'not a backup file (it is not JSON)' };
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    return { ok: false, error: 'Invalid JSON structure' };
+  }
+  const obj = parsed as Record<string, unknown>;
+  if (!('settings' in obj) || !('stats' in obj)) return { ok: false, error: 'Missing settings or stats' };
+  if (!isVersion1Object(obj.settings)) return { ok: false, error: 'Invalid settings version' };
+  if (!isVersion1Object(obj.stats)) return { ok: false, error: 'Invalid stats version' };
+  return { ok: true, obj };
+}
+
+/**
+ * B4: AN UNDO. The exact stored text of every key an import can touch (null
+ * for an absent one), taken just before the import, so putting it back is a
+ * byte-for-byte restore -- including removing a key the import added.
+ */
+export type BackupSnapshot = Record<string, string | null>;
+
+function importTouchedKeys(): string[] {
+  const keys = [...BACKED_UP_KEYS];
+  for (const key of [SETTINGS_KEY, 'bjtrainer.stats.v1']) keys.push(`${key}.corrupt`);
+  return keys;
+}
+
+export function snapshotBackedUp(): BackupSnapshot {
+  const store = getStorage();
+  const out: BackupSnapshot = {};
+  for (const key of importTouchedKeys()) out[key] = store.getItem(key);
+  return out;
+}
+
+/** Put a snapshot back. False when a write failed (the caller says so). */
+export function restoreSnapshot(snap: BackupSnapshot): boolean {
+  let ok = true;
+  for (const key of importTouchedKeys()) {
+    if (!(key in snap)) continue;
+    const value = snap[key];
+    const done = value === null || value === undefined ? removeKey(key) : writeKey(key, value);
+    if (!done) ok = false;
+  }
+  notifyStatsSaved(loadStats(), true);
+  return ok;
 }
 
 export function importAll(json: string): { ok: boolean; error?: string } {
   try {
-    const parsed = JSON.parse(json) as unknown;
-
-    // Validate structure
-    if (typeof parsed !== 'object' || parsed === null) {
-      return { ok: false, error: 'Invalid JSON structure' };
-    }
-
-    const obj = parsed as { settings?: unknown; stats?: unknown };
-    if (!('settings' in obj) || !('stats' in obj)) {
-      return { ok: false, error: 'Missing settings or stats' };
-    }
-
-    if (!isVersion1Object(obj.settings)) {
-      return { ok: false, error: 'Invalid settings version' };
-    }
-    if (!isVersion1Object(obj.stats)) {
-      return { ok: false, error: 'Invalid stats version' };
-    }
+    const v = validateBackup(json);
+    if (!v.ok) return v;
+    const parsed = v.obj;
+    const obj = parsed as { settings: Record<string, unknown>; stats: Record<string, unknown> };
 
     /*
      * STAGED, THEN COMMITTED, AND THE RESULT REPORTED.

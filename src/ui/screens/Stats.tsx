@@ -11,7 +11,18 @@ import { filterByRange, RANGE_LABEL } from '../../store/timeRange';
 import { pct, pctOfPercent, clockGap, formatUnits, costHandLabel, trendLine, signed } from './statsFormat';
 import './costOfMistakes.css';
 import type { RangeId, TimeRange } from '../../store/timeRange';
-import { loadStats, saveStats, loadSettings, exportAll, importAll } from '../../store/persist';
+import {
+  loadStats,
+  saveStats,
+  loadSettings,
+  exportAll,
+  importAll,
+  inspectBackup,
+  restoreSnapshot,
+  snapshotBackedUp,
+  summarizeBackupBlob,
+} from '../../store/persist';
+import { backupDateText, clearUndo, importConfirmText, readUndo, storeUndo, type ImportUndo } from './backupText';
 import { backupFileName, saveTextFile, type SaveResult } from '../saveFile';
 import {
   summarize,
@@ -513,6 +524,17 @@ export function Stats({ activeProfile, settings, onSettingsChange, onNavigate }:
     fileInputRef.current?.click();
   };
 
+  // B4: the undo for the last import, until the app is closed.
+  const [undo, setUndo] = useState<ImportUndo | null>(() => readUndo());
+
+  // After an import or its undo: everything above re-reads the stores.
+  const afterReplace = () => {
+    refresh();
+    // One hop now: this lifts the imported settings into App, which hands
+    // them straight back down as the `settings` prop.
+    onSettingsChange(loadSettings());
+  };
+
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
@@ -521,32 +543,49 @@ export function Stats({ activeProfile, settings, onSettingsChange, onNavigate }:
     const reader = new FileReader();
     reader.onload = () => {
       const text = String(reader.result ?? '');
-      // NAMES WHAT IT REPLACES. The blob grew to carry profiles and both
-      // spaced-repetition decks (see EXTRA_KEYS), and this sentence still
-      // said "stats and settings" -- so the one thing whose loss cannot be
-      // re-earned by drilling, the review schedule, went unmentioned in the
-      // only warning shown before it is replaced.
-      if (
-        !window.confirm(
-          // Wave W review S6: a backup carries the saved Custom lists too.
-          'Import replaces your stats, settings, profiles, both review schedules and saved Custom lists. Continue?',
-        )
-      )
+      // B4: READ IT BEFORE ASKING. A file that is not a backup is refused
+      // here, and the question shows when the file was made and what it
+      // holds beside what this phone holds -- several backups in Files used
+      // to be indistinguishable, and the wrong one replaced everything.
+      const inspected = inspectBackup(text);
+      if (!inspected.ok) {
+        setMessage(`Import failed: ${inspected.error}`);
         return;
+      }
+      const at = new Date().toISOString();
+      const undoKept = storeUndo({ at, snap: snapshotBackedUp() });
+      // B22: the sentence names what THIS file replaces, from the keys it carries.
+      const phone = summarizeBackupBlob(JSON.parse(exportAll()) as Record<string, unknown>);
+      if (!window.confirm(importConfirmText(inspected, phone, undoKept))) {
+        if (undoKept) clearUndo();
+        return;
+      }
       const result = importAll(text);
       if (result.ok) {
-        refresh();
-        // One hop now: this lifts the imported settings into App, which hands
-        // them straight back down as the `settings` prop. The old second call
-        // existed only because this screen kept its own copy.
-        onSettingsChange(loadSettings());
+        afterReplace();
+        setUndo(undoKept ? readUndo() : null);
         setMessage('Backup imported.');
       } else {
+        if (undoKept) clearUndo();
         setMessage(`Import failed: ${result.error ?? 'unknown error'}`);
       }
     };
     reader.onerror = () => setMessage('Import failed: couldn\'t read the file.');
     reader.readAsText(file);
+  };
+
+  const handleUndoImport = () => {
+    const u = readUndo();
+    if (!u) {
+      setUndo(null);
+      return;
+    }
+    if (!window.confirm(`Put back what this phone held before the import of ${backupDateText(u.at)}?`)) return;
+    const ok = restoreSnapshot(u.snap);
+    clearUndo();
+    setUndo(null);
+    afterReplace();
+    setMessage(ok ? 'Import undone.' : 'Undo failed part way: storage is full or unavailable.');
   };
 
   const handleReset = () => {
@@ -1876,6 +1915,13 @@ export function Stats({ activeProfile, settings, onSettingsChange, onNavigate }:
           className="stats-file-input"
           onChange={handleFileChange}
         />
+        {undo && (
+          <div className="stats-action-row">
+            <button type="button" className="stats-action-btn" onClick={handleUndoImport}>
+              Undo import
+            </button>
+          </div>
+        )}
         {message && <p className="stats-message">{message}</p>}
       </section>
     </div>
