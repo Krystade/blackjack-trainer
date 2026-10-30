@@ -21,12 +21,14 @@ export function GuidedSummaryPanel({
   const ended = session.outcome === 'ended';
   return (
     <div className="guided-panel guided-summary" data-testid="guided-summary" data-outcome={session.outcome ?? ''}>
-      <header className="guided-panel-head">
+      {/* The row beside the mute disc is left to the habit toasts: finishing
+          a session is when an achievement lands, and its toast sat over the
+          kicker that used to live here (320 px). */}
+      <div className="guided-panel-head guided-summary-seat" aria-hidden="true" />
+      <section className="guided-summary-hero">
         <span className="guided-kicker">
           Guided session · {session.preset} min{session.drive ? ' · Drive' : ''}
         </span>
-      </header>
-      <section className="guided-summary-hero">
         <h1 className="guided-summary-title">{ended ? 'Session ended' : 'Session done'}</h1>
         <div className="guided-summary-overall">
           <span className="guided-summary-pct" data-testid="guided-summary-pct">

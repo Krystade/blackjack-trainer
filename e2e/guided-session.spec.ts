@@ -492,3 +492,35 @@ test('time with the page hidden is not segment time', async ({ page }) => {
   await expect(strip(page)).toHaveText(/^2:[45]\d$/);
   await expect(running(page, 'count')).toBeVisible();
 });
+
+test('320: the summary keeps its heading clear of the achievement toast that lands with it', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 568 });
+  await base(page);
+  await seedGuided(page, {
+    preset: 5,
+    drive: false,
+    plan: [
+      { id: 'warmup', minutes: 2, target: { kind: 'answers', n: 10 }, weak: true, cells: [] },
+      { id: 'speed', minutes: 1, target: { kind: 'answers', n: 5 }, weak: true },
+      { id: 'count', minutes: 2, target: { kind: 'time', ms: 120_000 }, weak: true },
+    ],
+    index: 2,
+    progress: [
+      { answers: 10, right: 9, activeMs: 60_000, done: true },
+      { answers: 5, right: 5, activeMs: 30_000, done: true },
+      { answers: 0, right: 0, activeMs: 0 },
+    ],
+    phase: 'intro',
+  });
+  await page.goto('/?e2e=1');
+  await page.locator('.guided-card').getByRole('button', { name: 'Resume', exact: true }).click();
+  await page.getByRole('button', { name: 'Skip segment' }).click();
+  await expect(page.getByTestId('guided-summary')).toHaveAttribute('data-outcome', 'completed');
+  const toast = page.getByTestId('habit-toast-unlock');
+  await expect(toast).toBeVisible();
+  const t = (await toast.boundingBox())!;
+  for (const sel of ['.guided-summary .guided-kicker', '.guided-summary-title', '[data-testid="guided-summary-pct"]']) {
+    const b = (await page.locator(sel).boundingBox())!;
+    expect(b.y, `${sel} is under the toast`).toBeGreaterThanOrEqual(t.y + t.height);
+  }
+});
