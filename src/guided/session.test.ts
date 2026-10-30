@@ -9,6 +9,7 @@ import {
   endsOnAnswer,
   finishSegment,
   isResumable,
+  RESUME_GRACE_MS,
   newSession,
   pause,
   resume,
@@ -154,6 +155,18 @@ describe('resume', () => {
     expect(isResumable(s, '2026-10-23')).toBe(false);
     expect(isResumable(endEarly(s), '2026-10-22')).toBe(false);
     expect(isResumable(null, '2026-10-22')).toBe(false);
+  });
+
+  it('B33: a session started at 23:50 still resumes at 00:05, but not the next evening', () => {
+    const start = Date.parse('2026-10-23T06:50:00Z'); // 23:50 PDT on the 22nd
+    const s = begin(newSession(15, true, PLAN, start, '2026-10-22'));
+    expect(isResumable(s, '2026-10-23', start + 15 * 60_000)).toBe(true);
+    expect(isResumable(s, '2026-10-23', start + 15 * 60_000 + RESUME_GRACE_MS - 1)).toBe(true);
+    expect(isResumable(s, '2026-10-23', start + 15 * 60_000 + RESUME_GRACE_MS)).toBe(false);
+    expect(isResumable(s, '2026-10-23', start + 20 * 60 * 60_000)).toBe(false);
+    expect(isResumable(endEarly(s), '2026-10-23', start + 60_000)).toBe(false);
+    // A clock that went backwards is not a resume.
+    expect(isResumable(s, '2026-10-21', start - 60_000)).toBe(false);
   });
 });
 

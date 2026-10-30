@@ -3,6 +3,7 @@ import type { Screen } from '../../App';
 import type { Profile, Settings } from '../../../store/types';
 import { loadStats, saveSettings } from '../../../store/persist';
 import { localDayKey } from '../../../store/practiceDays';
+import { habitClock } from '../../../habits/clock';
 import { PRESETS, segmentDef, type GuidedPreset } from '../../../guided/plan';
 import { isResumable, resume, type GuidedSession } from '../../../guided/session';
 import { loadGuided } from '../../../guided/store';
@@ -35,8 +36,10 @@ export function GuidedCard({
   onNavigate: (screen: Screen) => void;
 }) {
   const [store] = useState(() => loadGuided());
-  const today = localDayKey(new Date());
-  const active = isResumable(store.active, today) ? store.active : null;
+  // B33: the habit clock, so the guided day moves with every other habit day.
+  const nowMs = habitClock();
+  const today = localDayKey(new Date(nowMs));
+  const active = isResumable(store.active, today, nowMs) ? store.active : null;
   const [preset, setPreset] = useState<GuidedPreset>(() => store.history[0]?.preset ?? 15);
 
   const launch = (session: GuidedSession, spoken: string | null) => {

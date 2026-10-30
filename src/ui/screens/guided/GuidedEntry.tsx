@@ -3,6 +3,7 @@ import type { Screen } from '../../App';
 import type { Profile, Settings } from '../../../store/types';
 import { loadStats } from '../../../store/persist';
 import { localDayKey } from '../../../store/practiceDays';
+import { habitClock } from '../../../habits/clock';
 import { takeGuidedLaunch } from '../../../guided/launch';
 import { isResumable, type GuidedSession } from '../../../guided/session';
 import { loadGuided } from '../../../guided/store';
@@ -30,7 +31,9 @@ export function GuidedEntry({
     const handed = takeGuidedLaunch();
     if (handed) return handed;
     const stored = loadGuided().active;
-    return isResumable(stored, localDayKey(new Date())) ? stored : null;
+    // B33: the habit clock, and a session just past midnight still resumes.
+    const nowMs = habitClock();
+    return isResumable(stored, localDayKey(new Date(nowMs)), nowMs) ? stored : null;
   });
   useEffect(() => {
     if (!session) onNone();

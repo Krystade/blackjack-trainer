@@ -36,7 +36,7 @@ export interface GuidedSession {
   version: 1;
   /** Epoch ms the session started; also its id. */
   startedAt: number;
-  /** Local day key ('YYYY-MM-DD') it started on: resumable only that day. */
+  /** Local day key ('YYYY-MM-DD') it started on: resumable that day (and, B33, just past midnight). */
   day: string;
   preset: GuidedPreset;
   /** Eyes-free + voice (Drive) rather than tapped. */
@@ -148,9 +148,24 @@ export function endEarly(s: GuidedSession): GuidedSession {
   return { ...s, phase: 'done', outcome: 'ended' };
 }
 
-/** Resumable: unfinished, and started on `today` (local day key). */
-export function isResumable(s: GuidedSession | null, today: string): s is GuidedSession {
-  return s !== null && s.phase !== 'done' && s.day === today && s.index < s.plan.length;
+/**
+ * B33: how long past its planned length a session started on an earlier day
+ * stays resumable. A 15-minute Drive session started at 23:50 and reloaded by
+ * iOS at 00:05 (or stopped for fuel) is the same drive, not yesterday's.
+ */
+export const RESUME_GRACE_MS = 2 * 60 * 60 * 1000;
+
+/**
+ * Resumable: unfinished, and started on `today` (local day key) -- or, given
+ * `now`, started within its planned minutes plus RESUME_GRACE_MS, so local
+ * midnight does not throw away a session that is still going.
+ */
+export function isResumable(s: GuidedSession | null, today: string, now?: number): s is GuidedSession {
+  if (s === null || s.phase === 'done' || s.index >= s.plan.length) return false;
+  if (s.day === today) return true;
+  if (now === undefined || typeof s.startedAt !== 'number') return false;
+  const age = now - s.startedAt;
+  return age >= 0 && age < s.preset * 60_000 + RESUME_GRACE_MS;
 }
 
 /**
