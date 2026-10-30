@@ -25,15 +25,19 @@ import {
 const SAVE_TIMEOUT = 120_000;
 
 async function workerReady(page: import('@playwright/test').Page): Promise<void> {
-  await page.waitForFunction(
-    async () => {
-      if (!('serviceWorker' in navigator)) return false;
-      const reg = await navigator.serviceWorker.ready;
-      return Boolean(reg.active);
-    },
-    undefined,
-    { timeout: 30_000 },
-  );
+  // Wave X: through page.evaluate, which awaits the promise. waitForFunction
+  // does not: an async predicate returns a (truthy) Promise and passes at once.
+  await expect
+    .poll(
+      () =>
+        page.evaluate(async () => {
+          if (!('serviceWorker' in navigator)) return false;
+          const reg = await navigator.serviceWorker.ready;
+          return Boolean(reg.active);
+        }),
+      { timeout: 30_000 },
+    )
+    .toBe(true);
 }
 
 async function saveForOffline(page: import('@playwright/test').Page): Promise<void> {

@@ -59,21 +59,38 @@ test('every chunk is precached: FieldTest and the profile editor open offline th
   expect(listed.some((f) => CHUNK('vendor').test(`/${f}`))).toBe(true);
 
   await page.goto('/');
-  await page.waitForFunction(async () => Boolean((await navigator.serviceWorker.ready).active), undefined, {
-    timeout: 30_000,
-  });
+  // Wave X (item 10): polled through page.evaluate, which awaits the promise.
+  // `page.waitForFunction` does not: an async predicate returns a Promise,
+  // which is truthy, so both waits here passed on their first poll and waited
+  // for nothing. The reload offline below then raced the worker storing the
+  // document -- and lost under the loaded suite (net::ERR_FAILED).
+  await expect
+    .poll(() => page.evaluate(async () => Boolean((await navigator.serviceWorker.ready).active)), { timeout: 30_000 })
+    .toBe(true);
   // The first load was not controlled by the worker; this navigation is, and
   // the worker stores the document only with every file it names.
   await page.reload();
-  await page.waitForFunction(
-    async (files) => {
-      const cache = await caches.open('bjtrainer-offline-v2');
-      const keys = (await cache.keys()).map((r) => new URL(r.url).pathname);
-      return files.every((f) => keys.some((k) => k.endsWith(`/${f}`)));
-    },
-    listed,
-    { timeout: 30_000 },
-  );
+  // Wait for what an offline reload actually needs: the page controlled, every
+  // file, and the document itself under the key the worker answers navigations
+  // from -- which the worker stores LAST, once every file it names is in
+  // (sw.js storeDocument).
+  await expect
+    .poll(
+      () =>
+        page.evaluate(async (files) => {
+          if (!navigator.serviceWorker.controller) return 'not controlled';
+          const cache = await caches.open('bjtrainer-offline-v2');
+          const keys = (await cache.keys()).map((r) => new URL(r.url).pathname);
+          const missing = files.filter((f) => !keys.some((k) => k.endsWith(`/${f}`)));
+          if (missing.length > 0) return `missing ${missing.length} files`;
+          const doc = new URL(location.href);
+          doc.search = '';
+          doc.hash = '';
+          return (await cache.match(doc.toString())) ? 'ready' : 'no document';
+        }, listed),
+      { timeout: 30_000 },
+    )
+    .toBe('ready');
 
   await context.setOffline(true);
   await page.reload();
