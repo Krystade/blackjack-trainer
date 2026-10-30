@@ -180,6 +180,20 @@ export interface CountRunPace {
   intervalMs: number;
   manual?: boolean;
   meanTapMs?: number;
+  /** C6: an eyes-free auto run's measured time; its pace is elapsedMs / cards. */
+  elapsedMs?: number;
+  eyesFree?: true;
+}
+
+/**
+ * C6: the per-card pace a run was really dealt at: a manual run's mean tap
+ * gap, an eyes-free run's measured time per card (speech plus gap), otherwise
+ * the auto interval. undefined when a manual run measured no taps.
+ */
+export function countRunPerCardMs(run: CountRunPace): number | undefined {
+  if (run.manual) return run.meanTapMs;
+  if (run.elapsedMs !== undefined && run.elapsedMs > 0 && run.cards > 0) return run.elapsedMs / run.cards;
+  return run.intervalMs;
 }
 
 /**
@@ -191,6 +205,9 @@ export function formatCountRun(run: CountRunPace): string {
     return run.meanTapMs === undefined
       ? `${run.cards} cards · manual`
       : `${run.cards} cards · manual · ${run.meanTapMs}ms avg`;
+  }
+  if (run.eyesFree && run.elapsedMs !== undefined) {
+    return `${run.cards} cards · eyes-free · ${Math.round(countRunPerCardMs(run)!)}ms avg`;
   }
   return `${run.cards} cards · ${run.intervalMs}ms`;
 }
@@ -210,7 +227,7 @@ export function bestCleanCountRuns<T extends CountRunPace & { correct: boolean }
     if (run.manual) {
       if (run.meanTapMs === undefined) continue;
       if (manual === null || run.meanTapMs < (manual.meanTapMs ?? Infinity)) manual = run;
-    } else if (auto === null || run.intervalMs < auto.intervalMs) {
+    } else if (auto === null || countRunPerCardMs(run)! < countRunPerCardMs(auto)!) {
       auto = run;
     }
   }

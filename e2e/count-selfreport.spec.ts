@@ -77,6 +77,10 @@ test('a self-reported run is written to the count history', async ({ page }) => 
   );
   expect(after.length).toBe(before + 1);
   expect(after.at(-1).correct).toBe(true);
+  // C6: an eyes-free run records the time its cards really took (speech plus
+  // gap); its configured gap alone is not its pace.
+  expect(after.at(-1).eyesFree).toBe(true);
+  expect(after.at(-1).elapsedMs).toBeGreaterThan(0);
 });
 
 /** The spoken half: eyes on the road means the verdict has to be audible. */

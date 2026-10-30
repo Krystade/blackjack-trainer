@@ -2,7 +2,7 @@ import type { IndexRecentEntry, Stats } from '../store/types';
 import type { ProgressState, StreakInfo } from './progress';
 import { weeksWithAtLeast, WEEK_TARGET } from './progress';
 import { ILLUSTRIOUS_18, FAB_4_H17, FAB_4_S17 } from '../engine/deviations';
-import { classifySpeed } from '../drills/countSpeed';
+import { classifySpeed, countRunPerCardMs } from '../drills/countSpeed';
 import { countBits } from '../store/cellStats';
 import { isRecent, recentWindow } from '../store/indexRecent';
 
@@ -380,7 +380,8 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
       m(
         countRuns(c.stats).some((r) => {
           if (!r.correct || r.cards < FULL_SHOE_CARDS) return false;
-          const perCard = r.manual ? r.meanTapMs : r.intervalMs;
+          // C6: an eyes-free run's pace is its measured time, not its gap.
+          const perCard = countRunPerCardMs(r);
           return typeof perCard === 'number' && perCard > 0 && classifySpeed((perCard * 52) / 1000) !== 'learning';
         }) ||
           (c.stats.timedCount?.history ?? []).some(

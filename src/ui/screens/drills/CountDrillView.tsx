@@ -387,6 +387,9 @@ export function CountDrillView({
   // card was up. A checkpoint or distraction clears `lastCardAtRef`, so the
   // time spent answering one is never counted as a gap between cards.
   const runManualRef = useRef(false);
+  // C6: an eyes-free auto run's measured card time (speech + gap), summed
+  // card by card in its loop, so pauses and interruptions are left out.
+  const eyesFreeDealtMsRef = useRef(0);
   const tapGapsRef = useRef<number[]>([]);
   const lastCardAtRef = useRef<number | null>(null);
   /**
@@ -736,6 +739,7 @@ export function CountDrillView({
         const g = groups[i];
         if (!g) return;
 
+        const cardAt = performance.now();
         const cards = narrateCards(g, 'rank');
         const outcome = await speakAsync(again ? `${COUNT_AGAIN_PREFIX} ${cards}` : cards, speechOptsFrom(settings.audio));
         again = false;
@@ -750,6 +754,9 @@ export function CountDrillView({
           pauseRun();
           return;
         }
+        // C6: only a card that was heard counts toward the run's time; an
+        // unheard one is said again on resume and counted then.
+        eyesFreeDealtMsRef.current += performance.now() - cardAt;
 
         const isLast = i >= groups.length - 1;
 
@@ -783,8 +790,10 @@ export function CountDrillView({
         }
 
         if (gapMs > 0) {
+          const gapAt = performance.now();
           await delay(gapMs);
           if (isStale()) return;
+          eyesFreeDealtMsRef.current += performance.now() - gapAt;
         }
 
         i += 1;
@@ -1286,6 +1295,7 @@ export function CountDrillView({
     // #20: Timed Challenge ignores Next card, so it is never a manual run.
     runManualRef.current = settings.drill.countManual && !timedChallenge;
     tapGapsRef.current = [];
+    eyesFreeDealtMsRef.current = 0;
     lastCardAtRef.current = runManualRef.current ? performance.now() : null;
     setHonorCheck(false);
     setTimedResult(null);
@@ -1477,6 +1487,8 @@ export function CountDrillView({
     // readers rank manual runs by `meanTapMs` only (countSpeed.ts).
     const manual = runManualRef.current;
     const meanTapMs = manual ? meanTapGapMs(tapGapsRef.current) : undefined;
+    // C6: an eyes-free auto run records what its cards really took.
+    const eyesFreeAuto = eyesFree && !manual && !countdownMode && eyesFreeDealtMsRef.current > 0;
     const updated = {
       ...statsWithDistraction,
       countDrill: {
@@ -1488,6 +1500,7 @@ export function CountDrillView({
             intervalMs: manual ? (meanTapMs ?? 0) : settings.drill.countIntervalMs,
             correct,
             ...(manual ? { manual: true, ...(meanTapMs !== undefined ? { meanTapMs } : {}) } : {}),
+            ...(eyesFreeAuto ? { eyesFree: true as const, elapsedMs: Math.round(eyesFreeDealtMsRef.current) } : {}),
             // RT#12: omitted entirely when the run had no checkpoints, so a
             // reader can tell "not measured" from "got none right".
             ...(report ? { checkpointsCorrect: report.correct, checkpointsTotal: report.total } : {}),

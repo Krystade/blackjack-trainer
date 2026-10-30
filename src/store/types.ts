@@ -728,6 +728,12 @@ export interface Stats {
       // on every run recorded before the field shipped.
       manual?: boolean;
       meanTapMs?: number;
+      // C6: an eyes-free auto run is paced by speech, with countIntervalMs as
+      // the GAP after each card, so `intervalMs` understates its pace.
+      // `elapsedMs` is the measured time its cards took (speech + gaps,
+      // pauses and interruptions left out). Absent on every other run.
+      eyesFree?: true;
+      elapsedMs?: number;
     }[];
   };
   // Cycle-4 (docs/research/2026-07-21-priority-list.md item 8): per-drill

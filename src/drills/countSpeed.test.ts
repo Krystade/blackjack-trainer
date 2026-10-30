@@ -7,6 +7,7 @@ import {
   RAMP_FLOOR_MS,
   tierStartIntervalMs,
   timedRunPace,
+  countRunPerCardMs,
   meanTapGapMs,
   formatCountRun,
   bestCleanCountRuns,
@@ -302,5 +303,24 @@ describe('bestCleanCountRuns (#20)', () => {
   it('a manual run with no measured taps has no pace to rank', () => {
     expect(bestCleanCountRuns([run(true, 700, true)]).manual).toBeNull();
     expect(bestCleanCountRuns([run(true, 700, true)]).auto).toBeNull();
+  });
+});
+
+describe('eyes-free runs are paced by what their cards took (C6)', () => {
+  const eyes = { cards: 52, intervalMs: 300, correct: true, eyesFree: true as const, elapsedMs: 52 * 900 };
+  const screen = { cards: 52, intervalMs: 500, correct: true };
+
+  it('per-card pace is elapsed / cards, not the gap', () => {
+    expect(countRunPerCardMs(eyes)).toBe(900);
+    expect(countRunPerCardMs(screen)).toBe(500);
+    expect(countRunPerCardMs({ cards: 52, intervalMs: 0, manual: true, meanTapMs: 700 })).toBe(700);
+  });
+
+  it('the fastest clean auto run is the screen run, not the eyes-free one with the shorter gap', () => {
+    expect(bestCleanCountRuns([eyes, screen]).auto).toBe(screen);
+  });
+
+  it('Stats says the eyes-free pace it measured', () => {
+    expect(formatCountRun(eyes)).toBe('52 cards · eyes-free · 900ms avg');
   });
 });

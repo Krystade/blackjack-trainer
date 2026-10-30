@@ -140,7 +140,8 @@ const CASES: Record<string, [AchievementContext, AchievementContext]> = {
   'count-clean-10': [ctx({ stats: { countDrill: { history: [...runs(9), ...runs(5, { correct: false })] } } }), ctx({ stats: { countDrill: { history: runs(10) } } })],
   'count-clean-50': [ctx({ stats: { countDrill: { history: runs(49) } } }), ctx({ stats: { countDrill: { history: runs(50) } } })],
   'count-full-shoe': [
-    ctx({ stats: { countDrill: { history: [...runs(1, { cards: FULL_SHOE_CARDS, intervalMs: 600 }), ...runs(1, { cards: FULL_SHOE_CARDS - 1, intervalMs: 500 }), ...runs(1, { cards: FULL_SHOE_CARDS, intervalMs: 500, correct: false })] } } }),
+    ctx({ stats: { countDrill: { history: [...runs(1, { cards: FULL_SHOE_CARDS, intervalMs: 600 }), ...runs(1, { cards: FULL_SHOE_CARDS - 1, intervalMs: 500 }), ...runs(1, { cards: FULL_SHOE_CARDS, intervalMs: 500, correct: false }), ...runs(1, { cards: FULL_SHOE_CARDS, intervalMs: 500, eyesFree: true, elapsedMs: FULL_SHOE_CARDS * 1100 })] } } }),
+    // C6 (the eyes-free row above): a 500 ms GAP after ~600 ms of speech is not table-ready pace.
     ctx({ stats: { countDrill: { history: runs(1, { cards: FULL_SHOE_CARDS, intervalMs: 576 }) } } }),
   ],
   'count-full-shoe-timed': [
