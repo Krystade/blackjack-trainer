@@ -1,7 +1,6 @@
 import { useEffect } from 'react';
 import { loadProgress, streakNow, habitNow, checkAchievementsNow } from '../../habits/progressStore';
-import { addDays, goalFraction, goalFor, weekView } from '../../habits/progress';
-import { localDayKey } from '../../store/practiceDays';
+import { addDays, effectiveToday, goalFraction, goalFor, weekView } from '../../habits/progress';
 import type { Settings } from '../../store/types';
 import './streakCard.css';
 
@@ -55,8 +54,9 @@ export function StreakCard({ settings, onOpen }: { settings: Settings; onOpen: (
   // toasted on the way back to Home rather than at some later answer.
   useEffect(() => checkAchievementsNow(), []);
   const now = habitNow();
-  const today = localDayKey(new Date(now));
   const progress = loadProgress();
+  // B34: the same today the streak was walked to, after a flight west.
+  const today = effectiveToday(progress.days, now);
   const streak = streakNow(progress, now);
   const goal = goalFor(settings.habits?.goal);
   const day = progress.days[today];

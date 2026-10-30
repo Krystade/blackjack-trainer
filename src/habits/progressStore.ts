@@ -2,12 +2,12 @@ import { quarantineRaw } from '../store/quarantine';
 import type { Stats } from '../store/types';
 import { getStorage, loadSettings, loadStats, setStatsSaveObserver } from '../store/persist';
 import { loadCasinoLog } from '../store/casinoLog';
-import { localDayKey } from '../store/practiceDays';
 import { diag } from '../diag/diagnosticLog';
 import { habitClock as clock, _setHabitClockForTest } from './clock';
 import {
   backfillDays,
   computeStreak,
+  effectiveToday,
   emptyProgress,
   goalFor,
   normalizeProgress,
@@ -153,7 +153,7 @@ export function contextFor(stats: Stats, progress: ProgressState, nowMs = clock(
   return {
     stats,
     progress,
-    streak: computeStreak(progress.days, localDayKey(new Date(nowMs))),
+    streak: computeStreak(progress.days, effectiveToday(progress.days, nowMs)),
     casinoSessions: casinoSessions(),
     nowMs,
     guidedSessions: guidedSessions(),
@@ -251,7 +251,7 @@ function ensureBackfilledQuiet(stats: Stats): ProgressState {
 }
 
 export function streakNow(progress: ProgressState = loadProgress(), nowMs = clock()): StreakInfo {
-  return computeStreak(progress.days, localDayKey(new Date(nowMs)));
+  return computeStreak(progress.days, effectiveToday(progress.days, nowMs));
 }
 
 export function habitNow(): number {

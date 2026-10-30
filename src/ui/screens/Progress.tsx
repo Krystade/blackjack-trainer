@@ -2,9 +2,8 @@ import type { Screen } from '../App';
 import type { Settings } from '../../store/types';
 import { loadStats } from '../../store/persist';
 import { loadProgress, contextFor, habitNow } from '../../habits/progressStore';
-import { goalFor, heatmap } from '../../habits/progress';
+import { effectiveToday, goalFor, heatmap } from '../../habits/progress';
 import { evaluateAchievements, type AchievementStatus, type Ladder, type Tier } from '../../habits/achievements';
-import { localDayKey } from '../../store/practiceDays';
 import { YouHeader } from '../components/YouHeader';
 import './progress.css';
 import './progressLadder.css';
@@ -80,8 +79,9 @@ function fmtMinutes(ms: number): string {
 /** Wave N: streaks, the last 12 weeks and the achievements. Wave W: one half of the You tab. */
 export function Progress({ settings, onNavigate }: { settings: Settings; onNavigate: (s: Screen) => void }) {
   const now = habitNow();
-  const today = localDayKey(new Date(now));
   const progress = loadProgress();
+  // B34: the same today the streak was walked to, after a flight west.
+  const today = effectiveToday(progress.days, now);
   const stats = loadStats();
   const ctx = contextFor(stats, progress, now);
   const goal = goalFor(settings.habits?.goal);

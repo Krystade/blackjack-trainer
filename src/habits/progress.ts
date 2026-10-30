@@ -385,6 +385,22 @@ export interface StreakInfo {
 }
 
 /**
+ * B34: the day the habit displays treat as today. Normally the local day of
+ * `nowMs`; but after a flight west, the goal met at 00:30 in New York sits on
+ * a day key that is still tomorrow in Los Angeles, and the streak walked only
+ * up to the local today read 0 with the goal met. So the latest recorded day
+ * counts as today when it is AHEAD -- by one day at most, so a key written
+ * once by a phone clock set years ahead cannot freeze "today" forever.
+ */
+export function effectiveToday(days: Record<string, DayRecord>, nowMs: number): string {
+  const local = localDayKey(new Date(nowMs));
+  const limit = addDays(local, 1);
+  let latest = local;
+  for (const k of Object.keys(days)) if (k > latest && k <= limit && /^\d{4}-\d{2}-\d{2}$/.test(k)) latest = k;
+  return latest;
+}
+
+/**
  * Walk every calendar day from the first met day to today.
  *
  * A met day extends the streak, and every FREEZE_EVERY-th met day of a streak
