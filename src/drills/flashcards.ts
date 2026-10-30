@@ -1,6 +1,6 @@
 import type { Card, Rank } from '../engine/cards';
 import { mulberry32 } from '../engine/cards';
-import { correctPlay } from '../engine/strategy';
+import { basicPlay, correctPlay } from '../engine/strategy';
 import type { PlayContext } from '../engine/strategy';
 import { FULL_CTX, maybeFallback } from './fallbackHand';
 import { drawCountTc } from './withCount';
@@ -233,7 +233,9 @@ export function drawFlashcard(
   const tc = options.withCount ? drawCountTc(cards, cell.up, ctx, rules, rng) : undefined;
 
   // Get correct action
-  const advice = correctPlay(cards, cell.up, tc ?? 0, ctx, rules);
+  // C10: a card with no count shown is a basic-strategy question -- the chart,
+  // no indices (TC 0 with indices on made 16 v 10 a stand).
+  const advice = tc === undefined ? basicPlay(cards, cell.up, ctx, rules) : correctPlay(cards, cell.up, tc, ctx, rules);
 
   return {
     cards,

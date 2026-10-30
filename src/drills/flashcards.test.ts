@@ -1,10 +1,11 @@
 import { mulberry32 } from '../engine/cards';
 import { DEFAULT_RULES } from '../engine/ruleset';
 import { describe, it, expect } from 'vitest';
-import { generateAllCells, filterCellsByCategory, drawFlashcard } from './flashcards';
+import { generateAllCells, filterCellsByCategory, drawFlashcard, type Flashcard } from './flashcards';
+import { gradeFlashcardAnswer } from './gradeAnswer';
 import { confusabilityWeight } from './confusability';
 import { handValue } from '../engine/hand';
-import { correctPlay } from '../engine/strategy';
+import { basicPlay, correctPlay } from '../engine/strategy';
 
 describe('generateAllCells (the "complete table" cell universe)', () => {
   const all = generateAllCells();
@@ -183,7 +184,8 @@ describe('#27 drawFlashcard with fallbacks', () => {
       const card = draw(seed, true);
       if (!card.ctx) continue;
       fallbacks++;
-      expect(card.correct).toBe(correctPlay(card.cards, card.up, 0, card.ctx, DEFAULT_RULES).action);
+      // C10: no count shown, so graded against the chart alone (16 v 10 hits).
+      expect(card.correct).toBe(basicPlay(card.cards, card.up, card.ctx, DEFAULT_RULES).action);
       expect(card.correct).not.toBe('double');
       expect(card.correct).not.toBe('surrender');
       if (card.cards.length === 3) expect(card.ctx.canDouble).toBe(false);
@@ -225,5 +227,26 @@ describe('soft hands are dealt in both orders', () => {
       orders.add(a[0]!.rank);
     }
     expect(orders).toEqual(new Set(['A', '4']));
+  });
+});
+
+// C10 (audit 2026-10-29): a plain flashcard (no count shown) was graded at
+// TC 0 with the index set, so hitting 16 v 10 -- the chart play -- was a
+// "missed deviation".
+describe('a card with no count shown is graded by the chart (C10)', () => {
+  const card = { cards: [{ rank: '10', suit: 's' }, { rank: '6', suit: 'h' }], up: '10', correct: 'hit', cellId: 'hard-16-v-10' } as unknown as Flashcard;
+
+  it('16 v 10 with no surrender: hit is right, not a missed deviation', () => {
+    const rules = { ...DEFAULT_RULES, ls: false };
+    const r = gradeFlashcardAnswer(card, 'hit', rules, 500, {}, 1_700_000_000_000);
+    expect(r.event.correct).toBe(true);
+    expect(r.event.classification).toBe('correct');
+  });
+
+  it('every no-count draw is the chart play', () => {
+    for (let seed = 0; seed < 400; seed++) {
+      const c = drawFlashcard(['hard', 'soft', 'pairs'], {}, 0, seed, DEFAULT_RULES, false, null, null, { fallbacks: true });
+      expect(c.correct).toBe(basicPlay(c.cards, c.up, c.ctx ?? { canDouble: true, canSplit: true, canSurrender: true }, DEFAULT_RULES).action);
+    }
   });
 });

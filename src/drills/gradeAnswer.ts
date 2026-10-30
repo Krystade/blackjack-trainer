@@ -271,8 +271,9 @@ export function buildFlashcardEvent(
   const tc = card.tc ?? 0;
   // Wave A review: an index the profile's chart already plays is not one
   // (withCount.ts) -- same play, no index id, so no index review.
-  const withCount = withCountAdvice(card.cards, card.up, tc, ctx, rules);
   const basicOnly = basicPlay(card.cards, card.up, ctx, rules);
+  // C10: no count shown, so the chart alone is the answer.
+  const withCount = card.tc === undefined ? basicOnly : withCountAdvice(card.cards, card.up, tc, ctx, rules);
   // A timeout never reaches classifyAction, and neither does a self-report:
   // that function asks which of the five plays was chosen, and the answer in
   // both cases is none of them. Routed through it with any stand-in action,
