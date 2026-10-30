@@ -79,12 +79,12 @@ describe('Wave L S3: a variant game honours its logged rules', () => {
   });
 
   it('names logged rules that differ from the preset', async () => {
-    const { variantMismatches } = await import('./casinoVariant');
-    expect(variantMismatches({ decks: 6, s17: false, payout: '3:2' }, 's21-h17')).toEqual([]);
-    expect(variantMismatches({ decks: 8, s17: null, payout: null }, 'freebet')[0]).toMatch(/8 decks/);
-    expect(variantMismatches({ decks: null, s17: true, payout: null }, 's21-h17')[0]).toMatch(/Spanish 21, S17/);
-    expect(variantMismatches({ decks: null, s17: true, payout: null }, 'switch')[0]).toMatch(/Logged S17; this preset is H17/);
-    expect(variantMismatches({ decks: null, s17: null, payout: '3:2' }, 'switch')[0]).toMatch(/1:1/);
+    const { variantRuleNotes } = await import('./casinoVariant');
+    expect(variantRuleNotes({ decks: 6, s17: false, payout: '3:2' }, 's21-h17')).toEqual({ applied: [], appliedLine: null, unapplied: [] });
+    expect(variantRuleNotes({ decks: 8, s17: null, payout: null }, 'freebet').unapplied[0]).toMatch(/8 decks/);
+    expect(variantRuleNotes({ decks: null, s17: true, payout: null }, 's21-h17').appliedLine).toMatch(/Spanish 21, S17/);
+    expect(variantRuleNotes({ decks: null, s17: true, payout: null }, 'switch').applied).toEqual(['S17']);
+    expect(variantRuleNotes({ decks: null, s17: null, payout: '3:2' }, 'switch').unapplied[0]).toMatch(/1:1/);
   });
 });
 
@@ -102,21 +102,25 @@ describe('merge with Wave M: a variant game and the new rules', () => {
   });
 
   it('the split and double rules are the preset\'s: only a logged one that differs is named', async () => {
-    const { variantMismatches } = await import('./casinoVariant');
+    const { variantRuleNotes } = await import('./casinoVariant');
     const none = { decks: null, s17: null, payout: null };
+    const notes = (g: Parameters<typeof variantRuleNotes>[0], p: Parameters<typeof variantRuleNotes>[1]) => {
+      const n = variantRuleNotes(g, p);
+      return [...n.applied, ...n.unapplied];
+    };
     // Unlogged: nothing assumed, nothing listed.
-    expect(variantMismatches(none, 'freebet')).toEqual([]);
+    expect(notes(none, 'freebet')).toEqual([]);
     // Logged and matching the preset: nothing listed.
-    expect(variantMismatches({ ...none, rsa: true, maxSplitHands: 4, doubleOn: 'any2', doubleSplitAces: false }, 'freebet')).toEqual([]);
-    expect(variantMismatches({ ...none, rsa: false }, 'switch')).toEqual([]);
-    expect(variantMismatches({ ...none, doubleSplitAces: true }, 's21-h17')).toEqual([]);
+    expect(notes({ ...none, rsa: true, maxSplitHands: 4, doubleOn: 'any2', doubleSplitAces: false }, 'freebet')).toEqual([]);
+    expect(notes({ ...none, rsa: false }, 'switch')).toEqual([]);
+    expect(notes({ ...none, doubleSplitAces: true }, 's21-h17')).toEqual([]);
     // Logged and different.
-    expect(variantMismatches({ ...none, rsa: false }, 'freebet')).toEqual(['Logged no resplitting aces; the Free Bet figures resplit them.']);
-    expect(variantMismatches({ ...none, rsa: true }, 'switch')[0]).toMatch(/do not resplit aces/);
-    expect(variantMismatches({ ...none, maxSplitHands: 2 }, 'freebet')).toEqual(['Logged split to 2 hands; the Free Bet figures split to 4.']);
-    expect(variantMismatches({ ...none, doubleOn: '10-11' }, 's21-s17')[0]).toMatch(/^Logged doubling on 10-11 only/);
-    expect(variantMismatches({ ...none, doubleSplitAces: true }, 'freebet')[0]).toMatch(/one card each/);
-    expect(variantMismatches({ ...none, doubleSplitAces: false }, 's21-h17')[0]).toMatch(/hit and double/);
+    expect(notes({ ...none, rsa: false }, 'freebet')).toEqual(['no resplitting aces']);
+    expect(notes({ ...none, rsa: true }, 'switch')).toEqual(['resplitting aces']);
+    expect(notes({ ...none, maxSplitHands: 2 }, 'freebet')).toEqual(['split to 2 hands']);
+    expect(notes({ ...none, doubleOn: '10-11' }, 's21-s17')).toEqual(['doubling on 10-11 only']);
+    expect(notes({ ...none, doubleSplitAces: true }, 'freebet')).toEqual(['doubling on split aces']);
+    expect(notes({ ...none, doubleSplitAces: false }, 's21-h17')[0]).toMatch(/hit and double/);
   });
 
   it('the summary names the variant once when the house name already says it', () => {
@@ -125,18 +129,43 @@ describe('merge with Wave M: a variant game and the new rules', () => {
   });
 });
 
-// C22 (audit 2026-10-29): a logged DAS or surrender rule unlike the preset's is flagged.
-describe('variantMismatches: double after split and surrender (C22)', () => {
-  it('flags each where logged and unlike the preset', async () => {
-    const { variantMismatches } = await import('./casinoVariant');
-    const none = { decks: null, s17: null, payout: null, rsa: null, doubleSplitAces: null, maxSplitHands: null, doubleOn: null } as const;
-    // Spanish 21 surrenders and doubles after splitting; Free Bet doubles after splitting, no surrender.
-    expect(variantMismatches({ ...none, das: false, surrender: false }, 's21-h17')).toEqual([
-      'Logged no doubling after a split; the Spanish 21, H17 figures double after splitting.',
-      'Logged no surrender; the Spanish 21, H17 figures surrender late.',
+// C22 (audit 2026-10-29): a logged DAS or surrender rule unlike the preset's is named.
+// R4 (review of C22): a rule the edge is worked out for is a neutral note, not a
+// warning beside the edge that already uses it; only rules the edge cannot
+// take (decks, Switch's payout, Spanish 21 split aces that may not double) warn.
+describe('variantRuleNotes: what the edge used, and what it could not (C22, R4)', () => {
+  const none = { decks: null, s17: null, payout: null, rsa: null, doubleSplitAces: null, maxSplitHands: null, doubleOn: null } as const;
+
+  it('DAS and surrender are applied to the edge, so they are a note, not a warning', async () => {
+    const { variantRuleNotes } = await import('./casinoVariant');
+    const s21 = variantRuleNotes({ ...none, das: false, surrender: false }, 's21-h17');
+    expect(s21.applied).toEqual(['no doubling after a split', 'no surrender']);
+    expect(s21.unapplied).toEqual([]);
+    expect(s21.appliedLine).toBe(
+      "Used for the edge, unlike the Spanish 21, H17 preset: no doubling after a split, no surrender. The Charts tab shows the preset's chart.",
+    );
+    expect(variantRuleNotes({ ...none, surrender: true }, 'freebet').applied).toEqual(['late surrender']);
+    expect(variantRuleNotes({ ...none, das: true, surrender: false }, 'freebet').applied).toEqual([]);
+    expect(variantRuleNotes({ ...none, das: null, surrender: null }, 's21-h17').applied).toEqual([]);
+  });
+
+  it('Free Bet split to 2 and Spanish 21 at 6:5 are notes; the edge uses both', async () => {
+    const { variantRuleNotes } = await import('./casinoVariant');
+    expect(variantRuleNotes({ ...none, maxSplitHands: 2 }, 'freebet')).toMatchObject({ applied: ['split to 2 hands'], unapplied: [] });
+    expect(variantRuleNotes({ ...none, payout: '6:5' }, 's21-h17')).toMatchObject({ applied: ['blackjack 6:5'], unapplied: [] });
+    expect(variantRuleNotes({ ...none, payout: '6:5' }, 'freebet')).toMatchObject({ applied: ['blackjack 6:5'], unapplied: [] });
+  });
+
+  it('only what the edge cannot take warns', async () => {
+    const { variantRuleNotes } = await import('./casinoVariant');
+    expect(variantRuleNotes({ ...none, decks: 8 }, 'freebet').unapplied).toEqual([
+      'Logged 8 decks; the edge is worked out for an infinite deck, so the decks do not change it.',
     ]);
-    expect(variantMismatches({ ...none, surrender: true }, 'freebet')).toEqual(['Logged late surrender; the Free Bet figures have no surrender.']);
-    expect(variantMismatches({ ...none, das: true, surrender: false }, 'freebet')).toEqual([]);
-    expect(variantMismatches({ ...none, das: null, surrender: null }, 's21-h17')).toEqual([]);
+    expect(variantRuleNotes({ ...none, payout: '3:2' }, 'switch').unapplied).toEqual([
+      'Logged blackjack 3:2; Blackjack Switch pays a blackjack 1:1, as these figures assume.',
+    ]);
+    expect(variantRuleNotes({ ...none, doubleSplitAces: false }, 's21-h17').unapplied).toEqual([
+      'Logged no doubling on split aces; the Spanish 21, H17 figures let split aces hit and double.',
+    ]);
   });
 });

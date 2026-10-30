@@ -229,6 +229,7 @@ test('a variant game at a card room: commission added, assumed only for that; lo
   await expect(card.getByTestId('gs-assumed-rules')).not.toContainText('split');
   await expect(card.getByTestId('gs-commission')).toContainText('$1 per $100');
   await expect(card.getByTestId('gs-variant-mismatch')).toHaveCount(0);
+  await expect(card.getByTestId('gs-variant-applied')).toHaveCount(0);
   await page.getByRole('button', { name: /Back$/ }).click();
 
   await rows.filter({ hasText: 'Rio' }).click();
@@ -241,8 +242,10 @@ test('a variant game at a card room: commission added, assumed only for that; lo
   await expect(card.getByTestId('gs-variant-rules')).toContainText('These are the logged rules');
   await expect(card.getByTestId('gs-assumed-rules')).toHaveCount(0);
   await expect(card.getByTestId('gs-commission')).toHaveCount(0);
-  await expect(card.getByTestId('gs-variant-mismatch-badge')).toHaveText('Rules differ');
-  await expect(card.getByTestId('gs-variant-mismatch')).toContainText('Logged split to 2 hands; the Free Bet figures split to 4.');
+  // R4: the edge uses split to 2, so it is a neutral note, not a warning.
+  await expect(card.getByTestId('gs-variant-mismatch-badge')).toHaveCount(0);
+  await expect(card.getByTestId('gs-variant-mismatch')).toHaveCount(0);
+  await expect(card.getByTestId('gs-variant-applied')).toContainText('Used for the edge, unlike the Free Bet preset: split to 2 hands.');
 });
 
 /** A scriptable recogniser in place of the real one (as e2e/voice-answers.spec.ts). */

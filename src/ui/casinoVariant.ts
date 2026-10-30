@@ -17,7 +17,7 @@ import { presetData } from '../engine/variants/strategy';
  * unlogged one is the preset's. Left as the preset's: the decks (the maths
  * is infinite-deck), Switch's 1:1 natural (the game's design), and a logged
  * "no doubling on split aces" against Spanish 21's split aces that hit and
- * double (no doubling is not no drawing). `variantMismatches` names those.
+ * double (no doubling is not no drawing). `variantRuleNotes` names those.
  */
 export type LoggedVariantFields = Pick<CasinoGame, 's17' | 'payout'> &
   Partial<Pick<CasinoGame, 'decks' | 'das' | 'surrender' | 'rsa' | 'doubleSplitAces' | 'maxSplitHands' | 'doubleOn'>>;
@@ -119,56 +119,59 @@ export function variantCostFor(
 }
 
 /** Logged rules that differ from the preset's, each as one line. */
-export function variantMismatches(
-  game: Pick<CasinoGame, 'decks' | 's17' | 'payout' | 'rsa' | 'doubleSplitAces' | 'maxSplitHands' | 'doubleOn'> &
-    Partial<Pick<CasinoGame, 'das' | 'surrender'>>,
+export interface VariantRuleNotes {
+  /** Logged rules unlike the preset's that the edge shown is worked out for. */
+  applied: string[];
+  /** One neutral line naming them, or null when there are none. */
+  appliedLine: string | null;
+  /** Logged rules the edge cannot take: these still warn. */
+  unapplied: string[];
+}
+
+/**
+ * R4 (review of C22): logged rules unlike the preset's, split by whether
+ * loggedVariantRules applies them to the edge. An applied rule is a note (the
+ * edge beside it already uses it; the Charts tab still shows the preset's
+ * chart); only decks, Switch's payout and Spanish 21 split aces that may not
+ * double are warnings.
+ */
+export function variantRuleNotes(
+  game: Pick<CasinoGame, 'decks' | 's17' | 'payout'> &
+    Partial<Pick<CasinoGame, 'das' | 'surrender' | 'rsa' | 'doubleSplitAces' | 'maxSplitHands' | 'doubleOn'>>,
   preset: PresetId,
-): string[] {
+): VariantRuleNotes {
   const rules = PRESETS[preset];
   const label = PRESET_LABEL[preset];
-  const out: string[] = [];
+  const applied: string[] = [];
+  const unapplied: string[] = [];
   if (game.decks != null && game.decks !== rules.decks) {
-    out.push(`Logged ${game.decks} decks; the ${PRESET_LABEL[preset]} figures are for ${rules.decks}.`);
+    unapplied.push(`Logged ${game.decks} decks; the edge is worked out for an infinite deck, so the decks do not change it.`);
   }
+  let sibling = '';
   if (game.s17 != null && game.s17 !== rules.s17) {
-    const sibling =
-      rules.variant === 'spanish21'
-        ? game.s17
-          ? ' Pick "Spanish 21, S17" for this game.'
-          : ' Pick "Spanish 21, H17" for this game.'
-        : '';
-    out.push(`Logged ${game.s17 ? 'S17' : 'H17'}; this preset is ${rules.s17 ? 'S17' : 'H17'}.${sibling}`);
+    applied.push(game.s17 ? 'S17' : 'H17');
+    if (rules.variant === 'spanish21') sibling = ` For this game's chart, pick "Spanish 21, ${game.s17 ? 'S17' : 'H17'}".`;
   }
   if (game.payout != null) {
     if (rules.variant === 'switch') {
-      out.push(`Logged blackjack ${game.payout}; Blackjack Switch pays a blackjack 1:1, as these figures assume.`);
-    } else if (rules.variant === 'spanish21' && game.payout === '6:5') {
-      out.push('Logged blackjack 6:5; the Spanish 21 figures assume 3:2.');
+      unapplied.push(`Logged blackjack ${game.payout}; Blackjack Switch pays a blackjack 1:1, as these figures assume.`);
+    } else if ((game.payout === '6:5' ? 1.2 : 1.5) !== rules.bjPays) {
+      applied.push(`blackjack ${game.payout}`);
     }
   }
-  // C22 (audit 2026-10-29): double after split and late surrender too.
-  if (game.das != null && game.das !== rules.das) {
-    out.push(game.das ? `Logged doubling after a split; the ${label} figures do not double after splitting.` : `Logged no doubling after a split; the ${label} figures double after splitting.`);
-  }
-  if (game.surrender != null && game.surrender !== rules.ls) {
-    out.push(game.surrender ? `Logged late surrender; the ${label} figures have no surrender.` : `Logged no surrender; the ${label} figures surrender late.`);
-  }
-  // Wave M's split and double rules, where logged and unlike the preset's.
-  if (game.rsa != null && game.rsa !== rules.rsa) {
-    out.push(game.rsa ? `Logged resplitting aces; the ${label} figures do not resplit aces.` : `Logged no resplitting aces; the ${label} figures resplit them.`);
-  }
-  if (game.maxSplitHands != null && game.maxSplitHands !== rules.maxHands) {
-    out.push(`Logged split to ${game.maxSplitHands} hands; the ${label} figures split to ${rules.maxHands}.`);
-  }
-  if (game.doubleOn != null && game.doubleOn !== 'any2') {
-    out.push(`Logged doubling on ${game.doubleOn} only; the ${label} figures double on any two cards.`);
+  if (game.das != null && game.das !== rules.das) applied.push(game.das ? 'doubling after a split' : 'no doubling after a split');
+  if (game.surrender != null && game.surrender !== rules.ls) applied.push(game.surrender ? 'late surrender' : 'no surrender');
+  if (game.rsa != null && game.rsa !== rules.rsa) applied.push(game.rsa ? 'resplitting aces' : 'no resplitting aces');
+  if (game.maxSplitHands != null && game.maxSplitHands !== rules.maxHands) applied.push(`split to ${game.maxSplitHands} hands`);
+  if ((game.doubleOn === '9-11' || game.doubleOn === '10-11') && game.doubleOn !== rules.doubleOn) {
+    applied.push(`doubling on ${game.doubleOn} only`);
   }
   if (game.doubleSplitAces != null && game.doubleSplitAces !== rules.splitAcesDraw) {
-    out.push(
-      game.doubleSplitAces
-        ? `Logged doubling on split aces; the ${label} figures give split aces one card each.`
-        : `Logged no doubling on split aces; the ${label} figures let split aces hit and double.`,
-    );
+    if (game.doubleSplitAces) applied.push('doubling on split aces');
+    else unapplied.push(`Logged no doubling on split aces; the ${label} figures let split aces hit and double.`);
   }
-  return out;
+  const appliedLine = applied.length
+    ? `Used for the edge, unlike the ${label} preset: ${applied.join(', ')}. The Charts tab shows the preset's chart.${sibling}`
+    : null;
+  return { applied, appliedLine, unapplied };
 }

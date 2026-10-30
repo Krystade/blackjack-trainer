@@ -1,7 +1,7 @@
 import { casinoById, isHouseGame, type Casino, type CasinoGame, type CasinoLog } from '../../../store/casinoLog';
 import { useEffect } from 'react';
 import { PRESETS, PRESET_LABEL } from '../../../engine/variants/rules';
-import { variantCostFor, variantMismatches, variantRulesSummary } from '../../casinoVariant';
+import { variantCostFor, variantRuleNotes, variantRulesSummary } from '../../casinoVariant';
 import { requestVariantEdge, useVariantEdges, variantEdgeState } from './variantEdgeRunner';
 import { simRules, type GameResult } from '../../../store/casinoGameStats';
 import { describeMethod, methodBadge } from '../../../engine/betMethods';
@@ -417,7 +417,7 @@ function VariantGameStats({ casino, game, editRules }: { casino: Casino; game: C
   useEffect(() => {
     if (edge === null) requestVariantEdge(rules);
   }, [edge, rules]);
-  const mismatches = variantMismatches(game, preset);
+  const { appliedLine, unapplied: mismatches } = variantRuleNotes(game, preset);
   return (
     <div className="cas-gs" data-testid="game-stats" data-state="variant" data-variant={preset}>
       <header className="cas-pad cas-gs-head">
@@ -450,6 +450,11 @@ function VariantGameStats({ casino, game, editRules }: { casino: Casino; game: C
           </p>
         )}
       </header>
+      {appliedLine && (
+        <p className="cas-note cas-pad-x" data-testid="gs-variant-applied">
+          {appliedLine}
+        </p>
+      )}
       {mismatches.length > 0 && (
         <section className="cas-pad-x" data-testid="gs-variant-mismatch">
           {mismatches.map((m) => (
