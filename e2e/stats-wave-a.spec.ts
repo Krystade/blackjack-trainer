@@ -133,6 +133,21 @@ test('B6: a range past the history cap still counts the answers the cap folded a
   await expect(hard.locator('.category-in-range')).toHaveText('Last 7 days: 1/2 (50%) timed answers');
 });
 
+test('R8: a hand type whose timed rows were all folded by the cap still shows its range line', async ({ page }) => {
+  const d = new Date(Date.now() - 20 * DAY);
+  const p = (n: number) => String(n).padStart(2, '0');
+  const oldDay = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  await withStats(page, {
+    // Hard rows kept; every pairs row folded 20 days ago.
+    latencyHistory: [{ category: 'hard', elapsedMs: 900, date: new Date(Date.now() - DAY).toISOString(), correct: true }],
+    latencyDaily: { [oldDay]: { pairs: { n: 8, right: 6 } } },
+  });
+  await openStats(page);
+  await page.getByRole('button', { name: 'Last 30 days', exact: true }).click();
+  const pairs = page.locator('.category-row[data-hand="pair"]');
+  await expect(pairs.locator('.category-in-range')).toHaveText('Last 30 days: 6/8 (75%) timed answers');
+});
+
 test('s06: Bet or sit shows the table decisions, and betting misses are not basic strategy errors', async ({
   page,
 }) => {
