@@ -1465,9 +1465,13 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
         <FoulCall game={game} onFoul={callFoul} />
       </div>
 
-      {/* #40: the peek under the left thumb, just above the bar. The skip
-          control shares the row, so the dock costs no height when it shows. */}
-      <div className={`peek-dock${missInDock ? ' peek-dock--misses' : ''}`}>
+      {/* #40: the peek just above the bar, under the holding thumb (Wave X:
+          bottom right, or left by the Handedness setting). The skip control
+          shares the row, so the dock costs no height when it shows. */}
+      <div
+        className={`peek-dock${missInDock ? ' peek-dock--misses' : ''}`}
+        data-hand={settings.handedness === 'left' ? 'left' : 'right'}
+      >
         {missInDock && <div className="peek-dock-misses">{missStrips}</div>}
         {/* F9 / B2 #31: no peek while a count check is owed or open -- the
             peeked answer was graded correct. */}

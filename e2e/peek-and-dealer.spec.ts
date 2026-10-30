@@ -45,11 +45,11 @@ test('the count readout shows while held and hides on release', async ({ page })
   await expect(peek).toHaveText('Hold to peek');
 
   await holdPeek(page);
-  await expect(peek).toContainText('RC');
+  await expect(page.getByTestId('peek-readout')).toContainText('RC');
   await expect(peek).toHaveAttribute('aria-pressed', 'true');
   // Still held, so still showing.
   await page.waitForTimeout(600);
-  await expect(peek).toContainText('RC');
+  await expect(page.getByTestId('peek-readout')).toContainText('RC');
 
   await page.mouse.up();
   await expect(peek).toHaveText('Hold to peek');
@@ -62,11 +62,11 @@ test('releasing off the button still ends the peek', async ({ page }) => {
 
   const peek = page.locator('.tc-peek-btn');
   await holdPeek(page);
-  await expect(peek).toContainText('RC');
+  await expect(page.getByTestId('peek-readout')).toContainText('RC');
   // A thumb sliding off before lifting: the captured pointer still reports
   // the release to the button.
   await page.mouse.move(200, 300, { steps: 4 });
-  await expect(peek).toContainText('RC');
+  await expect(page.getByTestId('peek-readout')).toContainText('RC');
   await page.mouse.up();
   await expect(peek).toHaveText('Hold to peek');
 });
@@ -78,12 +78,12 @@ test('the keyboard holds the peek too', async ({ page }) => {
   const peek = page.locator('.tc-peek-btn');
   await peek.focus();
   await page.keyboard.down('Enter');
-  await expect(peek).toContainText('RC');
+  await expect(page.getByTestId('peek-readout')).toContainText('RC');
   await page.keyboard.up('Enter');
   await expect(peek).toHaveText('Hold to peek');
 });
 
-test('the peek sits bottom-left above the action bar and revealing moves nothing', async ({ page }) => {
+test('the peek sits bottom-right above the action bar and revealing moves nothing', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await withProfile(page);
   await dealARound(page);
@@ -94,7 +94,8 @@ test('the peek sits bottom-left above the action bar and revealing moves nothing
   const bar = await page.locator('.action-bar').boundingBox();
   const idle = await peek.boundingBox();
   if (!bar || !idle) throw new Error('not laid out');
-  expect(idle.x).toBeLessThan(40);
+  // Wave X: under a right thumb by default.
+  expect(idle.x + idle.width).toBeGreaterThan(375 - 40);
   expect(idle.y + idle.height).toBeLessThanOrEqual(bar.y + 1);
   expect(bar.y - (idle.y + idle.height)).toBeLessThan(20);
   expect(idle.height).toBeGreaterThanOrEqual(44);
@@ -102,7 +103,7 @@ test('the peek sits bottom-left above the action bar and revealing moves nothing
   const watched = ['.tc-peek-btn', '.dealer-area', '.hands-row', '.message-strip', '.action-bar', '.topbar'];
   const before = await Promise.all(watched.map((sel) => page.locator(sel).boundingBox()));
   await holdPeek(page);
-  await expect(peek).toContainText('RC');
+  await expect(page.getByTestId('peek-readout')).toContainText('RC');
   const during = await Promise.all(watched.map((sel) => page.locator(sel).boundingBox()));
   await page.mouse.up();
   watched.forEach((sel, i) => expect(during[i], sel).toEqual(before[i]));

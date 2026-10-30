@@ -259,6 +259,18 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
               );
             })}
           </div>
+        {/* Wave X: which thumb holds Peek at the table. */}
+        <div className="settings-row">
+          <span className="settings-label">Handedness</span>
+          <Segmented
+            options={[
+              { value: 'right', label: 'Right' },
+              { value: 'left', label: 'Left' },
+            ]}
+            value={settings.handedness ?? 'right'}
+            onChange={(handedness) => update({ handedness })}
+          />
+        </div>
         <Toggle
           label="Audio enabled"
           checked={settings.audio.enabled}

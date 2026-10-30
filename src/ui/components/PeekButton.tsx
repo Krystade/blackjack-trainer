@@ -31,6 +31,8 @@ interface PeekButtonProps {
  *
  * The width is fixed in peekButton.css: revealing must not move anything on
  * the table, or the act of peeking would shift the very cards being counted.
+ * The readout is a sibling laid over the dock beside the button (positioned,
+ * so it moves nothing either), on the side the thumb is not.
  */
 export function PeekButton({ revealed, onReveal, onHide, readout, dataTc }: PeekButtonProps) {
   const heldRef = useRef(false);
@@ -71,6 +73,7 @@ export function PeekButton({ revealed, onReveal, onHide, readout, dataTc }: Peek
   };
 
   return (
+    <>
     <button
       type="button"
       className="tc-peek-btn peek-hold-btn"
@@ -87,7 +90,16 @@ export function PeekButton({ revealed, onReveal, onHide, readout, dataTc }: Peek
       // hold control, so the press itself is the whole gesture.
       onContextMenu={(e) => e.preventDefault()}
     >
-      {revealed ? readout : <span className="peek-label">Hold to peek</span>}
+      <span className="peek-label">{revealed ? 'Peeking' : 'Hold to peek'}</span>
     </button>
+    {/* Wave X (item 3): "If I'm holding it I'm covering the info." The
+        readout is beside the button, on the side away from the holding
+        thumb (peekButton.css), never on the button itself. */}
+    {revealed && (
+      <div className="peek-readout" role="status" data-testid="peek-readout">
+        {readout}
+      </div>
+    )}
+    </>
   );
 }

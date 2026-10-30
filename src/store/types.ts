@@ -50,6 +50,12 @@ export interface Settings {
   dealerPaceOn?: boolean;
   dealerPaceSec?: number;
   /**
+   * Wave X (item 3): the hand that holds the phone at the table. Play's
+   * Hold-to-peek sits under that thumb, bottom right for 'right', and the
+   * readout shows on the far side of it. Absent = 'right'.
+   */
+  handedness?: 'right' | 'left';
+  /**
    * G2 (L-8): Play's dealer makes the occasional payout error, to be caught
    * with Foul (engine/dealerErrors.ts). Absent = off. Forced off eyes-free.
    */
