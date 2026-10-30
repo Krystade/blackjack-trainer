@@ -66,10 +66,12 @@ describe('spoken phrases', () => {
    * Every entry has to be a whole sentence, because a clip IS a sentence:
    * clips.ts splits on terminal punctuation and looks each piece up exactly.
    * A fragment in this list would be a file that can never be matched.
+   * The one other shape is a "Label:" prefix (review of A12, "Again:"), which
+   * clips.ts splits off the front of a sentence that is not recorded whole.
    */
-  it('lists only whole sentences, since segmentation matches nothing else', () => {
+  it('lists only whole sentences or a "Label:" prefix, since segmentation matches nothing else', () => {
     for (const sentence of spokenSentences()) {
-      expect(sentence).toMatch(/[.?!]$/);
+      expect(sentence).toMatch(/[.?!]$|^[A-Z][a-z]+:$/);
       expect(sentence).toBe(sentence.trim());
     }
   });

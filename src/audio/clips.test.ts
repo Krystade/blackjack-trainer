@@ -1476,3 +1476,20 @@ describe('clip output path after voice is switched off', () => {
     expect(env.instances.filter((a) => a.played)).toHaveLength(0);
   });
 });
+
+describe('segmentForClips: a "Label:" prefix (review of A12)', () => {
+  const manifest = { 'Again:': 'again-item.mp3', seven: 'seven.mp3', king: 'king.mp3', 'First: warm-up.': 'first-warm-up.mp3' };
+
+  it('speaks a replayed card as its marker clip and then the card', () => {
+    expect(segmentForClips('Again: seven, king', manifest)).toEqual(['again-item.mp3', 'seven.mp3', 'king.mp3']);
+    expect(segmentForClips('Again: seven', manifest)).toEqual(['again-item.mp3', 'seven.mp3']);
+  });
+
+  it('still prefers a whole recorded sentence that has a colon in it', () => {
+    expect(segmentForClips('First: warm-up.', manifest)).toEqual(['first-warm-up.mp3']);
+  });
+
+  it('is null when the rest is not recorded', () => {
+    expect(segmentForClips('Again: queen', manifest)).toBeNull();
+  });
+});

@@ -158,11 +158,22 @@ test('a hidden page pauses a flashing run, and "Paused." is said on return', asy
   expect(await cardNumber(page)).toBe(held);
 });
 
-/**
- * A12: a card that goes unheard (clip and live fallback both failed) holds
- * the run on that card, and resuming says it again instead of moving on.
- */
-test('an unheard card holds the run, and resuming replays it', async ({ page }) => {
+/** Sets which spoken lines the e2e harness reports as unheard ('*' = all). */
+async function unheard(page: Page, which: string | undefined): Promise<void> {
+  await page.evaluate((w) => {
+    (window as { __e2eSpeechUnheard?: string }).__e2eSpeechUnheard = w;
+  }, which);
+}
+
+/** The card line last attempted before the hold (not "Paused." or the probe). */
+async function lastCardLine(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const log = (window.__speechLog ?? []).filter((t) => t !== 'Paused.' && t !== 'Resuming.' && !t.startsWith('chime:'));
+    return log[log.length - 1]!;
+  });
+}
+
+async function startEyesFreeRun(page: Page): Promise<void> {
   await withSettings(page, {
     audio: { enabled: true, verbosity: 'full' },
     drill: { wheelMode: 'answer', countLengthCards: 12, countIntervalMs: 800, countGroup: 1 },
@@ -171,26 +182,50 @@ test('an unheard card holds the run, and resuming replays it', async ({ page }) 
   await page.locator('label', { hasText: 'Eyes-free audio' }).locator('input').check();
   await page.getByRole('button', { name: 'Start', exact: true }).click();
   await expect(progress(page)).toHaveText(/^2 \/ 12/);
+}
 
-  await page.evaluate(() => {
-    (window as { __e2eSpeechUnheard?: string }).__e2eSpeechUnheard = '*';
-  });
+/**
+ * A12: a card that goes unheard (clip and live fallback both failed) holds
+ * the run on that card, and resuming says it again -- marked "Again:", so
+ * it is never counted twice -- instead of moving on.
+ */
+test('an unheard card holds the run, and resuming replays it marked "Again:"', async ({ page }) => {
+  await startEyesFreeRun(page);
+  await unheard(page, '*');
   await expect(page.getByRole('status').filter({ hasText: 'Paused' })).toBeVisible({ timeout: 5000 });
   const held = await cardNumber(page);
+  const heldLine = await lastCardLine(page);
   await page.waitForTimeout(2400);
   expect(await cardNumber(page), 'a card was dealt past one nobody heard').toBe(held);
 
-  await page.evaluate(() => {
-    (window as { __e2eSpeechUnheard?: string }).__e2eSpeechUnheard = undefined;
-  });
+  // Only the probe stays unheard, so the wheel (not the probe) resumes it.
+  await unheard(page, 'Resuming.');
   const spokenBefore = await page.evaluate(() => (window.__speechLog ?? []).length);
-  const heldLine = await page.evaluate(() => {
-    const log = (window.__speechLog ?? []).filter((t) => t !== 'Paused.');
-    return log[log.length - 1];
-  });
   await press(page, 'forward');
   await expect(page.getByRole('status').filter({ hasText: 'Paused' })).toBeHidden();
-  // The same card, said again -- not the next one.
-  await expect.poll(() => page.evaluate((n) => (window.__speechLog ?? []).slice(n), spokenBefore)).toContain(heldLine);
+  await expect.poll(() => page.evaluate((n) => (window.__speechLog ?? []).slice(n), spokenBefore)).toContain(`Again: ${heldLine}`);
+  expect(await cardNumber(page)).toBe(held);
+});
+
+/**
+ * Review of A12: the hold lifts by itself once audio is confirmed playing
+ * again -- a short "Resuming." completes, then the card replays.
+ */
+test('an unheard hold lifts by itself once "Resuming." is heard', async ({ page }) => {
+  await startEyesFreeRun(page);
+  await unheard(page, '*');
+  await expect(page.getByRole('status').filter({ hasText: 'Paused' })).toBeVisible({ timeout: 5000 });
+  const held = await cardNumber(page);
+  const heldLine = await lastCardLine(page);
+  // Still failing: the probe goes unheard and the run stays held.
+  await page.waitForTimeout(5000);
+  await expect(page.getByRole('status').filter({ hasText: 'Paused' })).toBeVisible();
+
+  const spokenBefore = await page.evaluate(() => (window.__speechLog ?? []).length);
+  await unheard(page, undefined);
+  await expect(page.getByRole('status').filter({ hasText: 'Paused' })).toBeHidden({ timeout: 10_000 });
+  const after = await page.evaluate((n) => (window.__speechLog ?? []).slice(n), spokenBefore);
+  expect(after.indexOf('Resuming.'), 'no "Resuming." before the replay').toBeGreaterThanOrEqual(0);
+  expect(after.indexOf(`Again: ${heldLine}`)).toBeGreaterThan(after.indexOf('Resuming.'));
   expect(await cardNumber(page)).toBe(held);
 });

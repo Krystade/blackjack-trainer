@@ -415,3 +415,25 @@ test('a late "Correct" fragment or an "okay" does not confirm the count', async 
     await expect(page.locator('.count-voice-value')).toHaveText('−3');
   }
 });
+
+/**
+ * Review of A12: in Drive the wheel belongs to hands-free mode, so a run held
+ * on an unheard card must be resumable by voice: "go on" or "resume".
+ */
+for (const word of ['go on', 'resume']) {
+  test(`"${word}" resumes a run held on an unheard card`, async ({ page }) => {
+    await openCountDrill(page, { eyesFree: true });
+    await page.evaluate(() => {
+      (window as { __e2eSpeechUnheard?: string }).__e2eSpeechUnheard = '*';
+    });
+    await page.getByRole('button', { name: 'Start', exact: true }).click();
+    await expect(page.getByRole('status').filter({ hasText: 'Paused' })).toBeVisible({ timeout: 10_000 });
+    // Only the self-lifting probe stays unheard, so the voice is what resumes it.
+    await page.evaluate(() => {
+      (window as { __e2eSpeechUnheard?: string }).__e2eSpeechUnheard = 'Resuming.';
+    });
+    await sayWhenListening(page, word);
+    await expect(page.getByRole('status').filter({ hasText: 'Paused' })).toBeHidden({ timeout: 2000 });
+    await expect.poll(async () => (await spoken(page)).includes('Again: ')).toBe(true);
+  });
+}

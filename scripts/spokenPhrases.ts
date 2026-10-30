@@ -62,7 +62,7 @@ import {
 import { hiLoTag } from '../src/engine/count';
 import { VARIANT_OPENERS, narrateVariantCorrection, narrateVariantTotal } from '../src/audio/narrateVariant';
 import { SPEED_QUESTION } from '../src/drills/speedDrill';
-import { COUNT_PAUSED_LINE } from '../src/drills/countPause';
+import { COUNT_AGAIN_PREFIX, COUNT_PAUSED_LINE, COUNT_RESUMING_LINE } from '../src/drills/countPause';
 import { sideBetSentences } from '../src/ui/sideBetFeedback';
 import {
   BET_UNIT_WORDS_MAX,
@@ -326,6 +326,9 @@ export function drillSentences(): string[] {
   for (const decks of [6.5, 7, 7.5, 8]) add(narrateTcQuestion(0, decks));
   // C-R2: a count run paused from the wheel.
   add(COUNT_PAUSED_LINE);
+  // Review of A12: the unheard-card hold's probe, and a replayed card's marker.
+  add(COUNT_RESUMING_LINE);
+  add(COUNT_AGAIN_PREFIX);
   // The Test kit's word step: its intro, order and spoken retry.
   add(CALIBRATION_INTRO);
   add(calibrationOrderLine());

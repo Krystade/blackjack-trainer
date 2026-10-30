@@ -150,6 +150,20 @@ function splitIntoSentences(text: string): string[] {
  * item must match exactly. `null` if nothing matches.
  */
 function matchSentence(sentence: string, manifest: ClipManifest): string[] | null {
+  const plain = matchPlainSentence(sentence, manifest);
+  if (plain !== null) return plain;
+  // A "Label:" prefix ("Again: seven, king", review of A12) is its own clip
+  // in front of whatever follows it. Only after the sentence failed whole,
+  // so a recorded line with a colon in it ("First: warm-up.") is unchanged.
+  const colon = sentence.indexOf(': ');
+  if (colon <= 0) return null;
+  const head = manifestLookup(manifest, sentence.slice(0, colon + 1));
+  if (head === null) return null;
+  const rest = matchSentence(sentence.slice(colon + 2), manifest);
+  return rest === null ? null : [head, ...rest];
+}
+
+function matchPlainSentence(sentence: string, manifest: ClipManifest): string[] | null {
   const direct = manifestLookup(manifest, sentence);
   if (direct !== null) return [direct];
 

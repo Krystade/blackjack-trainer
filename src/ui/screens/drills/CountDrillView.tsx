@@ -85,7 +85,7 @@ import './countLeadIn.css';
 import './countTableDeal.css';
 import { tableDealOf, tableHoldMs, tableRoundPlan, tableView, type TableDeal } from '../../countTableDeal';
 import { DEALER_SEAT } from '../../dealSequence';
-import { COUNT_PAUSED_LINE } from '../../../drills/countPause';
+import { COUNT_AGAIN_PREFIX, COUNT_PAUSED_LINE, COUNT_RESUME_PROBE_MS, COUNT_RESUMING_LINE, isCountResumeWord } from '../../../drills/countPause';
 import { EASY_FIRST_RUN, hiLoLabel, hiLoShown, offersEasyFirstRun } from '../../../drills/hiLoAid';
 import './hiLoAid.css';
 
@@ -726,11 +726,17 @@ export function CountDrillView({
 
     const run = async () => {
       let i = shownIndex;
+      // Review of A12: the first card after an unheard hold is said "Again:",
+      // so a card Jack may already have heard is never counted twice.
+      let again = replayNextRef.current;
+      replayNextRef.current = false;
       while (!isStale()) {
         const g = groups[i];
         if (!g) return;
 
-        const outcome = await speakAsync(narrateCards(g, 'rank'), speechOptsFrom(settings.audio));
+        const cards = narrateCards(g, 'rank');
+        const outcome = await speakAsync(again ? `${COUNT_AGAIN_PREFIX} ${cards}` : cards, speechOptsFrom(settings.audio));
+        again = false;
         if (isStale()) return;
         // A12: a card nobody heard (a call, Siri, a dead route: the clip and
         // the live fallback both failed) is not dealt past. Hold the run on
@@ -738,6 +744,7 @@ export function CountDrillView({
         if (outcome === 'unheard') {
           diag('life', 'count-paused-unheard', { index: i });
           replayOnResumeRef.current = true;
+          setUnheardHold(true);
           pauseRun();
           return;
         }
@@ -1037,6 +1044,10 @@ export function CountDrillView({
 
   /** A12: the run is held on a card that went unheard, so resuming replays it. */
   const replayOnResumeRef = useRef(false);
+  /** The same hold, as state, for the probe effect below. */
+  const [unheardHold, setUnheardHold] = useState(false);
+  /** Set by a replaying resume: the loop's first card is said "Again:". */
+  const replayNextRef = useRef(false);
 
   /** C-R2: stop the run where it is. Only while the cards are flashing. */
   const pauseRun = () => {
@@ -1064,6 +1075,8 @@ export function CountDrillView({
     // says it again, rather than skipping a card Jack must count.
     if (replayOnResumeRef.current) {
       replayOnResumeRef.current = false;
+      replayNextRef.current = true;
+      setUnheardHold(false);
       diag('life', 'count-unheard-replayed', { index: shownIndex });
       return;
     }
@@ -1101,6 +1114,34 @@ export function CountDrillView({
     else audio.sayFull(COUNT_PAUSED_LINE);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paused]);
+
+  /*
+   * Review of A12: a hold on an unheard card lifts by itself once audio is
+   * confirmed playing again. Every COUNT_RESUME_PROBE_MS a short "Resuming."
+   * is tried; the first one actually heard resumes the run, which says the
+   * held card again, marked. Silent attempts during a call cost nothing.
+   */
+  const resumeRunRef = useRef(resumeRun);
+  resumeRunRef.current = resumeRun;
+  useEffect(() => {
+    if (!paused || !unheardHold) return undefined;
+    let stopped = false;
+    let timer = 0;
+    const probe = async () => {
+      if (stopped) return;
+      const outcome = await speakAsync(COUNT_RESUMING_LINE, speechOptsFrom(settings.audio));
+      if (stopped) return;
+      diag('life', 'count-resume-probe', { outcome });
+      if (outcome === 'spoken') resumeRunRef.current();
+      else timer = window.setTimeout(() => void probe(), COUNT_RESUME_PROBE_MS);
+    };
+    timer = window.setTimeout(() => void probe(), COUNT_RESUME_PROBE_MS);
+    return () => {
+      stopped = true;
+      window.clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paused, unheardHold]);
 
   /*
    * A12: a run that loses the page is paused, not dealt on into nothing. A
@@ -1224,6 +1265,8 @@ export function CountDrillView({
     setShownIndex(0);
     pausedAtRef.current = null;
     replayOnResumeRef.current = false;
+    replayNextRef.current = false;
+    setUnheardHold(false);
     setPaused(false);
     // #20: Timed Challenge ignores Next card, so it is never a manual run.
     runManualRef.current = settings.drill.countManual && !timedChallenge;
@@ -1582,6 +1625,12 @@ export function CountDrillView({
     // 'distraction' too: it asks for a number out loud and then waits for
     // one. Refusing the transcript here was half of what made that phase
     // answerable only by typing.
+    // Review of A12: a paused run resumes by voice. In Drive the wheel
+    // belongs to hands-free mode while the microphone is open.
+    if (phase === 'flashing' && pausedAtRef.current !== null && isCountResumeWord(offered.length > 0 ? offered : [heard])) {
+      resumeRun();
+      return 'resume';
+    }
     if (phase !== 'answering' && phase !== 'checkpoint' && phase !== 'distraction') return null;
     const readings = offered.length > 0 ? offered : [heard];
     // A7: "yes, minus three" after the readback confirms; it is not a new proposal.

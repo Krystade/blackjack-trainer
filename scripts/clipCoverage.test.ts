@@ -34,6 +34,7 @@ import { betMissFeedback } from '../src/ui/betFeedback';
 import { DC_LINES, QUEUE_TTS_LINE } from '../src/diag/driveChecks';
 import { ROUTE_LINES } from '../src/diag/routeKit';
 import { DRIVE_LABELS } from '../src/ui/driveLaunch';
+import { COUNT_AGAIN_PREFIX, COUNT_RESUMING_LINE } from '../src/drills/countPause';
 import {
   narrateNotATag,
   narrateReadback,
@@ -156,6 +157,11 @@ function everyCardUtterance(): string[] {
       texts.add(narrateCards(deck.slice(i, i + 4), detail));
     }
   }
+  // Review of A12: a card replayed after an unheard hold, marked, and the
+  // hold's probe line.
+  for (const card of deck) texts.add(`${COUNT_AGAIN_PREFIX} ${narrateCard(card, 'rank')}`);
+  texts.add(`${COUNT_AGAIN_PREFIX} ${narrateCards(deck.slice(0, 4), 'rank')}`);
+  texts.add(COUNT_RESUMING_LINE);
   return [...texts];
 }
 
