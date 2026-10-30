@@ -231,6 +231,26 @@ describe('stalest skill after the ladder (W2)', () => {
     expect(l.step.why).not.toMatch(/not been practised/);
   });
 
+  it('B20: counts calendar days -- last night is "yesterday", not "today" (pinned to Los Angeles)', () => {
+    const env = (globalThis as unknown as { process: { env: Record<string, string | undefined> } }).process.env;
+    const saved = env.TZ;
+    env.TZ = 'America/Los_Angeles';
+    try {
+      // NOW is 05:00 PDT on 17 Oct. Deck estimation last at 21:00 PDT on the
+      // 16th (8 hours ago), everything else at 04:00 today.
+      const hr = 1 / 24;
+      const { s, ctx } = done({ cells: hr, count: hr, deck: 8 * hr, tc: hr, quiz: hr, bets: hr, play: hr });
+      expect(ladder(s, ctx).step).toMatchObject({ kind: 'deckest' });
+      expect(ladder(s, ctx).step.why).toMatch(/\(yesterday\)/);
+      // 21:00 on the 14th, read at 05:00 on the 17th: 3 calendar days, 2 24h blocks.
+      const three = done({ cells: hr, count: hr, deck: 56 * hr, tc: hr, quiz: hr, bets: hr, play: hr });
+      expect(ladder(three.s, three.ctx).step.why).toMatch(/\(3 days ago\)/);
+    } finally {
+      if (saved === undefined) delete env.TZ;
+      else env.TZ = saved;
+    }
+  });
+
   it('a timestamp in the future (device clock behind) reads "today", never negative (Review Focus 3)', () => {
     const { s, ctx } = done({ bets: 40 });
     s.cellStats!['hard-16-v-10']!.lastAt = iso(-3);

@@ -1,4 +1,5 @@
 import type { Stats } from '../../store/types';
+import { agoText, daysBetween, localDateKey } from '../casinoFigures';
 import { hydrateMasteryRun, isMasteryRunComplete } from '../../drills/masteryChallenge';
 import type { MasteryRun, PersistedMasteryRun } from '../../drills/masteryChallenge';
 import { generateAllCells } from '../../drills/flashcards';
@@ -12,7 +13,6 @@ import type { IndexRules } from './readiness';
 import type { SrDeck } from '../../drills/spacedRepetition';
 import { PLAY_MIN_GRADED, REVIEW_DUE_MIN, betRampResult, deckTcResult, dueForReview, playResult, reviewIndexMin, stalestSkill } from './ladderRules';
 
-const DAY = 86_400_000;
 
 /**
  * #28 / B2: the ONE thing Home recommends next, and why, read off a ladder of
@@ -408,8 +408,10 @@ export function ladder(stats: Stats, ctx: LadderContext): Ladder {
   }
   if (current !== null) return { rungs, current, step: { card: 'rung', ...drafts[current]!.card!, progress: cats } };
   const stale = stalestSkill(stats, quizSr, activeIds);
-  const days = Math.max(0, Math.floor((now - stale.lastAt) / DAY));
-  const ago = days === 0 ? 'today' : `${days} day${days === 1 ? '' : 's'} ago`;
+  // B20: CALENDAR days, as the casino tab counts them -- 24h blocks called
+  // last night's practice "today" and never said "yesterday". agoText reads
+  // a future stamp (clock behind) as today, never negative.
+  const ago = agoText(daysBetween(localDateKey(stale.lastAt), localDateKey(now)));
   return {
     rungs,
     current,
