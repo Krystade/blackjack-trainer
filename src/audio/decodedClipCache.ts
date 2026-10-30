@@ -31,7 +31,11 @@ export class DecodedClipCache<T extends Sized> {
   private entries = new Map<string, { promise: Promise<T>; bytes: number }>();
   private total = 0;
 
-  constructor(private readonly budget: number = DECODED_CLIP_BUDGET_BYTES) {}
+  private readonly budget: number;
+
+  constructor(budget: number = DECODED_CLIP_BUDGET_BYTES) {
+    this.budget = budget;
+  }
 
   get(url: string): Promise<T> | undefined {
     const e = this.entries.get(url);
