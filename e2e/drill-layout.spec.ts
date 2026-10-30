@@ -674,3 +674,37 @@ test('D6: right or wrong, the result strip is labelled as the last hand, on the 
   await bar.getByRole('button', { name: right === 'Hit' ? 'Stand' : 'Hit', exact: true }).click();
   await sameLine('miss', '.result-wrong');
 });
+
+/**
+ * D7: DECK ESTIMATION'S ANSWERS ARE ON SCREEN. A fixed 260px tray pushed the
+ * last two rows below the fold at 320x568, and at 375x812 the last row sat
+ * in the home-indicator band (34px) because the grid ignored --safe-bottom.
+ */
+for (const size of [
+  { width: 375, height: 812, top: 47, bottom: 34 },
+  { width: 320, height: 568, top: 20, bottom: 0 },
+]) {
+  test(`D7: at ${size.width}x${size.height} every Deck estimation answer is above the home indicator`, async ({ page }) => {
+    await withProfile(page, { rules: { decks: 6 } });
+    await page.setViewportSize({ width: size.width, height: size.height });
+    await page.addInitScript(([t, b]) => {
+      document.addEventListener('DOMContentLoaded', () => {
+        const s = document.createElement('style');
+        s.textContent = `:root{--safe-top:${t}px !important;--safe-bottom:${b}px !important}`;
+        document.head.appendChild(s);
+      });
+    }, [size.top, size.bottom]);
+    await page.goto('/?e2e=1');
+    await page.getByRole('button', { name: 'Drills', exact: true }).click();
+    await page.getByRole('button', { name: 'Deck estimation', exact: true }).click();
+    await page.getByRole('button', { name: 'Start', exact: true }).click();
+    await expect(page.locator('.deck-guess-btn').first()).toBeVisible();
+    const lastBottom = await page.evaluate(() => {
+      const btns = [...document.querySelectorAll('.deck-guess-btn')];
+      return Math.max(...btns.map((b) => b.getBoundingClientRect().bottom));
+    });
+    expect(lastBottom, 'an answer is below the fold or in the home-indicator band').toBeLessThanOrEqual(
+      size.height - size.bottom,
+    );
+  });
+}

@@ -2551,7 +2551,9 @@ button {
 .deck-tray-frame {
   position: relative;
   width: 128px;
-  height: 260px;
+  /* D7: capped by the viewport, so a short phone keeps the answers on
+     screen. The fill is a percentage, so the depth cue is unchanged. */
+  height: clamp(140px, 30svh, 260px);
   border: 2px solid var(--line);
   border-radius: 6px 6px 12px 12px;
   background: var(--bg-sunken);
@@ -2601,7 +2603,8 @@ button {
   width: 100%;
   max-width: 22rem;
   margin: 0 auto;
-  padding: 0.75rem 1rem 1.5rem;
+  /* D7: clear of the home indicator in the installed app. */
+  padding: 0.75rem 1rem calc(1.5rem + var(--safe-bottom, 0px));
 }
 
 .deck-guess-btn {
