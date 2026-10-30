@@ -127,6 +127,20 @@ export function answerTarget(minutes: number, perMinute: number): number {
  */
 export const DRIVE_EXCLUDED: readonly SegmentId[] = ['bets'];
 
+/**
+ * C7 (audit 2026-10-29): the warm-up deck. Due cells arrive most-needed first
+ * (planInputFor orders them), and a third of the deck is kept for weak cells
+ * that are not due, so neither crowds the other out; any room left is topped
+ * up from whichever list has more.
+ */
+export function warmupCells(dueCells: readonly string[], weakCells: readonly string[]): string[] {
+  const dueSet = new Set(dueCells);
+  const weakOnly = weakCells.filter((id) => !dueSet.has(id));
+  const weakTake = weakOnly.slice(0, Math.ceil(WARMUP_CELLS_MAX / 3));
+  const dueTake = dueCells.slice(0, WARMUP_CELLS_MAX - weakTake.length);
+  return [...new Set([...dueTake, ...weakTake, ...dueCells, ...weakOnly])].slice(0, WARMUP_CELLS_MAX);
+}
+
 export function planSession(preset: GuidedPreset, input: PlanInput, opts: { drive?: boolean } = {}): PlannedSegment[] {
   const flagged = SEGMENTS.filter((def) => !(opts.drive && DRIVE_EXCLUDED.includes(def.id))).map((def) => ({
     def,
@@ -146,7 +160,7 @@ export function planSession(preset: GuidedPreset, input: PlanInput, opts: { driv
     preset,
     included.map((f) => f.def.base * (f.weak ? 2 : 1)),
   );
-  const cells = [...new Set([...input.dueCells, ...input.weakCells])].slice(0, WARMUP_CELLS_MAX);
+  const cells = warmupCells(input.dueCells, input.weakCells);
   return included.map((f, i) => {
     const m = minutes[i]!;
     const target: SegmentTarget = f.def.perMinute

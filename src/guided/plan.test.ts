@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { answerTarget, apportion, planSession, SEGMENTS, WARMUP_CELLS_MAX, type PlanInput } from './plan';
+import { answerTarget, apportion, planSession, SEGMENTS, warmupCells, WARMUP_CELLS_MAX, type PlanInput } from './plan';
 
 const ALL_PASSED: PlanInput['rungsPassed'] = { basic: true, repair: true, count: true, tc: true, deviations: true, betramp: true };
 const input = (patch: Partial<PlanInput> = {}): PlanInput => ({
@@ -54,8 +54,9 @@ describe('planSession', () => {
     expect(w.id).toBe('warmup');
     expect(w.weak).toBe(true);
     expect(w.cells).toHaveLength(WARMUP_CELLS_MAX);
-    expect(w.cells!.slice(0, 10)).toEqual(due);
-    expect(w.cells).toContain('soft-18-9');
+    // C7: due first, with a third of the deck kept for weak cells not due.
+    expect(w.cells!.slice(0, 8)).toEqual(due.slice(0, 8));
+    for (const weak of ['soft-18-9', 'pair-8-10', 'pair-9-7', 'pair-2-2']) expect(w.cells).toContain(weak);
     expect(new Set(w.cells).size).toBe(w.cells!.length);
   });
 
@@ -104,5 +105,27 @@ describe('planSession', () => {
     expect(answerTarget(1, 6)).toBe(5);
     expect(answerTarget(2, 8)).toBe(15);
     expect(answerTarget(30, 10)).toBe(100);
+  });
+});
+
+// C7 (audit 2026-10-29): due-then-weak sliced to 12 dropped every weak cell
+// whenever 12 or more were due.
+describe('warmupCells (C7)', () => {
+  const ids = (p: string, n: number) => Array.from({ length: n }, (_, i) => `${p}-${i}`);
+
+  it('keeps a third of the deck for weak cells when plenty are due', () => {
+    const cells = warmupCells(ids('due', 20), ids('weak', 10));
+    expect(cells).toHaveLength(WARMUP_CELLS_MAX);
+    expect(cells.filter((c) => c.startsWith('weak'))).toHaveLength(Math.ceil(WARMUP_CELLS_MAX / 3));
+    expect(cells.slice(0, 8)).toEqual(ids('due', 8)); // due order kept
+  });
+
+  it('tops up from the due list when few cells are weak, and from weak when few are due', () => {
+    expect(warmupCells(ids('due', 20), ids('weak', 1))).toHaveLength(WARMUP_CELLS_MAX);
+    expect(warmupCells(ids('due', 2), ids('weak', 20))).toHaveLength(WARMUP_CELLS_MAX);
+  });
+
+  it('a cell both due and weak counts once', () => {
+    expect(warmupCells(['a', 'b'], ['b', 'c'])).toEqual(['a', 'b', 'c']);
   });
 });
