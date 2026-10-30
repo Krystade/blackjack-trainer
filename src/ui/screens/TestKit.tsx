@@ -500,7 +500,9 @@ function BlindStep({ step, mic, ensureMic, onAnswer }: StepProps & { step: Extra
   const [trial, setTrial] = useState(0);
   const [state, setState] = useState<'ready' | 'working' | 'played' | 'done'>('ready');
   const [note, setNote] = useState('');
-  const results = useRef<Array<{ path: string; answer: string }>>([]);
+  const results = useRef<Array<{ path: string; answer: string; micAlive: boolean }>>([]);
+  /** A16: whether the mic was alive when THIS trial played, read at play time. */
+  const aliveAtPlay = useRef(false);
 
   const play = async () => {
     unlockWebAudio();
@@ -508,7 +510,10 @@ function BlindStep({ step, mic, ensureMic, onAnswer }: StepProps & { step: Extra
     setNote('');
     // One session for the whole block: reopening between plays would make
     // each one the first play after a mic open, which is a different state.
-    if (!mic.current) {
+    // A16: but a mic whose restart threw is reopened, not played through: a
+    // trial tallied as "mic on" with nothing listening is the confound that
+    // looks exactly like an intermittent route.
+    if (!mic.current || !mic.current.alive()) {
       setNote('Opening the microphone…');
       const err = await ensureMic('open');
       if (err) setNote(`The microphone did not open (${err}). Answer what you hear anyway.`);
@@ -520,6 +525,7 @@ function BlindStep({ step, mic, ensureMic, onAnswer }: StepProps & { step: Extra
       return;
     }
     setNote('Playing…');
+    aliveAtPlay.current = mic.current?.alive() ?? false;
     const result = await playThrough(order.current[trial]!, url);
     setNote(result === 'ended' ? '' : `Playback failed (${result}).`);
     setState('played');
@@ -527,8 +533,17 @@ function BlindStep({ step, mic, ensureMic, onAnswer }: StepProps & { step: Extra
 
   const answer = (a: string) => {
     const path = order.current[trial]!;
-    results.current.push({ path, answer: a });
-    diag('test', 'kit-blind', { step: step.id, trial: trial + 1, of: step.trials, path, answer: a });
+    const micAlive = aliveAtPlay.current;
+    results.current.push({ path, answer: a, micAlive });
+    diag('test', 'kit-blind', {
+      step: step.id,
+      trial: trial + 1,
+      of: step.trials,
+      path,
+      answer: a,
+      micAlive,
+      sessions: mic.current?.sessions() ?? 0,
+    });
     if (trial + 1 >= step.trials) {
       void ensureMic('closed');
       setState('done');
@@ -581,6 +596,8 @@ function BlindStep({ step, mic, ensureMic, onAnswer }: StepProps & { step: Extra
               trials: results.current.length,
               state: hits === 0 ? 'never-reached-target' : hits === results.current.length ? 'always' : 'mixed',
               answers: results.current.map((r) => r.answer),
+              // A16: trials played with no live recogniser are not "mic open".
+              deadTrials: results.current.filter((r) => !r.micAlive).length,
             });
             onAnswer('done', { element: tally('element'), webaudio: tally('webaudio') });
           }}

@@ -252,3 +252,40 @@ test('each word window logs its own attempt, with the session and speech counts'
   expect(typeof attempt?.sessionsAtClose).toBe('number');
   expect(typeof attempt?.tookMs).toBe('number');
 });
+
+/**
+ * A16: a recogniser whose restart threw is dead, and a trial played over it is
+ * not "mic open". The next Play reopens it, and every trial is stamped.
+ */
+test('a dead kit mic is reopened before the next blind play, and trials say whether it was alive', async ({ page }) => {
+  test.setTimeout(90_000);
+  await intoKit(page, /Bluetooth ON/);
+  await expect(page.locator('[data-step="bt-blind-mic-open"]')).toBeVisible();
+  const kit = page.getByTestId('testkit-screen');
+
+  await kit.getByRole('button', { name: /^Play/ }).click();
+  await kit.getByRole('button', { name: 'Car speakers' }).click();
+  await kitMicOpen(page);
+  // The engine ends the session and the restart throws: kit-mic-dead.
+  await page.evaluate(() => {
+    const f = (window as unknown as { __fake: { start: () => void; onend: (() => void) | null } }).__fake;
+    const real = f.start.bind(f);
+    f.start = () => {
+      f.start = real;
+      throw new Error('InvalidStateError');
+    };
+    f.onend?.();
+  });
+  await expect.poll(() => loggedEvents(page), { timeout: 10_000 }).toContain('kit-mic-dead');
+
+  for (let i = 1; i < 6; i++) {
+    await kit.getByRole('button', { name: /^Play/ }).click();
+    await kit.getByRole('button', { name: 'Car speakers' }).click();
+  }
+  await kit.getByRole('button', { name: 'Next', exact: true }).click();
+  await expect.poll(() => loggedEvents(page), { timeout: 15_000 }).toContain('kit-route-state');
+  const events = await loggedEvents(page);
+  expect(events.filter((e) => e === 'kit-mic-open').length, 'the dead mic was played through').toBeGreaterThanOrEqual(2);
+  expect((await lastDetail(page, 'kit-route-state'))?.deadTrials).toBe(0);
+  expect((await lastDetail(page, 'kit-blind'))?.micAlive).toBe(true);
+});
