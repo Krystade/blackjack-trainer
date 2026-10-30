@@ -596,6 +596,12 @@ body[data-screen='casino'] {
   color: var(--ink-dim);
 }
 
+/* C9 follow-up: under the House game checkbox's own text, not a field away. */
+.cas-house-detected {
+  display: block;
+  margin-top: 2px;
+}
+
 .cas-field-error {
   margin: 0;
   font-size: var(--fs-sm);

@@ -246,14 +246,16 @@ export function GameEditor({
           checked={isHouseGame(game)}
           onChange={(e) => onChange({ houseGame: e.target.checked, houseGameDetected: undefined })}
         />
-        <span>Card-room house game (jokers, Natural 22, no-bust): not modelled</span>
+        <span>
+          Card-room house game (jokers, Natural 22, no-bust): not modelled
+          {/* C9 follow-up: an import ticked it from the game's own text; the owner has the last word. */}
+          {game.houseGame === true && game.houseGameDetected === true && (
+            <span className="cas-field-hint cas-house-detected" data-testid="game-house-detected">
+              Detected house game, untick if wrong.
+            </span>
+          )}
+        </span>
       </label>
-      {/* C9 follow-up: an import ticked it from the game's own text; the owner has the last word. */}
-      {game.houseGame === true && game.houseGameDetected === true && (
-        <p className="cas-field-hint cas-house-detected" data-testid="game-house-detected">
-          Detected house game, untick if wrong.
-        </p>
-      )}
       <Field label="Rounds per hour" hint={`Blank = ${DEFAULT_ROUNDS_PER_HOUR}. Fewer at a full table.`}>
         <input
           className="cas-input"
