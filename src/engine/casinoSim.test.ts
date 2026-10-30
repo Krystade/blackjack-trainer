@@ -171,8 +171,10 @@ describe('the decision cache answers exactly as play() does', () => {
         const two = n === 2;
         const ctx = { canDouble: two && rng() < 0.7, canSplit: two && isPair(cards) && rng() < 0.7, canSurrender: two && rng() < 0.5 };
         // Twice: the second answer comes from the cache.
+        // C11: the running count's sign rides along (it decides the zero-count cells).
+        const rc = tc === 0 ? Math.floor(rng() * 7) - 3 : tc;
         for (let k = 0; k < 2; k++) {
-          expect(sim.decideCards(cards, up, tc, ctx.canDouble, ctx.canSplit, ctx.canSurrender)).toBe(play(cards, up, tc, ctx, devs, chart).action);
+          expect(sim.decideCards(cards, up, tc, ctx.canDouble, ctx.canSplit, ctx.canSurrender, rc)).toBe(play(cards, up, tc, ctx, devs, chart, rc).action);
         }
       }
     }
@@ -198,5 +200,23 @@ describe('the simulator deals a single-deck game at its logged cut (C4)', () => 
     const deep = shuffles(0.25);
     expect(shallow).toBeGreaterThan(half * 1.3);
     expect(half).toBeGreaterThan(deep * 1.3);
+  });
+});
+
+// C11 (audit 2026-10-29): truncate rounds RC -3 over several decks to TC 0, but
+// the BJA "0-" cells are decided by the running count's sign, as at the table.
+describe('C11: the simulator reads the zero-count cells by the running count', () => {
+  it('12 v 4 at TC 0 hits with a negative running count and stands without', () => {
+    const sim = new CasinoSim(spec({ rules: H17_6D, tcRounding: 'truncate' }), 'count', 1);
+    const cards = [{ rank: '10' as const, suit: 's' as const }, { rank: '2' as const, suit: 's' as const }];
+    expect(sim.decideCards(cards, '4', 0, true, false, false, -3)).toBe('hit');
+    expect(sim.decideCards(cards, '4', 0, true, false, false, 2)).toBe('stand');
+  });
+  it('the round passes the live running count to the decision', () => {
+    const sim = new CasinoSim(spec({ rules: H17_6D, tcRounding: 'truncate' }), 'count', 1) as unknown as { rc: number; rcSignNow(): number | undefined };
+    sim.rc = -3;
+    expect(sim.rcSignNow()).toBe(-1);
+    sim.rc = 4;
+    expect(sim.rcSignNow()).toBe(0);
   });
 });

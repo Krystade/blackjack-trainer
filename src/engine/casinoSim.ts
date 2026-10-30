@@ -274,7 +274,7 @@ export class CasinoSim {
   private readonly insThreshold: number | null;
   private readonly bjPays: number;
   /** Decision cache: an action index + 1, or 0 when not yet asked. */
-  private readonly cache = new Int8Array(11 * 32 * 2 * 10 * 8 * (2 * TC_CLAMP + 1));
+  private readonly cache = new Int8Array(11 * 32 * 2 * 10 * 8 * (2 * TC_CLAMP + 1) * 2);
   private roundInShoe = 0;
   private readonly methods: MethodState[];
   /** The house edge's sums (mode 'basic'). */
@@ -512,7 +512,7 @@ export class CasinoSim {
    * count and the three options. casinoSim.test.ts asks `play()` itself for
    * every cached cell.
    */
-  private decide(h: SimHand, up: Rank, upIdx: number, tc: number, canDouble: boolean, canSplit: boolean, canSurrender: boolean): Action {
+  private decide(h: SimHand, up: Rank, upIdx: number, tc: number, canDouble: boolean, canSplit: boolean, canSurrender: boolean, rc?: number): Action {
     const cards = h.cards;
     const pr = cards.length === 2 && VAL[cards[0]!.rank] === VAL[cards[1]!.rank] ? VAL[cards[0]!.rank] : 0;
     const t = tc > TC_CLAMP ? TC_CLAMP : tc < -TC_CLAMP ? -TC_CLAMP : tc;
@@ -520,22 +520,31 @@ export class CasinoSim {
     const key =
       ((((pr * 32 + totalOf(h.hard, h.aces)) * 2 + (softOf(h.hard, h.aces) ? 1 : 0)) * 10 + upIdx) * 8 + ctx) * (2 * TC_CLAMP + 1) +
       (t + TC_CLAMP);
-    const hit = this.cache[key]!;
+    // C11: the zero-count cells read only the running count's SIGN, so one
+    // more bit of key; without a count (rc undefined) the TC decides, as before.
+    const neg = rc !== undefined && rc < 0;
+    const slot = key * 2 + (neg ? 1 : 0);
+    const hit = this.cache[slot]!;
     if (hit !== 0) return ACTIONS[hit - 1]!;
-    const action = play(cards, up, t, { canDouble, canSplit, canSurrender }, this.deviations, this.chart).action;
-    this.cache[key] = ACTIONS.indexOf(action) + 1;
+    const action = play(cards, up, t, { canDouble, canSplit, canSurrender }, this.deviations, this.chart, rc === undefined ? undefined : neg ? -1 : 0).action;
+    this.cache[slot] = ACTIONS.indexOf(action) + 1;
     return action;
   }
 
   /** Test hook: the cached decision for a hand of these cards, as `play()` would be asked it. */
-  decideCards(cards: Card[], up: Rank, tc: number, canDouble: boolean, canSplit: boolean, canSurrender: boolean): Action {
+  decideCards(cards: Card[], up: Rank, tc: number, canDouble: boolean, canSplit: boolean, canSurrender: boolean, rc?: number): Action {
     const h = newHand(0);
     for (const c of cards) {
       h.cards.push(c);
       h.hard += VAL[c.rank];
       if (c.rank === 'A') h.aces += 1;
     }
-    return this.decide(h, up, upIndex(up), tc, canDouble, canSplit, canSurrender);
+    return this.decide(h, up, upIndex(up), tc, canDouble, canSplit, canSurrender, rc);
+  }
+
+  /** C11: the running count as the zero-count cells read it: -1 when negative, else 0. */
+  private rcSignNow(): number {
+    return this.rc < 0 ? -1 : 0;
   }
 
   /** Simulate `n` more rounds. */
@@ -686,7 +695,7 @@ export class CasinoSim {
       const canSplit =
         two && VAL[hand.cards[0]!.rank] === VAL[hand.cards[1]!.rank] && countOrigin(hands, hand.origin) < this.maxHands && (!hand.splitAces || r.rsa);
       const canSurrender = two && !hand.fromSplit && r.ls;
-      let action = this.decide(hand, up.rank, upIdx, counting ? this.tcNow() : 0, canDouble, canSplit, canSurrender);
+      let action = this.decide(hand, up.rank, upIdx, counting ? this.tcNow() : 0, canDouble, canSplit, canSurrender, counting ? this.rcSignNow() : undefined);
       // Wave M: a split ace that may double but never hit stands on anything else.
       if (hand.splitAces && (action === 'hit' || action === 'surrender')) action = 'stand';
       switch (action) {

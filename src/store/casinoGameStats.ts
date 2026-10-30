@@ -51,8 +51,11 @@ export const GAME_STATS_KEY = 'bjtrainer.casinoGameStats.v1';
  *    commission are simulated; 4- and 5-deck shoes.
  * 5: Wave P -- an unknown split cap is simulated at 4 hands and an unknown
  *    double-on at any two cards (were 2 hands and 10-11).
+ * 6: audit lane C -- a single-deck cut down to a quarter deck is dealt as
+ *    logged (C4), and the zero-count index cells read the running count's
+ *    sign under truncate/round (C11).
  */
-export const SIM_VERSION = 5;
+export const SIM_VERSION = 6;
 
 export type AssumedField =
   | 'decks' | 's17' | 'das' | 'surrender' | 'payout' | 'cut' | 'minBet'
