@@ -399,3 +399,19 @@ test('saying the standing count again does not read it back again', async ({ pag
   expect(await readbacks(), 'the standing count was read back twice').toBe(1);
   await expect(page.locator('.count-voice-value')).toHaveText('−3');
 });
+
+/** Review of A7: the readback's own "Correct?" and a passenger's "okay" do not submit. */
+test('a late "Correct" fragment or an "okay" does not confirm the count', async ({ page }) => {
+  await openCountDrill(page, { eyesFree: false });
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+  await expect(page.locator('.count-voice')).toBeVisible({ timeout: 15_000 });
+
+  await sayWhenListening(page, 'minus three');
+  await expect(page.locator('.count-voice-value')).toHaveText('−3');
+  for (const word of ['Correct', 'okay']) {
+    await sayWhenListening(page, word);
+    await page.waitForTimeout(300);
+    await expect(page.locator('.drill-result')).toHaveCount(0);
+    await expect(page.locator('.count-voice-value')).toHaveText('−3');
+  }
+});

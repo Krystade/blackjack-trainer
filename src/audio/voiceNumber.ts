@@ -213,7 +213,10 @@ export function mentionsACount(transcript: string): boolean {
   );
 }
 
-const YES_WORDS = new Set(['yes', 'yeah', 'yep', 'yup', 'correct', 'okay', 'ok']);
+// Review of A7: not 'correct' (the readback's own last word, heard back late) and
+// not 'ok'/'okay' (a passenger, or Jack thinking aloud). Before A7 neither was a
+// yes anywhere.
+const YES_WORDS = new Set(['yes', 'yeah', 'yep', 'yup']);
 
 /**
  * Does this reading say yes to the value already proposed? "yes, minus three"

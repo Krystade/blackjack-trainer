@@ -146,3 +146,19 @@ describe('speaking a value back', () => {
     expect(speakableCount(0)).toBe('zero');
   });
 });
+
+describe('affirmsProposal is never the readback itself (review of A7)', () => {
+  it('a late "Correct" fragment of "minus 3. Correct?" does not confirm', () => {
+    expect(affirmsProposal(['Correct'], -3)).toBe(false);
+    expect(affirmsProposal(['correct minus 3'], -3)).toBe(false);
+  });
+
+  it("a passenger's \"okay\" does not confirm", () => {
+    expect(affirmsProposal(['okay'], -3)).toBe(false);
+    expect(affirmsProposal(['ok'], -3)).toBe(false);
+  });
+
+  it('"yes, minus three" still does', () => {
+    expect(affirmsProposal(['yes minus 3'], -3)).toBe(true);
+  });
+});
