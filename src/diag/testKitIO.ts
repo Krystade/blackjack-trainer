@@ -195,6 +195,11 @@ export interface HeldMic {
    * event this engine never sends.
    */
   partials(): number;
+  /**
+   * A16: whether this mic is still trying to listen. False after close() and
+   * after a restart threw (`kit-mic-dead`), when nothing will open it again.
+   */
+  alive(): boolean;
   close(): Promise<void>;
 }
 
@@ -233,23 +238,42 @@ export async function openMic(): Promise<HeldMic | { error: string }> {
   let sessions = 0;
   let speechSeen = 0;
   let partialsSeen = 0;
+  /*
+   * A15: resolves THIS session's end. It was one promise for the mic's whole
+   * life, resolved by the FIRST onend -- and iOS ends a silent session after
+   * about 6 s and the mic restarts it, so by the time close() ran the promise
+   * had long resolved and kit-mic-closed was written while capture was still
+   * tearing down. close() now waits on a promise made at the close.
+   */
   let ended: () => void = () => {};
-  const endedP = new Promise<void>((r) => (ended = r));
   const held: HeldMic = {
     onFinal: null,
     sessions: () => sessions,
     speechDetected: () => speechSeen,
     partials: () => partialsSeen,
+    alive: () => alive,
     close: async () => {
       if (!alive) return;
       alive = false;
+      let endedNow = false;
+      const stopped = new Promise<void>((r) => {
+        ended = () => {
+          endedNow = true;
+          r();
+        };
+      });
       try {
         rec.stop();
       } catch {
         /* already stopped */
       }
-      await Promise.race([endedP, new Promise((r) => setTimeout(r, 2000))]);
-      diag('test', 'kit-mic-closed', { session: readAudioSessionType() });
+      const t0 = Date.now();
+      await Promise.race([stopped, new Promise((r) => setTimeout(r, 2000))]);
+      diag('test', 'kit-mic-closed', {
+        session: readAudioSessionType(),
+        endedAfterMs: endedNow ? Date.now() - t0 : null,
+        timedOut: !endedNow,
+      });
     },
   };
 

@@ -219,4 +219,30 @@ describe('the kit microphone', () => {
     expect(fake.starts).toBe(startsAfterClose);
     expect(events()).toContain('kit-mic-closed');
   });
+
+  it('A15: close() waits for THIS session to end, even after a restart', async () => {
+    const held = await open();
+    fake.endBySilence(); // the first onend has long fired by the time close runs
+    // The engine takes a while to tear down, as WebKit does.
+    fake.stop = () => {
+      setTimeout(() => fake.onend?.(), 300);
+    };
+    const t0 = Date.now();
+    await held.close();
+    expect(Date.now() - t0, 'close returned before the session ended').toBeGreaterThanOrEqual(250);
+    const closed = readDiagnosticLog().find((e) => e.event === 'kit-mic-closed');
+    expect(closed?.detail?.timedOut).toBe(false);
+    expect(closed?.detail?.endedAfterMs).toBeGreaterThanOrEqual(250);
+  });
+
+  it('A16: says whether it is still alive', async () => {
+    const held = await open();
+    expect(held.alive()).toBe(true);
+    fake.failNextStart = true;
+    fake.endBySilence();
+    expect(held.alive(), 'a mic whose restart threw is dead').toBe(false);
+    const other = (installWindow(), await open());
+    await other.close();
+    expect(other.alive()).toBe(false);
+  });
 });
