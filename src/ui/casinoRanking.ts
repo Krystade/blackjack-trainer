@@ -1,5 +1,5 @@
 import type { Casino, CasinoGame, CasinoLog, GeoPoint } from '../store/casinoLog';
-import { DEFAULT_EXIT_FIND_MINUTES, DEFAULT_EXIT_WAIT_MINUTES, DEFAULT_ROUNDS_PER_HOUR, DEFAULT_SESSION_HOURS } from '../store/casinoLog';
+import { isHouseGame, DEFAULT_EXIT_FIND_MINUTES, DEFAULT_EXIT_WAIT_MINUTES, DEFAULT_ROUNDS_PER_HOUR, DEFAULT_SESSION_HOURS } from '../store/casinoLog';
 import type { Profile } from '../store/types';
 import { relabel, resultForKey, resultState, simInputFor, type GameResult, type ResultState, type SimInput } from '../store/casinoGameStats';
 import { EV_REL_TARGET, hourly, houseEdge, summarize, type HourlyStats, type RoundStats } from '../engine/casinoStats';
@@ -270,7 +270,8 @@ export function buildRanking(
     for (const game of casino.games) {
       const input = simInputFor(game, profile, custom, casino.kind);
       // Wave L: a variant game is never simulated (it would be scored as standard blackjack).
-      const notModelled = game.variant !== undefined;
+      // C9: nor is a card-room house game logged as standard (jokers, Natural 22, no-bust).
+      const notModelled = game.variant !== undefined || isHouseGame(game);
       // Wave Q: a result for these inputs from anywhere in the cache (a twin game, the archive) counts as current.
       const found: ResultState = notModelled ? { kind: 'none' } : resultState(results[game.id], input.key, resultForKey(results, archive, game.id, input.key));
       // Review S4: the methods' names as they are now.

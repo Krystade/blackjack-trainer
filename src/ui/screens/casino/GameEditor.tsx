@@ -101,7 +101,7 @@ export function GameEditor({
           ))}
         </select>
       </Field>
-      <Field label="Variant name" hint={'Optional, the house\'s name, e.g. "21st Century Blackjack".'}>
+      <Field label="Variant name" hint={'Optional, the house\'s name, e.g. "Vegas Strip".'}>
         <input className="cas-input" name={n('variantName')} autoComplete="off" maxLength={60} value={game.variantName ?? ''} onChange={(e) => onChange({ variantName: e.target.value })} />
       </Field>
       {game.unsure && game.unsure.length > 0 && (
@@ -236,6 +236,17 @@ export function GameEditor({
       <label className="cas-check">
         <input type="checkbox" name={n('csm')} checked={game.csm} onChange={(e) => onChange({ csm: e.target.checked })} />
         <span>Continuous shuffler (CSM): counting is impossible</span>
+      </label>
+      {/* C9: card-room house games are not blackjack's rules; the simulator would score them as if they were. */}
+      <label className="cas-check">
+        <input
+          type="checkbox"
+          name={n('houseGame')}
+          data-testid="game-house"
+          checked={game.houseGame === true}
+          onChange={(e) => onChange({ houseGame: e.target.checked ? true : undefined })}
+        />
+        <span>Card-room house game (jokers, Natural 22, no-bust): not modelled</span>
       </label>
       <Field label="Rounds per hour" hint={`Blank = ${DEFAULT_ROUNDS_PER_HOUR}. Fewer at a full table.`}>
         <input

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { holdOrder, buildRanking, bestGameOf, evTargetMet, exitMinutesOf, gameFigures, rankedEvHour, seatedThroughout, sideCombinedText, withSideBet, type GameFigures } from './casinoRanking';
-import { emptyCasinoLog, blankGame, type Casino, type CasinoGame, type CasinoLog } from '../store/casinoLog';
+import { emptyCasinoLog, blankGame, normGame, type Casino, type CasinoGame, type CasinoLog } from '../store/casinoLog';
 import { resultState, simInputFor, type GameResult } from '../store/casinoGameStats';
 import { workFor } from './casinoAutoSim';
 import { emptyAccum, type Accum } from '../engine/casinoSim';
@@ -469,5 +469,33 @@ describe('Wave Q review N7: holdOrder', () => {
     expect(holdOrder([r('c'), r('a'), r('b')], ['a', 'b', 'c']).map((x) => x.game.id)).toEqual(['a', 'b', 'c']);
     expect(holdOrder([r('n2'), r('b'), r('n1'), r('a')], ['a', 'b']).map((x) => x.game.id)).toEqual(['a', 'b', 'n2', 'n1']);
     expect(holdOrder([r('a')], ['gone', 'a']).map((x) => x.game.id)).toEqual(['a']);
+  });
+});
+
+// C9 (audit 2026-10-29): card-room house games logged as standard blackjack
+// were simulated and ranked as standard blackjack.
+describe('card-room house games are not modelled (C9)', () => {
+  const rowOf = (g: CasinoGame) => buildRanking(logOf([casino('c1', [g])]), profile, { [g.id]: resultFor(g, 0.1) }, NOW, null, 'ev')[0]!;
+
+  it('a game marked as a house game is not modelled and has no figures', () => {
+    const row = rowOf(game('h', { houseGame: true }));
+    expect(row.notModelled).toBe(true);
+    expect(row.figures).toBeNull();
+  });
+
+  it('a game named as one of the house games is not modelled either', () => {
+    expect(rowOf(game('h', { variantName: '21st Century Blackjack' })).notModelled).toBe(true);
+    expect(rowOf(game('h', { variantName: 'Natural 22' })).notModelled).toBe(true);
+  });
+
+  it('any other name is just a label', () => {
+    const row = rowOf(game('v', { variantName: 'Vegas Strip' }));
+    expect(row.notModelled).toBeUndefined();
+    expect(row.figures).not.toBeNull();
+  });
+
+  it('the mark survives the log being read back', () => {
+    expect(normGame(JSON.parse(JSON.stringify(game('h', { houseGame: true }))), 'x').houseGame).toBe(true);
+    expect(normGame(JSON.parse(JSON.stringify(game('s'))), 'x').houseGame).toBeUndefined();
   });
 });

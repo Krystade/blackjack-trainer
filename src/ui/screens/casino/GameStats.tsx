@@ -1,4 +1,4 @@
-import { casinoById, type Casino, type CasinoGame, type CasinoLog } from '../../../store/casinoLog';
+import { casinoById, isHouseGame, type Casino, type CasinoGame, type CasinoLog } from '../../../store/casinoLog';
 import { PRESETS, PRESET_LABEL, presetSummary } from '../../../engine/variants/rules';
 import { variantCostFor, variantMismatches } from '../../casinoVariant';
 import { simRules, type GameResult } from '../../../store/casinoGameStats';
@@ -68,6 +68,7 @@ export function GameStats({
   // Review S2: every place that shows a game's rules can open them for editing.
   const editRules = () => go({ kind: 'casino', id: casino.id, focusGame: game.id, from: self });
   if (game.variant) return <VariantGameStats casino={casino} game={game} editRules={editRules} />;
+  if (isHouseGame(game)) return <HouseGameStats casino={casino} game={game} editRules={editRules} />;
   const rph = roundsPerHourOf(game);
   const bankroll = log.settings.startingBankroll;
   // The run for this game's inputs, whichever game of those inputs it was started for.
@@ -358,6 +359,30 @@ function EditRules({ onClick }: { onClick: () => void }) {
     <button type="button" className="cas-link" onClick={onClick} data-testid="edit-rules">
       Edit rules
     </button>
+  );
+}
+
+/**
+ * C9: a card-room house game (jokers, Natural 22, no-bust). Its rules are not
+ * blackjack's, so the simulator, which deals standard blackjack, is not run
+ * for it and no figure is shown.
+ */
+function HouseGameStats({ casino, game, editRules }: { casino: Casino; game: CasinoGame; editRules: () => void }) {
+  return (
+    <div className="cas-gs" data-testid="game-stats" data-state="house-game">
+      <header className="cas-pad cas-gs-head">
+        <p className="cas-gs-casino">{casino.name}</p>
+        <h2 className="cas-gs-title">{labelledSummary(game)}</h2>
+        <EditRules onClick={editRules} />
+      </header>
+      <section className="cas-pad-x cas-gs-notes">
+        <p data-testid="gs-house-game">
+          <strong>Not modelled:</strong> a card-room house game (jokers in the deck, Natural 22, or a player bust that is not an instant loss)
+          plays by its own rules, not blackjack&rsquo;s. The simulator deals standard blackjack only, so it would score this game wrongly; no
+          EV/hour or betting methods are shown for it.
+        </p>
+      </section>
+    </div>
   );
 }
 

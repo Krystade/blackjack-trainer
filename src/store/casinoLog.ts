@@ -169,6 +169,13 @@ export interface CasinoGame {
    */
   variant?: PresetId;
   /**
+   * C9 (audit 2026-10-29): a card-room house game -- jokers in the deck,
+   * "Natural 22", a player bust that is not an instant loss -- logged as
+   * standard blackjack. The simulator deals standard blackjack only, so the
+   * game is not modelled (see isHouseGame). Absent = not marked.
+   */
+  houseGame?: true;
+  /**
    * Wave W (review S2): the current version's id. Always set on a game read
    * from the log (`normGame`); a game being built may leave it to the save.
    */
@@ -476,7 +483,20 @@ function normGameRules(x: unknown, fallbackId: string, legacy?: Record<string, u
   if (sideBets.length > 0) game.sideBets = sideBets;
   Object.assign(game, normWaveMGame(g));
   if (isPresetId(g.variant)) game.variant = g.variant;
+  if (g.houseGame === true) game.houseGame = true;
   return game;
+}
+
+/**
+ * C9: house names of California card-room games whose rules are not
+ * blackjack's (the state's filed rule sheets for these games). A name is
+ * only a label, so only these, not every variantName, mark a game.
+ */
+const HOUSE_GAME_NAME = /21st\s*century|natural\s*22|no[\s-]*bust/i;
+
+/** C9: a game the simulator cannot deal -- marked a house game, or named as one. */
+export function isHouseGame(game: Pick<CasinoGame, 'houseGame' | 'variantName'>): boolean {
+  return game.houseGame === true || (game.variantName !== undefined && HOUSE_GAME_NAME.test(game.variantName));
 }
 
 // ---------------------------------------------------------------- versions (Wave W, review S2)

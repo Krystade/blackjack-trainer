@@ -1,5 +1,6 @@
 import {
   currentVersionId,
+  isHouseGame,
   earlierVersions,
   gameAtVersion,
   sessionsAtGameVersion,
@@ -61,7 +62,7 @@ export function currentVersionData(
 ): VersionData {
   // Re-review R3: with the casino's sessions that never said which game, played at these rules.
   const sessions = sessionsAtGameVersion(log, casino.id, game, currentVersionId(game)).length;
-  const figures = game.variant === undefined && resultForKey(results, archive, game.id, simInputFor(game, profile, log.settings.methods ?? [], casino.kind).key) !== undefined;
+  const figures = game.variant === undefined && !isHouseGame(game) && resultForKey(results, archive, game.id, simInputFor(game, profile, log.settings.methods ?? [], casino.kind).key) !== undefined;
   return { sessions, figures };
 }
 
@@ -93,7 +94,7 @@ export function earlierVersionKeys(log: CasinoLog, profile: Profile): string[] {
   const keys: string[] = [];
   for (const c of log.casinos) {
     for (const g of c.games) {
-      if (g.variant !== undefined) continue;
+      if (g.variant !== undefined || isHouseGame(g)) continue;
       for (const v of earlierVersions(g)) keys.push(simInputFor(gameAtVersion(g, v), profile, log.settings.methods ?? [], c.kind).key);
     }
   }
