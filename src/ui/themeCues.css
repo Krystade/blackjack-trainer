@@ -19,6 +19,13 @@
   background: var(--accent-wash);
 }
 
+/* D16: Bone & Ink's accent on its own wash, over the sunken tab bar, was
+   4.08:1 for the active label and glyph. A deeper brown of the same hue
+   gives 5.36:1; the indicator bar keeps the accent. */
+:root[data-theme='bone-ink'] .tab-btn-active {
+  color: #6b4413;
+}
+
 .tab-btn-active::before {
   content: '';
   position: absolute;

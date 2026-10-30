@@ -52,8 +52,11 @@
 .streak-dot.is-frozen { border: 1.5px solid var(--accent); background: var(--accent-wash); color: var(--accent); }
 .streak-dot.is-today { border: 2px solid var(--ink); color: var(--ink); font-weight: 700; }
 .streak-dot.is-missed { border-style: dashed; }
+/* D16: a day not yet reached recedes by its BORDER, not by fading the whole
+   dot -- at 0.5 opacity its 9.6px letter fell to 2.1-2.5:1. The letter keeps
+   --ink-faint at full strength (AA in every theme). */
 .streak-dot.is-future,
-.streak-dot.is-before { opacity: 0.5; }
+.streak-dot.is-before { border-style: dotted; border-color: color-mix(in srgb, var(--line) 60%, transparent); }
 .streak-week-text { margin-left: 4px; font-size: var(--fs-xs); color: var(--ink-soft); }
 .streak-freezes { font-size: var(--fs-sm); color: var(--ink-soft); white-space: nowrap; }
 

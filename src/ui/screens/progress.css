@@ -76,7 +76,8 @@
   border: 1px solid var(--line);
   border-radius: var(--radius-md, 0.5rem);
   background: var(--bg-sunken);
-  opacity: 0.85;
+  /* D16: no opacity -- it dropped the 9.6px counters under AA (3.8:1 in Bone
+     & Ink). The dashed medal and the missing date already say "not yet". */
 }
 .ach.is-earned { opacity: 1; background: var(--raised); }
 .ach-medal {

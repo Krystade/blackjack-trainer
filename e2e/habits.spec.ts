@@ -299,3 +299,67 @@ test('eyes-free count drill: the goal line follows the self-report verdict', asy
   expect(verdict).toBeGreaterThanOrEqual(0);
   expect(said.slice(verdict + 1).filter((l) => !l.startsWith('chime:'))[0]).toBe('Daily goal done. Two days in a row.');
 });
+
+/**
+ * D16: SMALL TEXT CLEARS WCAG AA (4.5:1) IN EVERY THEME. The weekday letters
+ * of days not yet reached (9.6px at 0.5 opacity) measured 2.1-2.5:1; the
+ * counters on unearned achievements (at 0.85 opacity) 3.8:1 in Bone & Ink;
+ * and Bone & Ink's active tab label 4.08:1 on its accent wash.
+ *
+ * Effective contrast: the text colour, faded by its own alpha and every
+ * opacity above it, over the composite of the translucent grounds beneath.
+ */
+async function worstAA(page: Page, sel: string): Promise<{ worst: number; n: number }> {
+  return page.evaluate((s) => {
+    const rgba = (c: string) => {
+      const m = c.match(/[\d.]+/g)!.map(Number);
+      return [m[0]!, m[1]!, m[2]!, m[3] ?? 1];
+    };
+    const over = (f: number[], b: number[]) => [0, 1, 2].map((i) => f[i]! * f[3]! + b[i]! * (1 - f[3]!)).concat(1);
+    const lin = (v: number) => {
+      const x = v / 255;
+      return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4;
+    };
+    const lum = (c: number[]) => 0.2126 * lin(c[0]!) + 0.7152 * lin(c[1]!) + 0.0722 * lin(c[2]!);
+    let worst = Infinity;
+    const els = [...document.querySelectorAll(s)];
+    for (const el of els) {
+      const layers: number[][] = [];
+      let op = 1;
+      for (let e: Element | null = el; e; e = e.parentElement) {
+        const cs = getComputedStyle(e);
+        op *= parseFloat(cs.opacity);
+        const bg = rgba(cs.backgroundColor);
+        if (bg[3]! > 0) layers.push(bg);
+        if (bg[3]! >= 1) break;
+      }
+      let ground = [255, 255, 255, 1];
+      for (const l of layers.reverse()) ground = over(l, ground);
+      const fg = rgba(getComputedStyle(el).color);
+      const text = over([fg[0]!, fg[1]!, fg[2]!, fg[3]! * op], ground);
+      const [a, b] = [lum(text), lum(ground)].sort((x, y) => y - x);
+      worst = Math.min(worst, (a! + 0.05) / (b! + 0.05));
+    }
+    return { worst, n: els.length };
+  }, sel);
+}
+
+for (const theme of ['midnight-felt', 'bone-ink', 'amoled-night', 'slate-copper']) {
+  test(`D16: ${theme}: streak letters, achievement counters and the active tab pass AA`, async ({ page }) => {
+    await page.clock.setFixedTime(at(10));
+    await withSettings(page, { theme });
+    await withProgress(page, { answersTotal: 40 });
+    await page.goto('/?e2e=1');
+    await expect(page.getByTestId('streak-card')).toBeVisible();
+    for (const sel of ['.streak-dot.is-future', '.tab-btn-active .tab-label', '.tab-btn-active .tab-glyph']) {
+      const { worst, n } = await worstAA(page, sel);
+      expect(n, `vacuity guard: ${sel} matched nothing`).toBeGreaterThan(0);
+      expect(worst, `${theme} ${sel} ${worst.toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5);
+    }
+    await page.getByTestId('streak-card').click();
+    await expect(page.getByTestId('progress-screen')).toBeVisible();
+    const { worst, n } = await worstAA(page, '.ach:not(.is-earned) .ach-note');
+    expect(n, 'vacuity guard: no unearned achievement note').toBeGreaterThan(0);
+    expect(worst, `${theme} unearned .ach-note ${worst.toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5);
+  });
+}
