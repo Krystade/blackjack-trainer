@@ -1146,7 +1146,7 @@ export function CountDrillView({
       schedule: (fn, ms) => window.setTimeout(fn, ms),
       cancel: (id) => window.clearTimeout(id),
       onHeard: () => resumeRunRef.current(),
-      log: ({ outcome }) => diag('life', 'count-resume-probe', { outcome }),
+      log: ({ outcome, attempt }) => diag('life', 'count-resume-probe', { outcome, attempt }),
     });
     return () => probe.stop();
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -1,13 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import type { SpeakOutcome } from '../audio/speech';
-import { startResumeProbe } from './resumeProbe';
+import { startResumeProbe, resumeProbeDelayMs } from './resumeProbe';
 import probeView from '../ui/screens/drills/CountDrillView.tsx?raw';
 
 function harness() {
   const timers = new Map<number, { fn: () => void; ms: number }>();
   let next = 1;
   const pending: Array<(o: SpeakOutcome) => void> = [];
-  const calls = { stops: 0, heard: 0, logs: [] as Array<{ outcome: SpeakOutcome }> };
+  const calls = { stops: 0, heard: 0, logs: [] as Array<{ outcome: SpeakOutcome; attempt: number }> };
   const probe = startResumeProbe({
     say: () => new Promise<SpeakOutcome>((r) => pending.push(r)),
     stopSpeech: () => {
@@ -66,5 +66,29 @@ describe('the resume probe', () => {
   it('the count view runs the probe through this module and stops it on cleanup', () => {
     expect(probeView).toMatch(/startResumeProbe\(/);
     expect(probeView).toMatch(/stopSpeech: \(\) => cancelSpeech\(\)/);
+  });
+
+  it('backs off 4 s, 8 s, 16 s, then every 30 s', async () => {
+    const h = harness();
+    const delays: number[] = [];
+    for (let i = 0; i < 7; i++) {
+      delays.push(h.fire());
+      await h.settle('unheard');
+    }
+    expect(delays).toEqual([4000, 8000, 16000, 30000, 30000, 30000, 30000]);
+    expect([0, 1, 2, 3, 50].map(resumeProbeDelayMs)).toEqual([4000, 8000, 16000, 30000, 30000]);
+  });
+
+  it('logs at most one line per attempt group, so a long outage cannot flood the log', async () => {
+    const h = harness();
+    for (let i = 0; i < 200; i++) {
+      h.fire();
+      await h.settle('unheard');
+    }
+    // Groups double: attempts 1, 2, 3-4, 5-8, ... 129-256 -> 9 lines for 200.
+    expect(h.calls.logs.length).toBeLessThanOrEqual(9);
+    expect(h.calls.logs.length).toBeGreaterThanOrEqual(1);
+    expect(h.calls.logs[h.calls.logs.length - 1]).toMatchObject({ outcome: 'unheard' });
+    expect(typeof h.calls.logs[h.calls.logs.length - 1]!.attempt).toBe('number');
   });
 });
