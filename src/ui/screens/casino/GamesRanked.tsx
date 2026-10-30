@@ -3,7 +3,7 @@ import type { CasinoLog } from '../../../store/casinoLog';
 import { methodBadge } from '../../../engine/betMethods';
 import { gameLogged, kindBadge, labelledSummary } from '../../casinoFigures';
 import { useSideRuns } from './sideRunner';
-import { buildRanking, holdOrder, rankedEvHour, type RankRow, type RankSort } from '../../casinoRanking';
+import { buildRanking, evTargetMet, holdOrder, rankedEvHour, type RankRow, type RankSort } from '../../casinoRanking';
 import { assumedLabel, assumedRulesBadge, ciText, evHourText, materialAssumedRules, n0Text, pctText, roundsText } from '../../casinoStatsText';
 import { Choice } from './fields';
 import type { RunnerState } from './simRunner';
@@ -293,6 +293,12 @@ function RankItem({ row, place, sort, running, failed, onOpen }: { row: RankRow;
           {f && row.state.kind === 'current' && status !== 'done' && !estimate && (
             <span className="cas-badge" data-tone="warn" data-testid="partial-badge">
               Partial {ciText(f.evHourCi)}/h
+            </span>
+          )}
+          {/* C25: finished, but the EV target is missed at the exit minutes now in force. */}
+          {f && row.state.kind === 'current' && status === 'done' && !estimate && !evTargetMet(f) && (
+            <span className="cas-badge" data-tone="warn" data-testid="notfirm-badge">
+              Not firm {ciText(f.evHourCi)}/h
             </span>
           )}
           {running && f && row.state.kind === 'current' && (

@@ -20,7 +20,7 @@ import { ciText, edgeText, evCiText, n0Text, pctText } from './casinoStatsText';
  * wording follows the computed interval.
  */
 
-export type FigureBadge = 'estimate' | 'partial' | 'updating';
+export type FigureBadge = 'estimate' | 'partial' | 'updating' | 'notfirm';
 
 export interface FigureLine {
   /** The figure in words, interval included. */
@@ -41,6 +41,7 @@ export const BADGE_TEXT: Record<FigureBadge, string> = {
   estimate: 'Estimate',
   partial: 'Partial',
   updating: 'Updating',
+  notfirm: 'Not firm',
 };
 
 const money = (n: number) => `$${Math.round(Math.abs(n)).toLocaleString('en-US')}`;
@@ -64,7 +65,7 @@ export function figureLine(row: RankRow, failed?: string): FigureLine {
   // the EV target at a longer one (the key ignores exit minutes); the stats
   // card says so, and the row now marks it too. The edge keeps no interval:
   // its own target does not move with exit minutes.
-  else if (!evTargetMet(f)) badges.push('partial');
+  else if (!evTargetMet(f)) badges.push('notfirm');
 
   // With a side bet the interval is the seated method's (sideCombinedText): the side figure carries none.
   const ci = row.withSide?.method ? row.withSide.method.hours.evHourCi : f.evHourCi;

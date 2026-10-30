@@ -248,7 +248,8 @@ export function rankedEvHour(r: RankRow): number | null {
  */
 export function rankScore(r: RankRow): number | null {
   const ev = rankedEvHour(r);
-  if (ev === null || !r.figures || !r.figures.partial) return ev;
+  // C25: a done run that misses its EV target (exit minutes raised since) is not firm either.
+  if (ev === null || !r.figures || (!r.figures.partial && evTargetMet(r.figures))) return ev;
   const ci = r.withSide?.method ? r.withSide.method.hours.evHourCi : r.figures.evHourCi;
   return Number.isFinite(ci) ? ev - ci / 2 : ev;
 }

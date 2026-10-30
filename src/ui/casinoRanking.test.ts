@@ -539,3 +539,14 @@ describe('C24: risk of ruin at the current bankroll', () => {
     expect(rorAt([session(-10_000)])).toBeNull();
   });
 });
+
+// C25 (audit 2026-10-29, follow-up): a done run that misses its EV target ranks
+// on its conservative bound too.
+describe('C25: a done run that is not firm ranks on its lower figure', () => {
+  const wide = (evHour: number, evHourCi: number) =>
+    ({ casino: { id: 'c' }, game: { id: 'g' }, figures: { evHour, evHourCi, partial: false, best: { hours: { evHour, evHourCi } } } }) as unknown as RankRow;
+  it('±15% is shrunk; ±5% is not', () => {
+    expect(rankScore(wide(40, 6))).toBe(37);
+    expect(rankScore(wide(40, 2))).toBe(40);
+  });
+});

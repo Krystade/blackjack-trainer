@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { blankGame } from '../store/casinoLog';
 import type { GameResult } from '../store/casinoGameStats';
 import type { GameFigures, MethodFigures, RankRow } from './casinoRanking';
-import { figureLine } from './casinoFigureLine';
+import { BADGE_TEXT, figureLine } from './casinoFigureLine';
 
 /** A stored result with only what the line reads: its status and time. */
 /** ms under capMs: still to be firmed up (an estimate); at or over it: partial. */
@@ -74,10 +74,11 @@ describe('figureLine: a counted game', () => {
     expect(line.extras).toEqual(['N0 120 h', 'Play all']);
   });
 
-  it('C25: a done run that misses the EV target at the exit minutes now in force is marked partial', () => {
+  it('C25: a done run that misses the EV target at the exit minutes now in force is marked not firm', () => {
     // +$41 ±$6 is ±15%, wider than the ±10% target.
     const wide = figureLine(row(counted({ evHour: 41, evHourCi: 6, exitMinutes: 15 }), { kind: 'current', result: result('done') }));
-    expect(wide.badges).toEqual(['partial']);
+    expect(wide.badges).toEqual(['notfirm']);
+    expect(BADGE_TEXT.notfirm).toBe('Not firm');
     expect(wide.edge).toBe('edge 0.50%');
     const firm = figureLine(row(counted({ evHour: 41, evHourCi: 4 }), { kind: 'current', result: result('done') }));
     expect(firm.badges).toEqual([]);
