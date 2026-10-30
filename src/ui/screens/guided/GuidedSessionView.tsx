@@ -38,8 +38,9 @@ import {
 import { checkAchievementsNow, onStatsSaved } from '../../../habits/progressStore';
 import { isAppSpeaking, speak } from '../../../audio/speech';
 import { speechOptsFrom } from '../../../audio/speechOpts';
-import { setEyesFreeOn } from '../../eyesFreeSession';
-import { setVoiceOn, useVoiceToggle } from '../../voiceSession';
+import { isEyesFreeOn, setEyesFreeOn } from '../../eyesFreeSession';
+import { isVoiceOn, setVoiceOn, useVoiceToggle } from '../../voiceSession';
+import { clearGuidedPriorModes, peekGuidedPriorModes, type GuidedModes } from '../../../guided/launch';
 import { useVoiceControl } from '../../useVoiceControl';
 import { useWheelCommand } from '../../useWheelCommand';
 import { FlashcardsView } from '../drills/FlashcardsView';
@@ -141,10 +142,21 @@ export function GuidedSessionView({
     speak(text, { ...speechOptsFrom(audioRef.current, { interrupt: opts.interrupt ?? true }), ...(opts.onEnd ? { onEnd: opts.onEnd } : {}) });
   };
 
-  // Eyes-free and voice as the session was started (a resumed session on a new page load too).
+  // Eyes-free and the microphone as the session was started (a resumed
+  // session on a new page load too): both on in Drive, both off when tapped
+  // (the drills' own switches are hidden, so a microphone left on from
+  // earlier would stay open with no way to close it). The page gets back the
+  // modes it had when the session ends or is left.
+  const [prior] = useState<GuidedModes>(() => peekGuidedPriorModes() ?? { eyesFree: isEyesFreeOn(), voice: isVoiceOn() });
+  const restoreModes = () => {
+    setEyesFreeOn(prior.eyesFree, 'guided-end');
+    setVoiceOn(prior.voice, 'guided-end');
+    clearGuidedPriorModes();
+  };
   useEffect(() => {
     setEyesFreeOn(initial.drive, 'guided');
-    if (initial.drive) setVoiceOn(true, 'guided');
+    setVoiceOn(initial.drive, 'guided');
+    return restoreModes;
     // Mount only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -306,6 +318,8 @@ export function GuidedSessionView({
       const store = recordFinished(session);
       setSummary(summarize(session, store.history.filter((h) => h.at !== session.startedAt)));
       checkAchievementsNow();
+      // Over: the page answers as it did before (the summary needs neither).
+      restoreModes();
       return;
     }
     saveActive(session.phase === 'running' ? session : banked(session));

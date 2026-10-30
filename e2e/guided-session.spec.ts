@@ -154,6 +154,12 @@ test('time target: ends on the first answer after the time, never on the clock a
   await expect(page.locator('[data-testid="guided-transition"][data-segment="deviations"]')).toBeVisible();
 });
 
+async function openFlashcards(page: Page): Promise<void> {
+  await page.locator('.tab-bar').getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
+  await expect(page.locator('.action-bar[data-advice]')).toBeVisible();
+}
+
 async function withFakeEngine(page: Page): Promise<void> {
   await page.addInitScript(() => {
     class FakeRecognition {
@@ -302,6 +308,12 @@ test('Drive: spoken transitions, answers and commands by voice, an answer is nev
   await expect.poll(async () => (await spoken(page)).some((s) => s.startsWith('Guided session ended.'))).toBe(true);
   const progress = await page.evaluate((k) => JSON.parse(localStorage.getItem(k) ?? '{}'), PROGRESS_KEY);
   expect(progress.earned?.['guided-1']).toBeUndefined();
+
+  // Over: the page answers as it did before the session (tapped, no microphone).
+  await page.getByRole('button', { name: 'Done', exact: true }).click();
+  await openFlashcards(page);
+  await expect(page.locator('label', { hasText: 'Eyes-free audio' }).locator('input')).not.toBeChecked();
+  await expect(page.locator('label', { hasText: 'Voice answers' }).locator('input')).not.toBeChecked();
 });
 
 test('interrupted: a reload leaves a resume point on Home, with the answers kept', async ({ page }) => {
@@ -415,4 +427,30 @@ test('a count run is never cut off: past the cap mid-run, the segment waits for 
   // The run's answer is its end, and with the time up, the segment's.
   await submitZero(page);
   await expect(page.locator('[data-testid="guided-transition"][data-segment="deviations"]')).toBeVisible();
+});
+
+test('tapped, the session closes a microphone left on, and gives it back after', async ({ page }) => {
+  await withFakeEngine(page);
+  await base(page);
+  await page.goto('/?e2e=1');
+  await openFlashcards(page);
+  await page.locator('label', { hasText: 'Voice answers' }).locator('input').check();
+  await expect(page.locator('.voice-status')).toHaveAttribute('data-voice-state', 'listening');
+
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await page.locator('.tab-bar').getByRole('button', { name: 'Home', exact: true }).click();
+  const card = page.locator('.guided-card');
+  await card.getByRole('radio', { name: /^5/ }).click();
+  await card.getByRole('button', { name: 'Start guided session' }).click();
+  await expect(running(page, 'warmup')).toBeVisible({ timeout: 8000 });
+  await expect(page.locator('.action-bar[data-advice]')).toBeVisible();
+  // No microphone over a tapped segment (its switch is hidden there).
+  await expect(page.locator('.voice-status')).toHaveCount(0);
+
+  await page.locator('.guided-strip').getByRole('button', { name: 'Pause' }).click();
+  await page.getByRole('button', { name: 'End session' }).click();
+  await page.getByRole('button', { name: 'Done', exact: true }).click();
+  await openFlashcards(page);
+  await expect(page.locator('label', { hasText: 'Voice answers' }).locator('input')).toBeChecked();
+  await expect(page.locator('label', { hasText: 'Eyes-free audio' }).locator('input')).not.toBeChecked();
 });

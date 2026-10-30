@@ -6,11 +6,11 @@ import { localDayKey } from '../../../store/practiceDays';
 import { PRESETS, segmentDef, type GuidedPreset } from '../../../guided/plan';
 import { isResumable, resume, type GuidedSession } from '../../../guided/session';
 import { loadGuided } from '../../../guided/store';
-import { setGuidedLaunch } from '../../../guided/launch';
+import { noteGuidedPriorModes, setGuidedLaunch } from '../../../guided/launch';
 import { GUIDED_INTRO, introLine } from '../../../guided/lines';
 import { setDrillLaunch } from '../../drillLaunch';
-import { setEyesFreeOn } from '../../eyesFreeSession';
-import { setVoiceOn } from '../../voiceSession';
+import { isEyesFreeOn, setEyesFreeOn } from '../../eyesFreeSession';
+import { isVoiceOn, setVoiceOn } from '../../voiceSession';
 import { withAudioEnabled } from '../../audioGate';
 import { speak } from '../../../audio/speech';
 import { speechOptsFrom } from '../../../audio/speechOpts';
@@ -40,6 +40,7 @@ export function GuidedCard({
   const [preset, setPreset] = useState<GuidedPreset>(() => store.history[0]?.preset ?? 15);
 
   const launch = (session: GuidedSession, spoken: string | null) => {
+    noteGuidedPriorModes({ eyesFree: isEyesFreeOn(), voice: isVoiceOn() });
     if (session.drive) {
       const next = settings.audio.enabled ? settings : withAudioEnabled(settings);
       if (next !== settings) {
@@ -51,6 +52,7 @@ export function GuidedCard({
       if (spoken) speak(spoken, { ...speechOptsFrom(next.audio, { interrupt: true }), protect: true });
     } else {
       setEyesFreeOn(false, 'guided-start');
+      setVoiceOn(false, 'guided-start');
     }
     setGuidedLaunch(session);
     setDrillLaunch('guided');

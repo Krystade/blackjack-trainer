@@ -16,3 +16,28 @@ export function takeGuidedLaunch(): GuidedSession | null {
   pending = null;
   return s;
 }
+
+/** How the page answered before a guided session took over (eyes-free, microphone). */
+export interface GuidedModes {
+  eyesFree: boolean;
+  voice: boolean;
+}
+
+let prior: GuidedModes | null = null;
+
+/**
+ * Noted by Home's card BEFORE it sets the session's own modes, so the session
+ * can put the page back as it found it. Kept (not taken) until the session
+ * restores it: a dev StrictMode double render reads it twice.
+ */
+export function noteGuidedPriorModes(modes: GuidedModes): void {
+  prior = modes;
+}
+
+export function peekGuidedPriorModes(): GuidedModes | null {
+  return prior;
+}
+
+export function clearGuidedPriorModes(): void {
+  prior = null;
+}
