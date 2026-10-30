@@ -403,6 +403,34 @@ describe('speakAsync()', () => {
     await expect(speakAsync('hi')).resolves.toBe('unheard');
   });
 
+  /*
+   * Review of A12: WebKit loses `onend` on utterances that DID play, so a
+   * watchdog alone is not "unheard". Only a line that never started is.
+   */
+  for (const started of [true, false]) {
+    it(`a lost end on a line that ${started ? 'started' : 'never started'} is ${started ? 'spoken' : 'unheard'}`, async () => {
+      vi.useFakeTimers();
+      try {
+        (globalThis as any).SpeechSynthesisUtterance = FakeUtterance;
+        (globalThis as any).window = {
+          location: { search: '' },
+          speechSynthesis: {
+            getVoices: () => [],
+            speak: (u: FakeUtterance & { onstart?: () => void }) => {
+              if (started) queueMicrotask(() => u.onstart?.());
+            },
+            cancel: () => {},
+          },
+        };
+        const p = speakAsync('Seven, king');
+        await vi.advanceTimersByTimeAsync(60_000);
+        await expect(p).resolves.toBe(started ? 'spoken' : 'unheard');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  }
+
   it('cancelSpeech() settles a pending speakAsync promise (onend never fires)', async () => {
     installFakeSpeechEnv([], { autoEnd: false });
     const promise = speakAsync('hi');

@@ -1404,7 +1404,12 @@ function speakAsyncLive(text: string, opts?: SpeechOpts): Promise<SpeakOutcome> 
   }
 
   return new Promise<SpeakOutcome>((done) => {
-    const resolve = (reason: TtsEndReason = "error") => done(outcomeOf(reason));
+    // Review of A12: WebKit loses `onend` on utterances that DID play, which
+    // is why the watchdog exists. A watchdog on a line that started is
+    // heard; only one with no sign of progress is "unheard".
+    let started = false;
+    const resolve = (reason: TtsEndReason = "error") =>
+      done(reason === "watchdog" && started ? "spoken" : outcomeOf(reason));
     try {
       if (opts?.interrupt) {
         // A fresh interrupting call must settle whatever was previously
@@ -1449,6 +1454,12 @@ function speakAsyncLive(text: string, opts?: SpeechOpts): Promise<SpeakOutcome> 
       };
       pendingSpeeches.push(pending);
 
+      utterance.onstart = () => {
+        started = true;
+      };
+      utterance.onboundary = () => {
+        started = true;
+      };
       utterance.onend = () => settlePendingSpeech(pending, "ended");
       utterance.onerror = () => settlePendingSpeech(pending, "error");
 
