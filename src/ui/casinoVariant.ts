@@ -59,7 +59,8 @@ export function variantCostFor(
 
 /** Logged rules that differ from the preset's, each as one line. */
 export function variantMismatches(
-  game: Pick<CasinoGame, 'decks' | 's17' | 'payout' | 'rsa' | 'doubleSplitAces' | 'maxSplitHands' | 'doubleOn'>,
+  game: Pick<CasinoGame, 'decks' | 's17' | 'payout' | 'rsa' | 'doubleSplitAces' | 'maxSplitHands' | 'doubleOn'> &
+    Partial<Pick<CasinoGame, 'das' | 'surrender'>>,
   preset: PresetId,
 ): string[] {
   const rules = PRESETS[preset];
@@ -83,6 +84,13 @@ export function variantMismatches(
     } else if (rules.variant === 'spanish21' && game.payout === '6:5') {
       out.push('Logged blackjack 6:5; the Spanish 21 figures assume 3:2.');
     }
+  }
+  // C22 (audit 2026-10-29): double after split and late surrender too.
+  if (game.das != null && game.das !== rules.das) {
+    out.push(game.das ? `Logged doubling after a split; the ${label} figures do not double after splitting.` : `Logged no doubling after a split; the ${label} figures double after splitting.`);
+  }
+  if (game.surrender != null && game.surrender !== rules.ls) {
+    out.push(game.surrender ? `Logged late surrender; the ${label} figures have no surrender.` : `Logged no surrender; the ${label} figures surrender late.`);
   }
   // Wave M's split and double rules, where logged and unlike the preset's.
   if (game.rsa != null && game.rsa !== rules.rsa) {

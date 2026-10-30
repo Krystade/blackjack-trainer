@@ -122,3 +122,19 @@ describe('merge with Wave M: a variant game and the new rules', () => {
     expect(labelledSummary(game('g', { variant: 'freebet', variantName: '21st Century' }))).toMatch(/^21st Century: Free Bet · 6D H17/);
   });
 });
+
+// C22 (audit 2026-10-29): a logged DAS or surrender rule unlike the preset's is flagged.
+describe('variantMismatches: double after split and surrender (C22)', () => {
+  it('flags each where logged and unlike the preset', async () => {
+    const { variantMismatches } = await import('./casinoVariant');
+    const none = { decks: null, s17: null, payout: null, rsa: null, doubleSplitAces: null, maxSplitHands: null, doubleOn: null } as const;
+    // Spanish 21 surrenders and doubles after splitting; Free Bet doubles after splitting, no surrender.
+    expect(variantMismatches({ ...none, das: false, surrender: false }, 's21-h17')).toEqual([
+      'Logged no doubling after a split; the Spanish 21, H17 figures double after splitting.',
+      'Logged no surrender; the Spanish 21, H17 figures surrender late.',
+    ]);
+    expect(variantMismatches({ ...none, surrender: true }, 'freebet')).toEqual(['Logged late surrender; the Free Bet figures have no surrender.']);
+    expect(variantMismatches({ ...none, das: true, surrender: false }, 'freebet')).toEqual([]);
+    expect(variantMismatches({ ...none, das: null, surrender: null }, 's21-h17')).toEqual([]);
+  });
+});
