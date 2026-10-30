@@ -464,3 +464,35 @@ test('a hidden-page pause says "Say go on", and "go on" resumes the run', async 
   await sayWhenListening(page, 'go on');
   await expect(page.getByRole('status').filter({ hasText: 'Paused' })).toBeHidden({ timeout: 2000 });
 });
+
+/**
+ * Review L2: the line promises a voice resume only when the microphone is
+ * listening at that moment. A call that leaves the mic refused gets plain
+ * "Paused." on return (the dead-mic line asks for the tap).
+ */
+test('a hidden-page pause whose mic is not listening on return says only "Paused."', async ({ page }) => {
+  await openCountDrill(page, { eyesFree: true, drill: { countLengthCards: 12, countIntervalMs: 800 } });
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+  await expect(page.locator('.count-flash-progress')).toHaveText(/^2 \/ 12/, { timeout: 15_000 });
+  const setVisibility = (state: 'hidden' | 'visible') =>
+    page.evaluate((st) => {
+      Object.defineProperty(document, 'visibilityState', { get: () => st, configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+    }, state);
+  const count = (line: string) =>
+    page.evaluate((l) => (window.__speechLog ?? []).filter((t) => t === l).length, line);
+  await setVisibility('hidden');
+  await expect(page.getByRole('status').filter({ hasText: 'Paused' })).toBeVisible();
+  await page.evaluate(() => {
+    const rec = (window as unknown as { __rec?: { onerror?: (e: { error: string }) => void; onend?: () => void } }).__rec;
+    rec?.onerror?.({ error: 'not-allowed' });
+    rec?.onend?.();
+  });
+  await expect(page.locator('.voice-status')).toHaveAttribute('data-voice-state', 'denied');
+  await page.waitForTimeout(300);
+  const hideBefore = await count(COUNT_HIDE_PAUSED_LINE);
+  const pausedBefore = await count('Paused.');
+  await setVisibility('visible');
+  await expect.poll(() => count('Paused.')).toBe(pausedBefore + 1);
+  expect(await count(COUNT_HIDE_PAUSED_LINE), 'promised "go on" to a mic that is not listening').toBe(hideBefore);
+});

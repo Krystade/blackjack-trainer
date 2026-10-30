@@ -1116,8 +1116,12 @@ export function CountDrillView({
   // so it runs AFTER the cleanup that cancels the card being spoken.
   // Review R4: a pause the hidden page caused never lifts by itself, so with
   // the microphone open it names the word that continues the run.
+  // Review L2: only when the microphone is listening at that moment -- a
+  // call can leave it refused or restarting, and the dead-mic line covers that.
   const pausedByHideRef = useRef(false);
-  const pausedLine = () => (pausedByHideRef.current && voiceOn ? COUNT_HIDE_PAUSED_LINE : COUNT_PAUSED_LINE);
+  const micListeningRef = useRef(false);
+  const pausedLine = () =>
+    pausedByHideRef.current && voiceOn && micListeningRef.current ? COUNT_HIDE_PAUSED_LINE : COUNT_PAUSED_LINE;
   useEffect(() => {
     if (!paused) {
       pausedByHideRef.current = false;
@@ -1966,6 +1970,7 @@ export function CountDrillView({
     onListening: () => audio.dingWhenQuiet('ready'),
     context: 'count-drill',
   });
+  micListeningRef.current = voice.status.state === 'listening';
 
   // A proposal belongs to one answer: carrying it into the next run would
   // offer the last count back as an answer to a different question. Done in
