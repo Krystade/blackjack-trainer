@@ -663,7 +663,7 @@ export function DriveChecks({
 
     'drive-button': async (def, run) => {
       const answer = await ask(DC_LINES.driveButtonQuestion);
-      const ev = driveTapEvidence(readDiagnosticLog());
+      const ev = driveTapEvidence(readDiagnosticLog(), diagnosticSessionId);
       const logOk = ev.tapInLog === true && ev.speechMs !== null && ev.micMs !== null;
       settle(def, run, answer === 'skip' ? 'skipped' : answer === 'yes' && logOk ? 'pass' : 'fail', { answer, logOk, ...ev });
     },

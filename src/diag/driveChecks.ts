@@ -407,14 +407,13 @@ export function muteEvidence(
 export const DRIVE_TAP_WINDOW_MS = 10_000;
 
 /**
- * The last Drive tap in the log, and how long after it the app first spoke
- * and the microphone first opened, in the same page load.
+ * The FIRST Drive tap of this page load (A21), and how long after it the app
+ * first spoke and the microphone first opened. Only 'drive-tap' counts: Home
+ * logs it on every tap, where 'eyes-free-on' is skipped when eyes-free was
+ * already on, and an older page load's tap is not this check's tap.
  */
-export function driveTapEvidence(entries: readonly DiagEntry[]): Evidence {
-  let tap: DiagEntry | undefined;
-  for (const e of entries) {
-    if (e.category === 'nav' && e.event === 'eyes-free-on' && e.detail?.context === 'home-drive') tap = e;
-  }
+export function driveTapEvidence(entries: readonly DiagEntry[], session: string): Evidence {
+  const tap = entries.find((e) => e.session === session && e.category === 'nav' && e.event === 'drive-tap');
   if (!tap) return { tapInLog: false, speechMs: null, micMs: null };
   const after = entries.filter(
     (e) => e.session === tap!.session && e.ms >= tap!.ms && e.ms - tap!.ms <= DRIVE_TAP_WINDOW_MS,

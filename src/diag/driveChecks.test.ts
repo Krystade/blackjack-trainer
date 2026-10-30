@@ -154,17 +154,22 @@ describe('log readers', () => {
     expect(muteEvidence([e('speak', 'path', { said: 'Q', path: 'tts' })], FROM, 'Q').queuedSpoke).toBe(true);
   });
 
-  it('times the voice and the microphone from the LAST Drive tap', () => {
+  it("times the voice and the microphone from this page load's FIRST Drive tap (A21)", () => {
     ms = 0;
     const log = [
-      e('nav', 'eyes-free-on', { context: 'home-drive' }),
-      e('speak', 'path', { said: 'old' }),
-      e('nav', 'eyes-free-on', { context: 'home-drive' }), // ms 30
-      e('speak', 'path-chosen', { said: 'Count drill.' }), // 40
-      e('mic', 'session-start', {}), // 50
+      e('nav', 'drive-tap', { mode: 'count' }, 'old'), // an earlier page load
+      e('speak', 'path', { said: 'old' }, 'old'),
+      e('nav', 'drive-tap', { mode: 'count' }), // ms 20, first tap here
+      e('speak', 'path-chosen', { said: 'Count drill.' }), // 30
+      e('mic', 'session-start', {}), // 40
+      e('nav', 'drive-tap', { mode: 'count' }), // a second tap
+      e('speak', 'path', { said: 'Count drill.' }),
     ];
-    expect(driveTapEvidence(log)).toMatchObject({ tapInLog: true, speechMs: 10, micMs: 20 });
-    expect(driveTapEvidence([e('nav', 'eyes-free-on', { context: 'settings' })])).toEqual({ tapInLog: false, speechMs: null, micMs: null });
+    expect(driveTapEvidence(log, 's1')).toMatchObject({ tapInLog: true, speechMs: 10, micMs: 20 });
+    // The old page load's tap is not this check's tap.
+    expect(driveTapEvidence(log.slice(0, 2), 's1')).toEqual({ tapInLog: false, speechMs: null, micMs: null });
+    // eyes-free-on alone no longer stands in for the tap.
+    expect(driveTapEvidence([e('nav', 'eyes-free-on', { context: 'home-drive' })], 's1').tapInLog).toBe(false);
   });
 });
 

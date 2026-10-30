@@ -16,6 +16,7 @@ import { strategyRulesFor } from '../../store/profiles';
 import './nextStep.css';
 import { driveTarget, setDriveAutoStart } from '../driveLaunch';
 import { setEyesFreeOn } from '../eyesFreeSession';
+import { diag } from '../../diag/diagnosticLog';
 import { setVoiceOn } from '../voiceSession';
 import { speak } from '../../audio/speech';
 import { speechOptsFrom } from '../../audio/speechOpts';
@@ -111,6 +112,8 @@ export function Home({ onNavigate, activeProfile, settings, onSettingsChange }: 
       saveSettings(next);
       onSettingsChange(next);
     }
+    // A21: logged on every tap; eyes-free-on is skipped when already on.
+    diag('nav', 'drive-tap', { mode: drive.mode });
     setEyesFreeOn(true, 'home-drive');
     setVoiceOn(drive.voice, 'home-drive');
     speak(`${drive.label}.`, { ...speechOptsFrom(next.audio, { interrupt: true }), protect: true });
