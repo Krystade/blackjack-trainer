@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { openMic, type HeldMic } from './testKitIO';
+import { openMic, settleElement, type HeldMic, type SettleableMedia } from './testKitIO';
 import { readDiagnosticLog, clearDiagnosticLog } from './diagnosticLog';
 
 /**
@@ -244,5 +244,35 @@ describe('the kit microphone', () => {
     const other = (installWindow(), await open());
     await other.close();
     expect(other.alive()).toBe(false);
+  });
+});
+
+describe('settleElement (A20)', () => {
+  const media = (): SettleableMedia => ({ onended: null, onerror: null, error: null });
+
+  it('says ended only when the clip ended', async () => {
+    const a = media();
+    const p = settleElement(a, 50);
+    a.onended?.(new Event('ended'));
+    expect(await p).toBe('ended');
+  });
+
+  it('reports a media error with its code, not as ended', async () => {
+    const a = media();
+    const p = settleElement(a, 50);
+    a.error = { code: 4 };
+    a.onerror?.(new Event('error'));
+    expect(await p).toBe('media-error:4');
+  });
+
+  it('reports a stall as timeout, not as ended', async () => {
+    vi.useFakeTimers();
+    try {
+      const p = settleElement(media(), 10000);
+      vi.advanceTimersByTime(10001);
+      expect(await p).toBe('timeout');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

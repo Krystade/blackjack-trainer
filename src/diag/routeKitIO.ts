@@ -7,7 +7,7 @@
  */
 import { diag } from './diagnosticLog';
 import { matchRouteAlternatives, ROUTE_LINES, type RouteAnswer, type TrialMic, type TrialPath } from './routeKit';
-import { playThrough, routeClipUrl, sayRecorded, unlockWebAudio, waitForRouteQuiet, type HeldMic } from './testKitIO';
+import { playThrough, settleElement, routeClipUrl, sayRecorded, unlockWebAudio, waitForRouteQuiet, type HeldMic } from './testKitIO';
 import {
   activeRoutePlan,
   holdStatus,
@@ -136,13 +136,12 @@ async function playElementWithSink(url: string): Promise<string> {
     const audio = new Audio(url);
     const sunk = await applyRouteSink(audio);
     diag('test', 'kit-route-sink', { applied: sunk, sinkId: (audio as { sinkId?: string }).sinkId ?? 'none' });
+    const started = performance.now();
+    const settled = settleElement(audio);
     await audio.play();
-    await new Promise<void>((resolve) => {
-      audio.onended = () => resolve();
-      audio.onerror = () => resolve();
-      setTimeout(resolve, 10000);
-    });
-    return 'ended';
+    const how = await settled;
+    diag('test', 'kit-play-done', { path: 'element-sink', how, elapsedMs: Math.round(performance.now() - started) });
+    return how;
   } catch (e) {
     return e instanceof Error ? e.name : 'failed';
   }

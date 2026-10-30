@@ -66,19 +66,52 @@ export function unlockWebAudio(): void {
 }
 
 /** Resolves when the sound has finished, or with the reason it could not. */
+/** The element shape settleElement listens on (an HTMLAudioElement in the app). */
+export interface SettleableMedia {
+  onended: ((ev: Event) => unknown) | null;
+  onerror: ((ev: Event | string) => unknown) | null;
+  error?: { code?: number } | null;
+}
+
+/**
+ * A20: wait for an element to finish and say HOW it finished, so a media
+ * error or a stall is not reported as 'ended' (and then answered "Heard
+ * nothing" as if it were a route finding). Shared by playThrough and the
+ * route kit's sink path so the two cannot drift.
+ */
+export function settleElement(audio: SettleableMedia, timeoutMs = 10000): Promise<string> {
+  return new Promise<string>((resolve) => {
+    let done = false;
+    const finish = (how: string) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      audio.onended = null;
+      audio.onerror = null;
+      resolve(how);
+    };
+    const timer = setTimeout(() => finish('timeout'), timeoutMs);
+    audio.onended = () => finish('ended');
+    audio.onerror = () => finish(`media-error:${audio.error?.code ?? '?'}`);
+  });
+}
+
 export async function playThrough(path: PlayPath, url: string): Promise<'ended' | string> {
+  const started = performance.now();
+  const how = await playThroughInner(path, url);
+  diag('test', 'kit-play-done', { path, how, elapsedMs: Math.round(performance.now() - started) });
+  return how;
+}
+
+async function playThroughInner(path: PlayPath, url: string): Promise<'ended' | string> {
   const ctxState = getSharedAudioContext()?.state ?? 'none';
   diag('test', 'kit-play', { path, session: readAudioSessionType(), audioContext: ctxState });
   try {
     if (path === 'element') {
       const audio = new Audio(url);
+      const settled = settleElement(audio);
       await audio.play();
-      await new Promise<void>((resolve) => {
-        audio.onended = () => resolve();
-        audio.onerror = () => resolve();
-        setTimeout(resolve, 10000);
-      });
-      return 'ended';
+      return await settled;
     }
     const ctx = await getLiveAudioContext();
     if (!ctx) return 'no-live-audio-context';
@@ -87,12 +120,14 @@ export async function playThrough(path: PlayPath, url: string): Promise<'ended' 
     const source = ctx.createBufferSource();
     source.buffer = buffer;
     source.connect(ctx.destination);
-    await new Promise<void>((resolve) => {
-      source.onended = () => resolve();
+    return await new Promise<string>((resolve) => {
+      const timer = setTimeout(() => resolve(`timeout:ctx=${ctx.state}`), buffer.duration * 1000 + 2000);
+      source.onended = () => {
+        clearTimeout(timer);
+        resolve('ended');
+      };
       source.start();
-      setTimeout(resolve, buffer.duration * 1000 + 2000);
     });
-    return 'ended';
   } catch (e) {
     const why = e instanceof Error ? e.name : 'failed';
     diag('test', 'kit-play-failed', { path, why });
