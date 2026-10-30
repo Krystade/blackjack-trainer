@@ -185,3 +185,34 @@ describe('an import can be undone exactly (B4)', () => {
     });
   });
 });
+
+describe('an import that does not fit (B29)', () => {
+  it('leaves the diagnostic log alone, changes nothing, and says it was space', () => {
+    const map = new Map<string, string>();
+    const QUOTA = 4000;
+    const used = () => [...map.values()].reduce((n, v) => n + v.length, 0);
+    const tight = {
+      getItem: (k: string) => map.get(k) ?? null,
+      setItem: (k: string, v: string) => {
+        const prior = map.get(k)?.length ?? 0;
+        if (used() - prior + v.length > QUOTA) throw new DOMException('full', 'QuotaExceededError');
+        map.set(k, v);
+      },
+      removeItem: (k: string) => void map.delete(k),
+    };
+    _setStorage(tight);
+    const log = JSON.stringify(Array.from({ length: 40 }, (_, i) => ({ t: i, m: 'drive log line ' + i })));
+    tight.setItem('bjtrainer.diagnostics.v1', log);
+    tight.setItem('bjtrainer.settings.v1', JSON.stringify({ version: 1 }));
+    const big = JSON.stringify({
+      settings: { version: 1 },
+      stats: { version: 1 },
+      profiles: [{ id: 'x', note: 'y'.repeat(3000) }],
+    });
+    const r = importAll(big);
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/^not enough space to import \(bjtrainer\.profiles\.v1\); nothing was changed/);
+    expect(map.get('bjtrainer.diagnostics.v1')).toBe(log);
+    expect(map.get('bjtrainer.profiles.v1')).toBeUndefined();
+  });
+});

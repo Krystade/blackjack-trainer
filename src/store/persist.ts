@@ -320,12 +320,16 @@ export function loadSettings(): Settings {
  * `saveSrDeck` in drills/gradeAnswer.ts already guarded its write this way;
  * the store layer simply never did.
  */
-function writeKey(key: string, value: string): boolean {
+function writeKey(key: string, value: string, opts: { makeRoom?: boolean } = {}): boolean {
   const store = getStorage();
   try {
     store.setItem(key, value);
     return true;
   } catch {
+    // B29: a bulk restore is not an interactive save -- there is no frozen
+    // answer to rescue, and shrinking the diagnostic log for an import that
+    // then rolls back cost the drive log for nothing. It says so instead.
+    if (opts.makeRoom === false) return false;
     // F24: MAKE ROOM, THEN SAY SO. The diagnostic log is the one large blob
     // that is not the operator's progress, so it gives way first; if the write
     // still fails, storageHealth tells the shell, which shows a toast instead
@@ -754,7 +758,7 @@ export function importAll(json: string): { ok: boolean; error?: string } {
 
     const written: string[] = [];
     for (const { key, value } of pending) {
-      if (writeKey(key, value)) {
+      if (writeKey(key, value, { makeRoom: false })) {
         written.push(key);
         continue;
       }
@@ -765,10 +769,12 @@ export function importAll(json: string): { ok: boolean; error?: string } {
         const ok = prior === null ? removeKey(key2) : writeKey(key2, prior ?? '');
         if (!ok) restored = false;
       }
+      // The rollback above MAY make room: putting the previous data back
+      // matters more than the diagnostic log.
       return {
         ok: false,
         error: restored
-          ? `Could not write ${key} — nothing was changed`
+          ? `not enough space to import (${key}); nothing was changed. Clearing the diagnostic log (Settings) frees space.`
           : `Could not write ${key}, and the previous data could not be put back`,
       };
     }
