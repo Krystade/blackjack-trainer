@@ -8,6 +8,7 @@
  * against what the log says it did.
  */
 
+import { monoNow } from '../audio/monoClock';
 import { diag } from './diagnosticLog';
 import { activeClipVoice, loadVoiceManifest, manifestLookup, playChimeTone, playClipsAsync } from '../audio/clips';
 import { getLiveAudioContext, getSharedAudioContext } from '../audio/audioContext';
@@ -302,11 +303,11 @@ export async function openMic(): Promise<HeldMic | { error: string }> {
       } catch {
         /* already stopped */
       }
-      const t0 = Date.now();
+      const t0 = monoNow();
       await Promise.race([stopped, new Promise((r) => setTimeout(r, 2000))]);
       diag('test', 'kit-mic-closed', {
         session: readAudioSessionType(),
-        endedAfterMs: endedNow ? Date.now() - t0 : null,
+        endedAfterMs: endedNow ? Math.round(monoNow() - t0) : null,
         timedOut: !endedNow,
       });
     },

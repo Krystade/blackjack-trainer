@@ -4,6 +4,8 @@ import { monoNow } from './monoClock';
 import type { VoiceAction } from './voiceRecognition';
 import hook from '../ui/useVoiceControl.ts?raw';
 import env from '../diag/environment.ts?raw';
+import route from './audioRoute.ts?raw';
+import kitIO from '../diag/testKitIO.ts?raw';
 
 /**
  * B19: suppression windows measured on the wall clock end early when the
@@ -62,5 +64,14 @@ describe('voice intervals ride a clock the wall-clock resync cannot move (B19)',
       expect(src).toMatch(/markInputDeviceChanged\(monoNow\(\)\)/);
       expect(src).not.toMatch(/markInputDeviceChanged\(Date\.now\(\)\)/);
     }
+  });
+
+  it('the route re-plan burst cap and the kit mic-close duration use it too (review)', () => {
+    const replan = route.slice(route.indexOf('export function scheduleRouteReplan'));
+    expect(replan.slice(0, replan.indexOf('}'))).toMatch(/const now = monoNow\(\);/);
+    const close = kitIO.slice(kitIO.indexOf("'kit-mic-closed'") - 400, kitIO.indexOf("'kit-mic-closed'") + 200);
+    expect(close).toMatch(/const t0 = monoNow\(\);/);
+    expect(close).toMatch(/endedAfterMs: endedNow \? Math\.round\(monoNow\(\) - t0\) : null/);
+    expect(close).not.toMatch(/Date\.now\(\)/);
   });
 });

@@ -37,6 +37,7 @@
  * is the one lever a page has over which mic -- and, by iOS's hands-free
  * pairing, which output -- the route uses. Unmeasured.
  */
+import { monoNow } from './monoClock';
 import { diag } from '../diag/diagnosticLog';
 import { openMicStream } from './openMicStream';
 import { readAudioSessionType, requestAudioSessionType } from './audioSession';
@@ -575,7 +576,7 @@ export const REPLAN_CAP_MS = 4000;
  */
 export function scheduleRouteReplan(reason: string): void {
   if (activePlan === null) return;
-  const now = Date.now();
+  const now = monoNow();
   if (replanTimer === null) replanFirstAt = now;
   else clearTimeout(replanTimer);
   const gen = captureGen;
