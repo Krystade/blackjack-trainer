@@ -21,8 +21,10 @@ export function rangedAccuracy(
   let total = 0;
   for (const r of filterByRange(stats.latencyHistory, range, now)) {
     if (r.correct === undefined || (cat !== undefined && r.category !== cat)) continue;
-    // C13: a category's accuracy is hand answers only; an index-quiz row filed under it is not one.
-    if (cat !== undefined && r.indexOnly) continue;
+    // C13: accuracy is hand answers only; an index-quiz row filed under a category is not one.
+    // R5: in the overall figure too -- the cap's fold drops these rows, so
+    // counting the kept ones would move the figure as rows pass the cap.
+    if (r.indexOnly) continue;
     total += 1;
     if (r.correct) right += 1;
   }

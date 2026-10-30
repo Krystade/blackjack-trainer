@@ -79,8 +79,8 @@ describe('index-only rows are not hand answers (C13, after B6)', () => {
     for (let i = 10; i < 30; i++) s.latencyHistory.push({ category: 'hard', elapsedMs: 900, date: at(i), correct: true, indexOnly: true });
     const range = { id: '30d' } as const;
     expect(rangedAccuracy(s, range, NOW, 'hard')).toEqual({ right: 0, total: 10 });
-    // Overall accuracy keeps every graded answer, as before.
-    expect(rangedAccuracy(s, range, NOW).total).toBe(30);
+    // R5: the overall figure leaves them out too (the fold cannot keep them).
+    expect(rangedAccuracy(s, range, NOW).total).toBe(10);
     // Pushed past the cap, oldest first: the dropped index rows are not folded into 'hard'.
     const big = structuredClone(EMPTY_STATS);
     for (let i = 0; i < HISTORY_CAP + 50; i++) {
@@ -88,5 +88,21 @@ describe('index-only rows are not hand answers (C13, after B6)', () => {
     }
     const capped = capHistories(big);
     expect(Object.values(capped.latencyDaily ?? {}).reduce((n, d) => n + (d?.hard?.n ?? 0), 0)).toBe(0);
+  });
+});
+
+// R5 (review of C13/B6): the fold drops index-quiz rows, so the overall
+// figure must leave them out of the kept rows too, or it shifts as rows pass the cap.
+describe('the overall accuracy does not move when rows pass the cap (R5)', () => {
+  it('index-quiz rows are left out whether kept or folded', () => {
+    const s = practised(30);
+    s.latencyHistory.forEach((r, i) => {
+      if (i % 10 === 0) Object.assign(r, { indexOnly: true, correct: false });
+    });
+    const hands = s.latencyHistory.filter((r) => !r.indexOnly);
+    const handsRight = hands.filter((r) => r.correct).length;
+    const range = { id: '30d' } as const;
+    expect(rangedAccuracy(s, range, NOW)).toEqual({ right: handsRight, total: hands.length });
+    expect(rangedAccuracy(capHistories(s), range, NOW)).toEqual({ right: handsRight, total: hands.length });
   });
 });
