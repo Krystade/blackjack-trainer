@@ -63,7 +63,8 @@ export function startResumeProbe(deps: ResumeProbeDeps): ResumeProbe {
       inFlight = false;
     }
     if (stopped) return;
-    if (opensGroup(attempts)) deps.log({ outcome, attempt: attempts });
+    // The heard attempt is always logged: it is what lifted the hold (review L1).
+    if (outcome === 'spoken' || opensGroup(attempts)) deps.log({ outcome, attempt: attempts });
     if (outcome === 'spoken') deps.onHeard();
     else timer = deps.schedule(() => void attempt(), resumeProbeDelayMs(attempts));
   };

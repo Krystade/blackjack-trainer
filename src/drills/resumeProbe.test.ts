@@ -91,4 +91,16 @@ describe('the resume probe', () => {
     expect(h.calls.logs[h.calls.logs.length - 1]).toMatchObject({ outcome: 'unheard' });
     expect(typeof h.calls.logs[h.calls.logs.length - 1]!.attempt).toBe('number');
   });
+
+  it('the attempt that is heard is always logged, even mid-group (heard on attempt 4)', async () => {
+    const h = harness();
+    for (let i = 0; i < 3; i++) {
+      h.fire();
+      await h.settle('unheard');
+    }
+    h.fire();
+    await h.settle('spoken');
+    expect(h.calls.heard).toBe(1);
+    expect(h.calls.logs[h.calls.logs.length - 1]).toEqual({ outcome: 'spoken', attempt: 4 });
+  });
 });
