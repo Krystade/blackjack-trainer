@@ -6,7 +6,7 @@ import { EV_REL_TARGET, hourly, houseEdge, summarize, type HourlyStats, type Rou
 import { describeMethod, type BetMethod } from '../engine/betMethods';
 import { evCiText, evHourText } from './casinoStatsText';
 import { bestSideEvHour, gameSideFigures } from './casinoSideFigures';
-import { distanceMinutes, distanceOf, evPerTripHour, standing, tripMinutesOf, warnBadges, type Distance } from './casinoFigures';
+import { bankrollNow, distanceMinutes, distanceOf, evPerTripHour, standing, tripMinutesOf, warnBadges, type Distance } from './casinoFigures';
 
 /**
  * Wave K: the "Games ranked" list -- every logged game, its figures from the
@@ -274,7 +274,8 @@ export function buildRanking(
   /** Wave Q: results kept by key for inputs no game has now (casinoGameStats `loadGameArchive`). */
   archive: Readonly<Record<string, GameResult>> = {},
 ): RankRow[] {
-  const bankroll = log.settings.startingBankroll;
+  // C24: risk of ruin at the bankroll as it is now (starting plus logged sessions).
+  const bankroll = bankrollNow(log);
   const custom = log.settings.methods ?? [];
   const session = sessionHoursOf(log);
   const rows: RankRow[] = [];

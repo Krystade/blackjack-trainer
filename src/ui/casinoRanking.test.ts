@@ -517,3 +517,25 @@ describe('C17: unfinished runs rank on a shrunk figure', () => {
     expect(bestGameOf({ id: 'c', games: [] } as never, [row('noisy', 100, 80, false), tight]).id).toBe('noisy');
   });
 });
+
+// C24 (audit 2026-10-29): risk of ruin at the bankroll after logged sessions.
+describe('C24: risk of ruin at the current bankroll', () => {
+  it('a logged loss raises the ranking row risk of ruin; losing it all hides it', () => {
+    const g = game('ga');
+    const session = (net: number) => ({
+      id: `s${net}`, casinoId: 'c1', start: '2026-10-01T10:00:00Z', end: '2026-10-01T12:00:00Z', buyIns: [10_000], cashOut: 10_000 + net,
+      avgBet: null, maxBet: null, maxTc: null, heat: 'none' as const, notes: '', createdAt: '2026-10-01T10:00:00Z', updatedAt: '2026-10-01T12:00:00Z',
+    });
+    const rorAt = (sessions: ReturnType<typeof session>[]) => {
+      const log = { ...logOf([casino('c1', [g])], { startingBankroll: 10_000 }), sessions } as CasinoLog;
+      return buildRanking(log, profile, { ga: resultFor(g, 2) }, NOW, null, 'ev')[0]!.figures!.best!.hours.ror;
+    };
+    const fresh = rorAt([]);
+    const down = rorAt([session(-4_000)]);
+    expect(fresh).not.toBeNull();
+    expect(down!).toBeGreaterThan(fresh!);
+    // exp(-2 EV B / SD^2) at B = 6,000 is the 10,000 figure to the power 0.6.
+    expect(down!).toBeCloseTo(fresh! ** 0.6, 9);
+    expect(rorAt([session(-10_000)])).toBeNull();
+  });
+});

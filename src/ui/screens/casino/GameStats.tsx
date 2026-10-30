@@ -3,7 +3,7 @@ import { PRESETS, PRESET_LABEL, presetSummary } from '../../../engine/variants/r
 import { variantCostFor, variantMismatches } from '../../casinoVariant';
 import { simRules, type GameResult } from '../../../store/casinoGameStats';
 import { describeMethod, methodBadge } from '../../../engine/betMethods';
-import { gameSummary, kindBadge, labelledSummary, money, shortDate, warnBadges } from '../../casinoFigures';
+import { bankrollNow, gameSummary, kindBadge, labelledSummary, money, shortDate, warnBadges } from '../../casinoFigures';
 import { buildRanking, evTargetMet, exitMinutesOf, gameFigures, roundsPerHourOf, type GameFigures, type RankRow } from '../../casinoRanking';
 import { ASSUMED_TEXT, assumedDirectionText, assumedLabel, assumedLead, assumedRules, ciText, edgeText, evHourText, n0Text, roundsText, rorText, sdHourText } from '../../casinoStatsText';
 import { canRunLonger, runAnotherMinute } from './simRunner';
@@ -70,7 +70,8 @@ export function GameStats({
   if (game.variant) return <VariantGameStats casino={casino} game={game} editRules={editRules} />;
   if (isHouseGame(game)) return <HouseGameStats casino={casino} game={game} editRules={editRules} />;
   const rph = roundsPerHourOf(game);
-  const bankroll = log.settings.startingBankroll;
+  // C24 (audit 2026-10-29): risk of ruin at the bankroll now -- starting plus logged sessions -- not the starting one.
+  const bankroll = bankrollNow(log);
   // The run for this game's inputs, whichever game of those inputs it was started for.
   const running = runner.running?.key === row.input.key ? runner.running : null;
   const live: GameResult | null = running?.progress ? progressResult(running.progress, row.input.spec.unit) : null;
@@ -346,8 +347,9 @@ export function GameStats({
           <p className="cas-note">
             Every method is scored on the same simulated rounds, played every round at one seat; a method that sits out would in reality change the
             cards slightly for the rounds after, which this ignores (the standard approximation in counting simulators). After an exit the method
-            sits down at a fresh shoe once the {exitMinutes} min are up; "Rounds played" is the share of the rounds dealt that it played. *Risk of ruin is the diffusion approximation exp(&minus;2&middot;EV&middot;B/SD&sup2;) at your starting
-            bankroll{bankroll === null ? ' (not set, so not shown)' : ` of ${money(bankroll)}`}. N0 is (SD/EV)&sup2;; DI is 1000&middot;EV/SD per round played.
+            sits down at a fresh shoe once the {exitMinutes} min are up; "Rounds played" is the share of the rounds dealt that it played. *Risk of ruin is the diffusion approximation exp(&minus;2&middot;EV&middot;B/SD&sup2;) at your current
+            bankroll, starting plus logged sessions
+            {bankroll === null ? ' (not set, so not shown)' : bankroll > 0 ? ` (${money(bankroll)})` : ` (${money(bankroll)}: nothing left to risk, so not shown)`}. N0 is (SD/EV)&sup2;; DI is 1000&middot;EV/SD per round played.
           </p>
         </div>
       </section>
