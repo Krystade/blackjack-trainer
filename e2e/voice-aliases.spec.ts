@@ -207,3 +207,26 @@ test('refuses a phrase too long for the echo guard', async ({ page }) => {
   await expect(add).toBeDisabled();
   await expect.poll(() => storedAliases(page)).toEqual({});
 });
+
+/**
+ * D13: THE TYPED-WORD FIELD IS A STYLED, FULL-SIZE INPUT. It had no CSS rule:
+ * the browser's grey 23px box with 13.3px text (iOS zooms on focus below
+ * 16px), next to a 48px select and Add button.
+ */
+test('D13: the word field is 44px or taller with 16px text, in the theme', async ({ page }) => {
+  await openPanel(page);
+  const field = page.getByLabel('A word to listen for');
+  await expect(field).toBeVisible();
+  const got = await field.evaluate((el) => {
+    const cs = getComputedStyle(el);
+    const probe = document.createElement('div');
+    probe.style.borderColor = 'var(--line)';
+    document.body.appendChild(probe);
+    const line = getComputedStyle(probe).borderTopColor;
+    probe.remove();
+    return { h: el.getBoundingClientRect().height, px: parseFloat(cs.fontSize), border: cs.borderTopColor, line };
+  });
+  expect(got.h).toBeGreaterThanOrEqual(44);
+  expect(got.px).toBeGreaterThanOrEqual(16);
+  expect(got.border, 'the field wears the browser border, not the theme line').toBe(got.line);
+});

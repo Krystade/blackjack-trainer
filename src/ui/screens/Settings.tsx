@@ -25,6 +25,7 @@ import { AudioRouteSettings } from './AudioRouteSettings';
 import { TEST_AUDIO_LINE } from '../../audio/narrate';
 import { DEFAULT_CHIME_LEVEL, MAX_VOLUME, effectiveVolume } from '../../audio/volume';
 import './diagClearArmed.css';
+import './settingsInput.css';
 import {
   readVoiceHistory,
   clearVoiceHistory,

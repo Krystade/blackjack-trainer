@@ -1,0 +1,27 @@
+/* D13: Settings' "a word to listen for" field had no rule at all, so it was
+   the browser's default: 13.3px text, a grey inset border, 23px tall, beside
+   a styled 48px select and Add button. Matched to the app's other text field
+   (.scl-input), at the select's 48px; 16px text, the iOS no-zoom floor. */
+.settings-input {
+  -webkit-appearance: none;
+  appearance: none;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 48px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--bg-sunken);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--fs-md);
+}
+
+.settings-input::placeholder {
+  color: var(--ink-faint);
+}
+
+.settings-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
