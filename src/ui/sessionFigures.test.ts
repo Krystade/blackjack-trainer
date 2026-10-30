@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { lossPer100, formatLossPer100, formatLossValue, betMissText, sessionsBetMisses, sessionsLossPer100, sessionTag, sessionsPlayAccuracy } from './sessionFigures';
+import { lossPer100, formatLossPer100, formatSessionLoss, LOSS_RATE_HAND_FLOOR, formatLossValue, betMissText, sessionsBetMisses, sessionsLossPer100, sessionTag, sessionsPlayAccuracy } from './sessionFigures';
 
 const row = (extra: Record<string, unknown> = {}) => ({ date: '2026-10-17', rounds: 10, graded: 10, correct: 9, bankrollDelta: 0, ...extra });
 
@@ -60,5 +60,20 @@ describe('C-R9: a provisional row is tagged not ended', () => {
     expect(sessionTag(row({ provisional: true }))).toBe('not ended');
     expect(sessionTag(row({ provisional: true, hotShoe: true }))).toBe('Hot shoe · not ended');
     expect(sessionTag(row())).toBeNull();
+  });
+});
+
+describe('formatSessionLoss (D4)', () => {
+  it('leads with the raw total below the hand floor', () => {
+    expect(formatSessionLoss(0.15, 3)).toBe('−0.15 u lost to playing mistakes over 3 hands');
+    expect(formatSessionLoss(0.5, 1)).toBe('−0.50 u lost to playing mistakes over 1 hand');
+    expect(formatSessionLoss(0, 10)).toBe('0 u lost to playing mistakes over 10 hands');
+  });
+  it('gives the per-100 rate at and above the floor', () => {
+    expect(formatSessionLoss(1, LOSS_RATE_HAND_FLOOR)).toBe(formatLossPer100(lossPer100(1, LOSS_RATE_HAND_FLOOR)!));
+    expect(formatSessionLoss(1, 200)).toBe('−0.50 u lost to playing mistakes per 100 hands');
+  });
+  it('says nothing with no hands', () => {
+    expect(formatSessionLoss(0, 0)).toBeNull();
   });
 });

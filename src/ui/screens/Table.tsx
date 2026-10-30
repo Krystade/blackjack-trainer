@@ -21,7 +21,7 @@ import { countVerdictPart } from '../countVerdictPart';
 import { reportSections, countMissText, drillCellIds, playRowText, betRowText, unpricedNote } from '../reportSections';
 import { setDrillLaunch, setReviewDeck } from '../drillLaunch';
 import type { MistakeRow } from '../reportSections';
-import { lossPer100, formatLossPer100, betMissText } from '../sessionFigures';
+import { formatSessionLoss, betMissText } from '../sessionFigures';
 import { betMissCount } from '../sessionRow';
 import { SIDE_BIAS, sideResultText, sideWordIn, dollars } from '../sideBetFeedback';
 import { BET_SHORT } from '../../engine/sideBets/payTables';
@@ -308,7 +308,7 @@ function ReportScreen({
   const sections = reportSections(report.mistakes);
   const unpricedPlays = sections.plays.filter((r) => r.unitsTotal === null).reduce((n, r) => n + r.count, 0);
   const gradedCountCheck = report.categories.some((c) => c.category === 'countCheck' && c.right + c.wrong > 0);
-  const loss = lossPer100(report.mistakeUnits, report.hands);
+  const loss = formatSessionLoss(report.mistakeUnits, report.hands);
   // B2, R3: the figure prices play decisions; bet and sit misses are counted
   // beside it, so a session with only betting errors never reads as clean.
   const betMisses = betMissText(betMissCount(report.mistakes));
@@ -327,7 +327,7 @@ function ReportScreen({
       )}
       {(loss !== null || betMisses !== null) && (
         <p className="report-headline" data-units-total={report.mistakeUnits} data-hands={report.hands}>
-          {loss !== null && <span className="report-headline-loss">{formatLossPer100(loss)}</span>}
+          {loss !== null && <span className="report-headline-loss">{loss}</span>}
           {betMisses !== null && (
             <span className="report-headline-bets">
               {loss !== null && ' · '}

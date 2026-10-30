@@ -57,13 +57,16 @@ test('B6: plays and count checks are separate, plays sorted by cost, headline is
 
   const head = page.locator('.report-headline');
   // B2, R3 (deliberately changed): the figure says it prices PLAY mistakes.
-  await expect(head).toHaveText(/^(−\d+\.\d\d u|0 u|Under 0\.01 u) lost to playing mistakes per 100 hands$/);
+  // D4 (deliberately changed): a short session gives the total over its
+  // hands; the per-100 rate is only quoted from 50 hands up.
+  await expect(head).toHaveText(/^(−\d+\.\d\d u|0 u|Under 0\.01 u) lost to playing mistakes over \d+ hands?$/);
   const total = Number(await head.getAttribute('data-units-total'));
   const hands = Number(await head.getAttribute('data-hands'));
   expect(hands).toBeGreaterThanOrEqual(3);
   expect(total).toBeCloseTo(units.reduce((a, b) => a + b, 0), 3);
   const shown = Number((await head.locator('.report-headline-loss').innerText()).replace('−', '').split(' ')[0]);
-  if (!Number.isNaN(shown)) expect(shown).toBeCloseTo((total / hands) * 100, 2);
+  if (!Number.isNaN(shown)) expect(shown).toBeCloseTo(total, 2);
+  await expect(head.locator('.report-headline-loss')).toContainText(`over ${hands} hand`);
   await expect(page.locator('.report-screen')).not.toContainText(/per hour/i);
   await shot(page, 'b6-report');
 });
@@ -165,7 +168,7 @@ test('B2 R3/#15: bet and sit misses are counted beside the headline and listed i
   await endWithReport(page);
   await expect(page.locator('.report-screen')).toBeVisible();
   const head = page.locator('.report-headline');
-  await expect(head).toHaveText(/^(−\d+\.\d\d u|0 u|Under 0\.01 u) lost to playing mistakes per 100 hands · 1 bet decision off$/);
+  await expect(head).toHaveText(/^(−\d+\.\d\d u|0 u|Under 0\.01 u) lost to playing mistakes over \d+ hands? · 1 bet decision off$/);
   const rows = page.locator('.report-bets li');
   await expect(rows).toHaveText(['TC +0 · you stayed in · you leave at +0']);
   await expect(page.locator('.report-bets')).not.toContainText(/wong|sit-out|played play|tc \d/);

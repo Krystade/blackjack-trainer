@@ -26,6 +26,24 @@ export function formatLossPer100(loss: number): string {
   return `${lossAmount(loss)} u lost to playing mistakes per 100 hands`;
 }
 
+/**
+ * D4: below this many hands a per-100 rate is mostly noise (one -0.15 u miss
+ * over 3 hands reads as -5.11 per 100), so the report leads with the total.
+ * A UX choice, not a strategy number.
+ */
+export const LOSS_RATE_HAND_FLOOR = 50;
+
+/**
+ * The report headline from the raw figures: the per-100 rate at or above the
+ * floor, the plain total "over N hands" below it.
+ */
+export function formatSessionLoss(units: number, hands: number): string | null {
+  const rate = lossPer100(units, hands);
+  if (rate === null) return null;
+  if (hands >= LOSS_RATE_HAND_FLOOR) return formatLossPer100(rate);
+  return `${lossAmount(units)} u lost to playing mistakes over ${hands} ${hands === 1 ? 'hand' : 'hands'}`;
+}
+
 /** B2 #50: the Stats value under its "Lost to playing mistakes" label. */
 export function formatLossValue(loss: number): string {
   return `${lossAmount(loss)} u per 100 hands`;
