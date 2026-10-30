@@ -103,7 +103,7 @@ describe('isDue / isGapReview', () => {
   });
 
   it('isGapReview requires BOTH learned box AND elapsed interval', () => {
-    const learnedDue: SrCard = { box: LEARNED_BOX, dueAt: T0, lastSeenAt: T0 - DAY, lapses: 0, reviews: 2 };
+    const learnedDue: SrCard = { box: LEARNED_BOX, dueAt: T0, lastSeenAt: T0 - 3 * DAY, lapses: 0, reviews: 2 };
     expect(isGapReview(learnedDue, T0)).toBe(true); // learned + due
     expect(isGapReview(learnedDue, T0 - 1)).toBe(false); // learned but not yet due
 
@@ -112,6 +112,19 @@ describe('isDue / isGapReview', () => {
 
     const dueButNotLearned: SrCard = { box: 1, dueAt: T0, lastSeenAt: T0 - DAY, lapses: 0, reviews: 1 };
     expect(isGapReview(dueButNotLearned, T0)).toBe(false); // due but box 1 < LEARNED_BOX
+  });
+
+  // R9 (review of C3): an early correct review keeps dueAt but sets
+  // lastSeenAt to now, so the next review, though due, is minutes after the
+  // last: not a gap. It must also be at least half the box's interval.
+  it('a review soon after an early one is not a gap review (R9)', () => {
+    const c: SrCard = { box: 3, dueAt: T0 + DAY, lastSeenAt: T0 - 6 * DAY, lapses: 0, reviews: 4 };
+    const early = reviewCard(c, true, T0 + DAY - 60_000);
+    expect(early.dueAt).toBe(c.dueAt);
+    expect(isGapReview(early, T0 + DAY)).toBe(false);
+    const half = BOX_INTERVALS_MS[3] / 2;
+    expect(isGapReview({ ...early, lastSeenAt: T0 + DAY - half }, T0 + DAY)).toBe(true);
+    expect(isGapReview({ ...early, lastSeenAt: T0 + DAY - half + 1 }, T0 + DAY)).toBe(false);
   });
 });
 

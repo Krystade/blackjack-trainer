@@ -352,7 +352,14 @@ export function isDue(card: SrCard | undefined, now: number): boolean {
  */
 export function isGapReview(card: SrCard | undefined, now: number): boolean {
   if (!card) return false;
-  return card.box >= LEARNED_BOX && now >= card.dueAt;
+  // R9: and at least half the box's interval since it was last seen. An early
+  // correct review keeps dueAt (C3) but sets lastSeenAt, so "due" alone would
+  // record a review minutes after the last as a gap of minutes.
+  return (
+    card.box >= LEARNED_BOX &&
+    now >= card.dueAt &&
+    now - card.lastSeenAt >= (BOX_INTERVALS_MS[card.box] ?? 0) / 2
+  );
 }
 
 /**
