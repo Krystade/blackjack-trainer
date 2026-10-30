@@ -26,6 +26,7 @@ import {
 import type { SpeedTier } from '../../../drills/countSpeed';
 import { computeUnlockedTier, tierAbove, SPEED_TIER_ORDER } from '../../../drills/competenceGate';
 import { loadStats, saveStats, saveSettings } from '../../../store/persist';
+import { getActiveProfile } from '../../../store/profiles';
 import { PlayingCard } from '../../components/PlayingCard';
 import { cardJitter, jitterTransform } from '../../../drills/cardJitter';
 import { paceMultiplier } from '../../../drills/pacePressure';
@@ -1138,7 +1139,8 @@ export function CountDrillView({
       // the sign-traversal dimension, which would contaminate the speed-tier
       // grading the Timed Challenge feeds into R2's competence gate.
       const bias = timedChallenge ? 'none' : settings.drill.countBias;
-      const table = tableOn ? makeCountTable(tableRounds(settings.drill.countTableRounds), seed) : null;
+      // Wave X review: the table's hands are played, the dealer to this profile's rules.
+      const table = tableOn ? makeCountTable(tableRounds(settings.drill.countTableRounds), seed, getActiveProfile().rules) : null;
       const round = table
         ? { groups: table.groups, finalRc: table.finalRc }
         : makeCountDrill(settings.drill.countLengthCards, settings.drill.countGroup, seed, bias);

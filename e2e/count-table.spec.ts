@@ -33,11 +33,11 @@ test('a manual table run shows rounds like Play and records every card shown', a
     const dealer = await table.locator('.count-table-dealer .card').count();
     const seats = await table.locator('.bot-seat').count();
     expect(dealer).toBeGreaterThanOrEqual(2);
-    expect(dealer).toBeLessThanOrEqual(6);
     expect(seats).toBeGreaterThanOrEqual(1);
     expect(seats).toBeLessThanOrEqual(6);
+    // Played hands (Wave X review): two cards, or as many as the hand drew.
     for (const n of await table.locator('.bot-hand-cards').evaluateAll((els) => els.map((e) => e.children.length))) {
-      expect([2, 3]).toContain(n);
+      expect(n).toBeGreaterThanOrEqual(2);
     }
     shown += await table.locator('.card').count();
     await page.locator('.manual-tap-zone').click();
