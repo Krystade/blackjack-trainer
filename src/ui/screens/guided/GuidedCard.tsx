@@ -8,7 +8,7 @@ import { PRESETS, segmentDef, type GuidedPreset } from '../../../guided/plan';
 import { isResumable, resume, type GuidedSession } from '../../../guided/session';
 import { loadGuided } from '../../../guided/store';
 import { noteGuidedPriorModes, setGuidedLaunch } from '../../../guided/launch';
-import { GUIDED_INTRO, introLine } from '../../../guided/lines';
+import { GUIDED_INTRO, driveIntroLine, introLine } from '../../../guided/lines';
 import { setDrillLaunch } from '../../drillLaunch';
 import { isEyesFreeOn, setEyesFreeOn } from '../../eyesFreeSession';
 import { isVoiceOn, setVoiceOn } from '../../voiceSession';
@@ -62,7 +62,7 @@ export function GuidedCard({
     onNavigate('drills');
   };
 
-  const start = (drive: boolean) => launch(startGuided(preset, drive, loadStats(), activeProfile, Date.now()), introLine(preset));
+  const start = (drive: boolean) => launch(startGuided(preset, drive, loadStats(), activeProfile, Date.now()), drive ? driveIntroLine(preset) : introLine(preset));
 
   if (active) {
     const seg = active.plan[active.index]!;

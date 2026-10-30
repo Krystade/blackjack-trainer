@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { matchVoiceAction, resolveSpoken, setUserVoiceAliases, VOICE_PHRASES, SPOKEN_FORM } from '../audio/voiceRecognition';
 import { COUNT_BIAS_PHRASES, parseCountSpeech } from '../audio/voiceNumber';
 import { looksLikeSelfEcho } from '../audio/selfEcho';
-import { allGuidedSentences } from './lines';
+import { allGuidedSentences, GUIDED_COMMANDS_HINT } from './lines';
 import {
   COMMAND_PHRASES,
   RUNNING_PHRASES,
@@ -69,6 +69,14 @@ describe('matching', () => {
     for (const line of allGuidedSentences()) {
       for (const p of PHRASES) expect(looksLikeSelfEcho(p, line), `"${line}" contains "${p}"`).toBe(false);
     }
+  });
+
+  it('A9: the Drive hint names the commands but is not itself one, and its echo is not', () => {
+    const t = GUIDED_COMMANDS_HINT;
+    expect(matchGuidedCommand(t, [t], null, 'panel')).toBeNull();
+    expect(matchGuidedCommand(t, [t], null, 'running')).toBeNull();
+    // Heard straight after it, a fragment of it is its own voice.
+    expect(matchGuidedCommand('skip segment', ['skip segment'], t, 'running')).toBeNull();
   });
 
   it('every command is at most two words (the self-echo length contract)', () => {

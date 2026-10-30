@@ -46,6 +46,22 @@ export function introLine(preset: GuidedPreset): string {
   return `${GUIDED_INTRO} ${minutesSentence(preset)}`;
 }
 
+/**
+ * A9: the one line that names the commands, said once in the Drive tap.
+ *
+ * THE ONLY GUIDED LINE THAT CONTAINS A COMMAND, and deliberately kept out of
+ * allGuidedSentences (whose test forbids that). It is safe where it is said:
+ * in the tap, before any guided microphone opens, and the first transition
+ * line queues straight behind it, so the self-echo guard's "last said" has
+ * moved on before Jack would use a command. The echo of the whole sentence is
+ * not a command either: commands match the whole transcript only.
+ */
+export const GUIDED_COMMANDS_HINT = 'Say skip segment, pause session or end session any time.';
+
+export function driveIntroLine(preset: GuidedPreset): string {
+  return `${introLine(preset)} ${GUIDED_COMMANDS_HINT}`;
+}
+
 export function segmentSentence(def: SegmentDef, first: boolean): string {
   return `${first ? 'First' : 'Next'}: ${def.spoken}.`;
 }

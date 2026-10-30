@@ -251,7 +251,7 @@ test('Drive: spoken transitions, answers and commands by voice, an answer is nev
   const plan = await storedPlan(page);
   const warm = answers(plan[0]!);
   expect(await spoken(page)).toEqual(
-    expect.arrayContaining(['Guided session. Five minutes.', `First: warm-up. ${answersSentence(warm)}`]),
+    expect.arrayContaining(['Guided session. Five minutes. Say skip segment, pause session or end session any time.', `First: warm-up. ${answersSentence(warm)}`]),
   );
 
   // An answer by voice is counted.
@@ -555,8 +555,15 @@ test('Drive: the transition microphone listens long enough after its line for a 
     .poll(async () => {
       const raw = await readStoredDiagnostics(page);
       const rows = raw ? (JSON.parse(raw) as Array<{ event?: string; ms?: number; detail?: Record<string, unknown> }>) : [];
-      const ends = rows.filter((r) => r.event === 'deafen-until-now' && r.detail?.context === 'guided-intro' && (r.ms ?? 0) <= goneAt!);
-      return ends.length > 0 ? goneAt! - ends[ends.length - 1]!.ms! : null;
+      // The transition line's own end (its start plus the harness's estimate,
+      // which is when e2e reports it ended). Not the last deafen-until-now: the
+      // harness runs the tap's intro line alongside instead of queueing it, and
+      // since A9 that line (with the command hint) can outlast the window.
+      const line = rows.filter(
+        (r) => r.event === 'deafen' && r.detail?.context === 'guided-intro' && String(r.detail?.said ?? '').startsWith('First:'),
+      );
+      const end = line.length > 0 ? line[line.length - 1]!.ms! + Number(line[line.length - 1]!.detail!.ms) : null;
+      return end !== null && end <= goneAt! ? goneAt! - end : null;
     }, { timeout: 10_000 })
     .toBeGreaterThanOrEqual(2500);
 });

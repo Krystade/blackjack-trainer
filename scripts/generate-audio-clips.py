@@ -319,7 +319,9 @@ GUIDED_SPOKEN = ["warm-up", "speed", "running count", "true count", "deviations"
 def guided_sentences() -> list[str]:
     """Mirror of allGuidedSentences() in src/guided/lines.ts."""
     out = ["Guided session.", "Guided session done.", "Guided session ended.", "Paused.", "Skipped.",
-           "No answers this time."]
+           "No answers this time.",
+           # A9: GUIDED_COMMANDS_HINT (lines.ts), said once in the Drive tap.
+           "Say skip segment, pause session or end session any time."]
     for m in range(1, 31):
         out.append("One minute." if m == 1 else f"{capitalize(streak_number_word(m))} minutes.")
     for a in range(5, 101, 5):

@@ -67,7 +67,9 @@ import './guidedSession.css';
 /** Tap mode: how long the "Up next" card shows before the segment starts by itself. */
 export const TAP_TRANSITION_MS = 2500;
 /** Drive: the most a transition line may hold the segment (a line that never reports its end). */
-const DRIVE_TRANSITION_CAP_MS = 12_000;
+// A9: 16 s, not 12: the first line now queues behind the tap's intro plus the
+// command hint (about 4 s more), and the cap must not cut the listen beat.
+const DRIVE_TRANSITION_CAP_MS = 16_000;
 /**
  * Drive: after the transition line, the beat the transition's microphone
  * listens before the segment starts -- the only moment the bare "skip",
