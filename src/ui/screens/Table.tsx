@@ -86,6 +86,7 @@ import { isAppSpeaking } from '../../audio/speech';
 import { useEyesFreeToggle } from '../eyesFreeSession';
 import { loadStats } from '../../store/persist';
 import { trayMarksShown } from '../trayFade';
+import { useSitOutPacing } from '../useSitOutPacing';
 
 /** B5/W4: the row's card slots and fixed chrome, for cardSize.css's clamp. */
 function feltStyle(row: FeltRow): CSSProperties {
@@ -476,6 +477,8 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
     dealAnimating,
     skipDeal,
   } = useGame(settings, activeProfile, audio);
+  // Wave X: a round Out is dealt onto the felt card by card, as one in is.
+  const sitOutPace = useSitOutPacing(game, settings.dealSpeedMs);
   // Cycle-2 Task 8: one selected bet per player hand. `playerHandsCount`
   // comes from the PROFILE's seat config, not `game.hands.length` — the
   // latter still reflects the *previous* round's (possibly split-grown)
@@ -1141,9 +1144,14 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
   const botSeats = game.seats.filter((s) => s.kind === 'bot');
   const hasBots = botSeats.length > 0;
   const botLabels = botSeatLabels(game.seats);
-  const botNarrationLines = buildBotNarration(game, botNarrationRevealed);
-  const pacingPending = botNarrationRevealed < game.botActionLog.length;
-  const skipShown = (hasBots && pacingPending) || dealAnimating;
+  // Wave X: a round Out puts each bot's turn on the felt in the order it was
+  // played, one deal beat after the opening (useSitOutPacing). The voice is
+  // not held to it -- eyes-free hears each line at its own pace, as before --
+  // so the felt and its lines take whichever is behind.
+  const botTurnsOnFelt = Math.min(botNarrationRevealed, sitOutPace.botTurnsShown);
+  const botNarrationLines = buildBotNarration(game, botTurnsOnFelt);
+  const pacingPending = botTurnsOnFelt < game.botActionLog.length || sitOutPace.pending;
+  const skipShown = (hasBots && pacingPending) || sitOutPace.pending || dealAnimating;
   // Wave O (review B1): with the misses in the dock, Skip takes the peek's
   // slot while it shows (dealing, bots' turns) rather than a row of its own,
   // so the dock never grows over the band. The peek is back when Skip goes.
@@ -1166,7 +1174,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
    * stand or a surrender narrates without changing what is on the felt.
    */
   const revealedBotDraws = new Map<string, number>();
-  for (const entry of game.botActionLog.slice(0, botNarrationRevealed)) {
+  for (const entry of game.botActionLog.slice(0, botTurnsOnFelt)) {
     if (!entry.card) continue;
     const key = `${entry.seat}:${entry.handIndex}`;
     revealedBotDraws.set(key, (revealedBotDraws.get(key) ?? 0) + 1);
@@ -1197,6 +1205,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
   const skipEverything = () => {
     fastForwardNarration();
     skipDeal();
+    sitOutPace.finish();
   };
 
   return (
@@ -1289,11 +1298,12 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
       <DiscardTray cardsDealt={game.shoe.cardsDealt} decks={activeProfile.rules.decks} marks={trayMarks} />
 
       <div className="dealer-area" style={feltStyle(dealerFeltRow(game.dealerCards.length))}>
-        {game.dealerCards.map((c, i) => (
+        {/* Wave X: Out, the hole card stays down and the draws wait for their turn. */}
+        {game.dealerCards.slice(0, 2 + sitOutPace.dealerDrawsShown).map((c, i) => (
           <PlayingCard
             key={i}
             card={c}
-            faceDown={i === 1 && !game.holeRevealed}
+            faceDown={i === 1 && (!game.holeRevealed || !sitOutPace.holeShown)}
             dealIndex={
               i < 2 && dealAnimating
                 ? dealIndexOf(game.dealOrder, { kind: 'dealer', cardIndex: i as 0 | 1 })
@@ -1389,7 +1399,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
 
       <div
         className="message-strip"
-        onClick={hasBots || dealAnimating ? skipEverything : undefined}
+        onClick={hasBots || dealAnimating || sitOutPace.pending ? skipEverything : undefined}
       >
         {countVerdict && game.roundNo <= countVerdict.round && (
           <ResultStrip
