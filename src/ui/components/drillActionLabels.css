@@ -1,0 +1,16 @@
+/* D10: the drills' Hit/Stand/Double/Split/Surrender bar reads at a glance,
+   at the size Play's identical bar was raised to (tableGlance.css B5/W4):
+   13.5px at 375 instead of 10.9px. Only the drill screen's own answer bar
+   (the child combinator keeps the side-count bet buttons out); min-height is
+   left at 48px so the fit-without-scrolling budget is unchanged. Below 360px
+   wide the old floor holds, so "Surrender" stays whole at 320 rather than
+   becoming "Surren…" as it does at Play. */
+.drill-screen > .action-bar > .action-btn {
+  font-size: clamp(0.8125rem, 3.6vw, 1rem);
+}
+
+@media (max-width: 359px) {
+  .drill-screen > .action-bar > .action-btn {
+    font-size: clamp(0.65rem, 2.9vw, 0.85rem);
+  }
+}

@@ -2,6 +2,7 @@ import type { Action } from '../../engine/deviations';
 import './inOutToggle.css';
 import './sideBetChip.css';
 import './handsChoice.css';
+import './drillActionLabels.css';
 
 /** One bet-entry row per player hand. Length 1 (solo, the v1/parity case) or
  * playerHands (Cycle-2 Task 8 multi-hand bet entry). */

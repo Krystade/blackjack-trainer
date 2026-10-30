@@ -708,3 +708,30 @@ for (const size of [
     );
   });
 }
+
+/**
+ * D10: THE DRILL ANSWER LABELS ARE AS LEGIBLE AS PLAY'S. They were 10.9px at
+ * 375 while Play's identical bar was raised to 13.5px for glanceability.
+ * At 320 the old size stays, so "Surrender" is not cut to "Surren…".
+ */
+for (const width of [375, 320] as const) {
+  test(`D10: at ${width} the drill answer labels are ${width === 375 ? '13px or more' : 'whole'}`, async ({ page }) => {
+    await withSettings(page, { drill: { scopes: ['hard'], flashCategory: 'hard' } });
+    await page.setViewportSize({ width, height: width === 375 ? 812 : 568 });
+    await page.goto('/?e2e=1');
+    await page.getByRole('button', { name: 'Drills', exact: true }).click();
+    await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
+    const btns = page.locator('.drill-screen > .action-bar > .action-btn');
+    await expect(btns.first()).toBeVisible();
+    const got = await btns.evaluateAll((els) =>
+      els.map((b) => ({
+        text: b.textContent,
+        px: parseFloat(getComputedStyle(b).fontSize),
+        spill: b.scrollWidth > b.clientWidth + 1,
+      })),
+    );
+    expect(got.map((g) => g.text)).toContain('Surrender');
+    if (width === 375) for (const g of got) expect(g.px, `${g.text} label`).toBeGreaterThanOrEqual(13);
+    expect(got.filter((g) => g.spill).map((g) => g.text), 'a label is cut').toEqual([]);
+  });
+}
