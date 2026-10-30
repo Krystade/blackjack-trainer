@@ -201,6 +201,7 @@ describe('OWNED_KEYS', () => {
     // Wave W: which half of the You tab (Progress | Stats) opens next, read
     // on the tap. Another tab's choice would only change where the next tap lands.
     'bjtrainer.youView.v1': 'per-device view preference, read on the tab tap',
+    'bjtrainer.quarantineSeen.v1': 'per-device dismissal of the Stats set-aside notice; read when Stats renders',
     'bjtrainer.importUndo.v1': 'sessionStorage, not localStorage: the undo for an import in this tab only',
     'bjtrainer.lastBackup.v1': 'per-device date of the last backup handed over; read when Home or Stats renders',
     // Wave L (lane v): read-modify-written from storage at every segment and

@@ -717,6 +717,30 @@ test('unreadable saved stats are set aside with a notice, not silently', async (
   expect(await page.evaluate(() => localStorage.getItem('bjtrainer.stats.v1.corrupt'))).toBe('{"version":1,"sessions":[trunc');
 });
 
+test('R4: the set-aside notice can be dismissed, and comes back only for a new set-aside', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('bjtrainer.stats.v1.corrupt', '{"old one-slot quarantine"');
+  });
+  await page.goto('/?e2e=1');
+  await page.locator('.home-stats-link').click();
+  const note = page.getByTestId('stats-quarantine-note');
+  await expect(note).toBeVisible();
+  await note.getByRole('button', { name: 'Dismiss' }).click();
+  await expect(note).toHaveCount(0);
+  // Still dismissed after a reload: the same copy, already seen.
+  await page.reload();
+  await page.locator('.home-stats-link').click();
+  await expect(page.locator('.stats-tabs')).toBeVisible();
+  await expect(note).toHaveCount(0);
+  // The set-aside copy is still there, and still goes into a backup.
+  expect(await page.evaluate(() => localStorage.getItem('bjtrainer.stats.v1.corrupt'))).toBe('{"old one-slot quarantine"');
+  // A NEW unreadable copy brings the notice back.
+  await page.evaluate(() => localStorage.setItem('bjtrainer.progress.v1.corrupt', '{"another"'));
+  await page.reload();
+  await page.locator('.home-stats-link').click();
+  await expect(note).toContainText('streaks and achievements');
+});
+
 test('no notice when nothing was set aside', async ({ page }) => {
   await page.goto('/?e2e=1');
   await page.locator('.home-stats-link').click();

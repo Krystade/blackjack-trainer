@@ -77,6 +77,7 @@ import type { HandCategoryProgress } from './handProgress';
 import './statsGoal.css';
 import './statsHistory.css';
 import './statsSessions.css';
+import { dismissQuarantineNotice, quarantineNoticeDue } from '../../store/quarantineNotice';
 import './statsBackup.css';
 import './statsLatency.css';
 import './sessionTag.css';
@@ -560,6 +561,9 @@ export function Stats({ activeProfile, settings, onSettingsChange, onNavigate }:
   // B13: a quarantine used to be silent. Read on every render: cheap, and an
   // import or undo changes it.
   const setAside = quarantinedBackupLabels();
+  // R4: dismissable; back only when what is set aside changes.
+  const [, setNoticeDismissed] = useState(0);
+  const showSetAside = setAside.length > 0 && quarantineNoticeDue();
 
   // After an import or its undo: everything above re-reads the stores.
   const afterReplace = () => {
@@ -946,10 +950,20 @@ export function Stats({ activeProfile, settings, onSettingsChange, onNavigate }:
       {/* Wave W: Stats is half of the You tab now; the bar switches to Progress. */}
       <YouHeader current="stats" onNavigate={onNavigate} />
       <h1 className="u-sr-only">Stats</h1>
-      {setAside.length > 0 && (
+      {showSetAside && (
         <p className="stats-message stats-quarantine-note" role="status" data-testid="stats-quarantine-note">
           Saved {setAside.join(', ')} could not be read on this phone. The unreadable copy is kept aside and goes into
           every backup (Export backup, at the bottom), so nothing is lost. Export one before you reset anything.
+          <button
+            type="button"
+            className="stats-quarantine-dismiss"
+            onClick={() => {
+              dismissQuarantineNotice();
+              setNoticeDismissed((n) => n + 1);
+            }}
+          >
+            Dismiss
+          </button>
         </p>
       )}
 

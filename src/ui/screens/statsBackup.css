@@ -11,6 +11,21 @@
   line-height: 1.45;
 }
 
+/* R4: the notice's Dismiss, a quiet text button on its own line under it. */
+.stats-quarantine-dismiss {
+  display: block;
+  min-height: 44px;
+  padding: 0 0.5rem;
+  margin: 0.15rem 0 -0.6rem -0.5rem;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 /* B7: when the training data was last backed up, under the backup buttons. */
 .stats-last-backup {
   margin: 0;
