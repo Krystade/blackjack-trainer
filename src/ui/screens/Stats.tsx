@@ -26,7 +26,7 @@ import {
   quarantinedBackupLabels,
 } from '../../store/persist';
 import { backupDateText, lastBackupText, clearUndo, importConfirmText, readUndo, storeUndo, type ImportUndo } from './backupText';
-import { backupFileName, saveTextFile, type SaveResult } from '../saveFile';
+import { backupFileName, saveTextFile, type SaveResult } from '../../platform/saveFile';
 import { useTabSettings } from '../tabSettingsContext';
 import { lastBackupAt, markBackedUp } from '../../store/backupStatus';
 import {

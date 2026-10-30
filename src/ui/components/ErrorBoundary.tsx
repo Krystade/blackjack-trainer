@@ -1,7 +1,7 @@
 import { Component } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
 import { exportAll } from '../../store/persist';
-import { backupFileName, saveTextFile, type SaveResult } from '../saveFile';
+import { backupFileName, saveTextFile, type SaveResult } from '../../platform/saveFile';
 import { markBackedUp } from '../../store/backupStatus';
 import { casinoLogFileText, hasCasinoLog } from '../crashSalvage';
 import { exportFileName } from '../../store/casinoLog';

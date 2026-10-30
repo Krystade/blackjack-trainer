@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { formatDiagnosticLog, localClockOf, scopeSince, type DiagEntry } from './diagnosticLog';
-import { localRecordingStamp } from '../ui/saveFile';
+import { localRecordingStamp } from '../platform/saveFile';
 import testKitSource from '../ui/screens/TestKit.tsx?raw';
 
 /**

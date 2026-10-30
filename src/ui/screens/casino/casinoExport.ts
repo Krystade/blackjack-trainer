@@ -10,7 +10,7 @@ import {
   type NameChoice,
 } from '../../../store/casinoLog';
 import { diag } from '../../../diag/diagnosticLog';
-import { saveTextFile } from '../../saveFile';
+import { saveTextFile } from '../../../platform/saveFile';
 
 /**
  * The casino log's file round trip, shared by the backup nudge and the
@@ -24,7 +24,7 @@ export type ExportResult = 'shared' | 'downloaded' | 'cancelled';
  * Hand the export file over, and remember when -- but only once it really
  * was handed over (review S3).
  *
- * The hand-over itself is `ui/saveFile.ts`, shared with the training backup.
+ * The hand-over itself is `platform/saveFile.ts`, shared with the training backup.
  * Where the browser can share a file (iOS: the share sheet, with Save to
  * Files) that is the path, and the log counts as exported only when the share
  * completes: a dismissed sheet saved nothing, and marking it would hide the

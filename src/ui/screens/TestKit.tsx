@@ -51,7 +51,7 @@ import { endCaptureRoute } from '../../audio/audioRoute';
 import { ROUTE_ANSWERS, isRouteKitId, routeKitSummary, type RouteAnswer, type RouteStepResult } from '../../diag/routeKit';
 import { RouteSnapshotStep, RouteVoiceStep } from './RouteKitSteps';
 import { diag, formatDiagnosticLog, readDiagnosticLog, scopeSince } from '../../diag/diagnosticLog';
-import { localRecordingStamp } from '../saveFile';
+import { localRecordingStamp } from '../../platform/saveFile';
 import { listMicrophones, probeMicSpectrum, type MicProbeResult } from '../../diag/micSpectrum';
 import { FIELD_TEST_STEPS } from '../../diag/fieldTest';
 import { readFieldTestRun, subscribeFieldTestRun } from '../../diag/fieldTestRun';
