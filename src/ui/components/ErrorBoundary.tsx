@@ -3,28 +3,8 @@ import type { ErrorInfo, ReactNode } from 'react';
 import { exportAll } from '../../store/persist';
 import { backupFileName, saveTextFile, type SaveResult } from '../saveFile';
 import { markBackedUp } from '../../store/backupStatus';
-
-/**
- * Catches a render throw so it blanks one screen instead of the whole app.
- *
- * This matters more here than in a typical app because there is no backend:
- * everything the user has ever practised lives in this browser's
- * localStorage, and a white screen with no controls is indistinguishable
- * from having lost it.
- *
- * The design is shaped by an incident that actually happened. A `null`
- * history array made the stats screen throw; the app blanked; and the
- * "Reset Stats" control that would have fixed it lived on the very screen
- * that was crashing, so the user was stranded with no way back. Two rules
- * follow from that, and both are load-bearing:
- *
- *   1. The fallback renders NOTHING from the crashed tree and reads no app
- *      state, so it cannot fail for the same reason the tree did. It uses
- *      inline styles off the theme tokens rather than app CSS classes.
- *   2. Salvage comes before repair. Exporting a backup is offered first and
- *      needs no working UI; only after that does the destructive option
- *      appear, and it is never the only way out.
- */
+import { casinoLogFileText, hasCasinoLog } from '../crashSalvage';
+import { exportFileName } from '../../store/casinoLog';
 
 interface Props {
   children: ReactNode;
@@ -36,6 +16,8 @@ interface State {
   error: Error | null;
   /** What the last "Save a backup" press actually did; null before the first. */
   backup: SaveResult | null;
+  /** The same for "Save casino log" (B12). */
+  casino: SaveResult | null;
 }
 
 const BACKUP_SAID: Record<SaveResult, string> = {
@@ -46,7 +28,7 @@ const BACKUP_SAID: Record<SaveResult, string> = {
 };
 
 export class ErrorBoundary extends Component<Props, State> {
-  state: State = { error: null, backup: null };
+  state: State = { error: null, backup: null, casino: null };
 
   static getDerivedStateFromError(error: Error): Partial<State> {
     return { error };
@@ -78,17 +60,35 @@ export class ErrorBoundary extends Component<Props, State> {
     });
   };
 
+  // B12: the casino log is left out of the training backup on purpose, and
+  // its own export lives on the Casino tab -- the screen most likely to be
+  // the one that crashed. Real-money history gets its own way off the phone.
+  private handleCasinoBackup = (): void => {
+    const now = Date.now();
+    let text: string;
+    let name: string;
+    try {
+      text = casinoLogFileText(now);
+      name = exportFileName(now);
+    } catch (e) {
+      console.error('Casino log backup failed:', e);
+      this.setState({ casino: 'failed' });
+      return;
+    }
+    void saveTextFile(text, name).then((casino) => this.setState({ casino }));
+  };
+
   private handleReload = (): void => {
     window.location.reload();
   };
 
   private handleReset = (): void => {
-    this.setState({ error: null, backup: null });
+    this.setState({ error: null, backup: null, casino: null });
     this.props.onReset?.();
   };
 
   render(): ReactNode {
-    const { error, backup } = this.state;
+    const { error, backup, casino } = this.state;
     if (!error) return this.props.children;
 
     // Inline styles on purpose: app.css may itself be implicated, and this
@@ -139,6 +139,16 @@ export class ErrorBoundary extends Component<Props, State> {
         {backup !== null && (
           <p role="status" data-testid="crash-backup-status" style={{ margin: 0, maxWidth: '32ch' }}>
             {BACKUP_SAID[backup]}
+          </p>
+        )}
+        {hasCasinoLog() && (
+          <button type="button" style={button} onClick={this.handleCasinoBackup}>
+            Save casino log
+          </button>
+        )}
+        {casino !== null && (
+          <p role="status" data-testid="crash-casino-status" style={{ margin: 0, maxWidth: '32ch' }}>
+            {BACKUP_SAID[casino].replace('Backup', 'Casino log')}
           </p>
         )}
         <button type="button" style={button} onClick={this.handleReset}>

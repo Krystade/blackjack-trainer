@@ -99,3 +99,30 @@ test("the crash screen's backup downloads a non-empty file where there is no sha
   expect(JSON.parse(Buffer.concat(chunks).toString('utf8'))).toHaveProperty('stats');
   await expect(page.getByTestId('crash-backup-status')).toContainText('Backup downloaded');
 });
+
+test('the crash screen can save the casino log, which the training backup leaves out', async ({ page }) => {
+  // B12: the casino export lives on the Casino tab, the screen most likely to be the one that crashed.
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      'bjtrainer.casinoLog.v3',
+      JSON.stringify({ version: 3, casinos: [], sessions: [], settings: {}, lastExportAt: null, marker: 'real-money-history' }),
+    );
+  });
+  await page.goto('/?e2e=1&crash=1');
+  const buttons = await page.locator('.error-boundary button').allTextContents();
+  expect(buttons[0]).toBe('Save a backup');
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByRole('button', { name: 'Save casino log' }).click(),
+  ]);
+  expect(download.suggestedFilename()).toMatch(/^casino-log-\d{4}-\d{2}-\d{2}\.json$/);
+  const body = JSON.parse(Buffer.concat(await (await download.createReadStream()).toArray()).toString('utf8'));
+  expect(body.app).toBe('bjtrainer-casino-log');
+  await expect(page.getByTestId('crash-casino-status')).toContainText('Casino log downloaded');
+});
+
+test('no casino button when there is no casino log', async ({ page }) => {
+  await page.goto('/?e2e=1&crash=1');
+  await expect(page.getByRole('button', { name: 'Save a backup' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Save casino log' })).toHaveCount(0);
+});

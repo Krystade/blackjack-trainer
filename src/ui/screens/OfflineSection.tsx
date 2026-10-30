@@ -4,6 +4,7 @@ import { OFFLINE_CACHE, warmForFlight } from '../../offline/warmForFlight';
 import { clipsBaseUrl, loadClipIndex, loadVoiceManifest } from '../../audio/clips';
 import { diag } from '../../diag/diagnosticLog';
 import { onStoragePersistence, storagePersistence } from '../../store/backupStatus';
+import { persistenceText } from './backupText';
 
 /**
  * SAVE THE FLIGHT BEFORE THE DOOR CLOSES.
@@ -22,14 +23,6 @@ type Phase = 'unsupported' | 'idle' | 'saving' | 'done';
 
 function megabytes(bytes: number): string {
   return `${(bytes / 1_048_576).toFixed(1)} MB`;
-}
-
-/** B25: what navigator.storage.persist() answered, in words. */
-export function persistenceText(p: boolean | null | undefined): string {
-  if (p === true) return 'Protected from clearing';
-  if (p === false) return 'The phone may clear it: keep a backup';
-  if (p === null) return 'The browser cannot say: keep a backup';
-  return 'Checking…';
 }
 
 export function OfflineSection({ clipVoice }: { clipVoice: string }) {

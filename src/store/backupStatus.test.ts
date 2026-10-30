@@ -11,8 +11,7 @@ import {
   onStoragePersistence,
   storagePersistence,
 } from './backupStatus';
-import { lastBackupText } from '../ui/components/BackupNudge';
-import { persistenceText } from '../ui/screens/OfflineSection';
+import { lastBackupText, persistenceText } from '../ui/screens/backupText';
 import * as diagLog from '../diag/diagnosticLog';
 
 /** B7: the training data's backup reminder. B25: the persistence answer, kept. */

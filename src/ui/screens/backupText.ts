@@ -1,4 +1,5 @@
 import type { BackupSnapshot, BackupSummary } from '../../store/persist';
+import { agoText, daysBetween, localDateKey } from '../casinoFigures';
 
 /**
  * B4/B22: the words around a training-backup import. Pure, so the sentence
@@ -96,4 +97,18 @@ export function clearUndo(): void {
   } catch {
     /* nothing to clear */
   }
+}
+
+/** "Last backup 34 days ago" / "Never backed up", from the local calendar. */
+export function lastBackupText(last: string | null, now: number): string {
+  if (last === null) return 'Never backed up';
+  return `Last backup ${agoText(daysBetween(localDateKey(Date.parse(last)), localDateKey(now)))}`;
+}
+
+/** B25: what navigator.storage.persist() answered, in words. */
+export function persistenceText(p: boolean | null | undefined): string {
+  if (p === true) return 'Protected from clearing';
+  if (p === false) return 'The phone may clear it: keep a backup';
+  if (p === null) return 'The browser cannot say: keep a backup';
+  return 'Checking…';
 }

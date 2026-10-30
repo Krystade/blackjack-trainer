@@ -2,14 +2,8 @@ import { useState } from 'react';
 import { exportAll } from '../../store/persist';
 import { answersOnPhone, backupIsDue, lastBackupAt, markBackedUp } from '../../store/backupStatus';
 import { backupFileName, saveTextFile, type SaveResult } from '../saveFile';
-import { agoText, daysBetween, localDateKey } from '../casinoFigures';
+import { lastBackupText } from '../screens/backupText';
 import './backupNudge.css';
-
-/** "Last backup 34 days ago" / "Never backed up", from the local calendar. */
-export function lastBackupText(last: string | null, now: number): string {
-  if (last === null) return 'Never backed up';
-  return `Last backup ${agoText(daysBetween(localDateKey(Date.parse(last)), localDateKey(now)))}`;
-}
 
 /**
  * B7: the training data's backup reminder, the casino log's 30-day nudge
