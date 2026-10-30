@@ -45,14 +45,14 @@ export const PRIVATE_FIELDS: Readonly<Record<string, '*' | readonly string[]>> =
 export const PUBLIC_FIELDS: ReadonlySet<string> = new Set([
   'action', 'actions', 'agc', 'answer', 'answers', 'applied', 'appliedHold', 'at', 'audioContext', 'band', 'build',
   'builtAt', 'by', 'byStep', 'carId', 'cell', 'changed', 'check', 'chosenId', 'classes', 'classification', 'command',
-  'condition', 'conf', 'confs', 'context', 'contextState', 'deployed', 'deviceId', 'element', 'error', 'event',
+  'componentStack', 'condition', 'conf', 'confs', 'context', 'contextState', 'deployed', 'deviceId', 'element', 'error', 'event',
   'evidence', 'expected', 'file', 'files', 'for', 'form', 'from', 'got', 'granted', 'guess', 'hiddenAt',
   'hiddenSession', 'hold', 'holdMuted', 'holdReadyState', 'holdState', 'holders', 'how', 'ids', 'input', 'kept',
   'key', 'kind', 'kit', 'lang', 'mark', 'match', 'message', 'mic', 'mime', 'mode', 'motion', 'muted', 'name', 'names',
   'nominated', 'ns', 'onStepAt', 'oneWord', 'oneWordHeard', 'online', 'outcome', 'overall', 'path', 'permissionError', 'phase', 'plan',
   'planSource', 'pref', 'probe', 'read_as', 'readyState', 'reason', 'recognition', 'remaining', 'restart', 'round',
   'route', 'run', 'said', 'said-remainder', 'say', 'scope', 'screen', 'session', 'sinkId', 'skipped', 'source',
-  'stage', 'standalone', 'state', 'stateAtArrival', 'status', 'step', 'steps', 'strategy', 'strategySetting', 'tag', 'target',
+  'stack', 'stage', 'standalone', 'state', 'stateAtArrival', 'status', 'step', 'steps', 'strategy', 'strategySetting', 'tag', 'target',
   'text', 'to', 'trackSampleRate', 'twoWord', 'twoWordHeard', 'ua', 'url', 'useClips', 'verdict', 'via', 'visibility', 'voice',
   'voiceId', 'wanted', 'was', 'webaudio', 'wheelMode', 'when', 'which', 'why', 'word',
 ]);

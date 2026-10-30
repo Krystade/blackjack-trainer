@@ -419,7 +419,7 @@ export function windowErrorDetail(e: {
   lineno?: number;
   colno?: number;
   error?: unknown;
-}): Record<string, unknown> {
+}): { message?: string; source?: string; line?: number; col?: number; stack?: string } {
   return {
     message: e.message,
     source: e.filename,
@@ -429,7 +429,7 @@ export function windowErrorDetail(e: {
   };
 }
 
-export function rejectionDetail(reason: unknown): Record<string, unknown> {
+export function rejectionDetail(reason: unknown): { reason: string; stack?: string } {
   return {
     reason: String(reason),
     stack: reason instanceof Error ? reason.stack?.slice(0, STACK_CHARS) : undefined,
