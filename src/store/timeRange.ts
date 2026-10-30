@@ -50,8 +50,15 @@ export function rangeStart(range: TimeRange, now: number): number | null {
       // user mid-keystroke would silently get a bounded range they never
       // asked for. A date input always yields YYYY-MM-DD.
       if (!range.since || !/^\d{4}-\d{2}-\d{2}$/.test(range.since)) return null;
-      const t = Date.parse(range.since);
-      return Number.isNaN(t) ? null : t;
+      // B11/B18: LOCAL midnight. Date.parse reads a date-only string as UTC
+      // midnight, which in California is 17:00 the evening BEFORE -- so
+      // "Since 28 Oct" counted the 27th's drive home. Every other day in the
+      // app (streaks, practice days, the goal) is a local calendar day.
+      const [y, m, d] = range.since.split('-').map(Number) as [number, number, number];
+      const local = new Date(y, m - 1, d);
+      // An impossible day (2026-02-31) would roll into March silently.
+      if (local.getFullYear() !== y || local.getMonth() !== m - 1 || local.getDate() !== d) return null;
+      return local.getTime();
     }
   }
 }
@@ -71,6 +78,9 @@ export function filterByRange<T extends { date?: string }>(
   if (start === null) return [...entries];
   return entries.filter((e) => {
     if (!e.date) return false;
+    // A bare YYYY-MM-DD row names a local day already: compare days, not the
+    // UTC instant Date.parse would make of it.
+    if (range.id === 'since' && /^\d{4}-\d{2}-\d{2}$/.test(e.date)) return e.date >= range.since!;
     const t = Date.parse(e.date);
     return !Number.isNaN(t) && t >= start;
   });

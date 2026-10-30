@@ -16,7 +16,7 @@ describe('rangeStart', () => {
   });
 
   it('parses an explicit since date', () => {
-    expect(rangeStart({ id: 'since', since: '2026-08-01' }, NOW)).toBe(Date.parse('2026-08-01'));
+    expect(rangeStart({ id: 'since', since: '2026-08-01' }, NOW)).toBe(new Date(2026, 7, 1).getTime());
   });
 
   it('is unbounded for a half-typed since date, showing everything not nothing', () => {
