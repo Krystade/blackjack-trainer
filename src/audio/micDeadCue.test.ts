@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MIC_STOPPED_LINE, MIC_STUCK_ANNOUNCE_MS, MIC_TAP_TO_RESTART_LINE, createMicDeadWatch, isMicDead, micDeadLine } from './micDeadCue';
+import { MIC_DEAD_REANNOUNCE_MS, MIC_STOPPED_LINE, MIC_STUCK_ANNOUNCE_MS, MIC_TAP_TO_RESTART_LINE, createMicDeadWatch, isMicDead, micDeadLine } from './micDeadCue';
 import type { ListenState } from './voiceControl';
 
 function rig() {
@@ -15,6 +15,7 @@ function rig() {
       return h;
     },
     cancel: (h) => void timers.delete(h),
+    now: () => clock,
     currentState: () => state,
     announce: (s, why) => said.push([s, why]),
   });
@@ -81,15 +82,57 @@ describe('A5: a microphone that gives up says so', () => {
     expect(r.said).toEqual([['error', 'stuck']]);
   });
 
-  it('speaks once per session, however often it flaps', () => {
+  it('speaks once per death, however often it flaps without coming back', () => {
+    const r = rig();
+    r.to('error');
+    r.advance(MIC_STUCK_ANNOUNCE_MS);
+    for (let i = 0; i < 5; i++) {
+      r.to('restarting');
+      r.advance(MIC_STUCK_ANNOUNCE_MS);
+      r.to('error');
+      r.advance(MIC_DEAD_REANNOUNCE_MS);
+    }
+    expect(r.said).toHaveLength(1);
+  });
+
+  /*
+   * Review of A5: a false "stuck" alarm (two slow starts on a Bluetooth
+   * connect) used to latch, so the real death that followed was silent.
+   */
+  it('a false stuck alarm does not latch: a later real death is announced', () => {
+    const r = rig();
+    r.to('error');
+    r.advance(MIC_STUCK_ANNOUNCE_MS);
+    expect(r.said).toEqual([['error', 'stuck']]);
+    r.to('listening');
+    r.advance(MIC_DEAD_REANNOUNCE_MS);
+    r.to('denied');
+    expect(r.said).toEqual([['error', 'stuck'], ['denied', 'terminal']]);
+  });
+
+  it('announces a new death at most once every 30 s, deferring rather than dropping it', () => {
     const r = rig();
     r.to('error');
     r.advance(MIC_STUCK_ANNOUNCE_MS);
     r.to('listening');
-    r.to('error');
-    r.advance(MIC_STUCK_ANNOUNCE_MS);
+    r.advance(1000);
     r.to('denied');
+    expect(r.said, 'announced twice within 30 s').toHaveLength(1);
+    r.advance(MIC_DEAD_REANNOUNCE_MS - 1000 - 1);
     expect(r.said).toHaveLength(1);
+    r.advance(1);
+    expect(r.said).toEqual([['error', 'stuck'], ['denied', 'terminal']]);
+  });
+
+  it('drops a deferred announcement whose mic came back meanwhile', () => {
+    const r = rig();
+    r.to('denied');
+    r.to('listening');
+    r.advance(100);
+    r.to('denied');
+    r.to('listening');
+    r.advance(MIC_DEAD_REANNOUNCE_MS * 2);
+    expect(r.said).toEqual([['denied', 'terminal']]);
   });
 
   it('says nothing once voice is switched off', () => {
@@ -121,14 +164,15 @@ describe('A5: tap to restart', () => {
     expect(micDeadLine('unsupported')).toBe(MIC_STOPPED_LINE);
   });
 
-  it('announces again after a rearm (a tap that restarted it)', () => {
-    const said: string[] = [];
-    const w = createMicDeadWatch({ schedule: () => 1, cancel: () => {}, currentState: () => 'denied', announce: (s) => said.push(s) });
-    w.onState('denied');
-    w.onState('denied');
-    expect(said).toEqual(['denied']);
-    w.rearm();
-    w.onState('denied');
-    expect(said).toEqual(['denied', 'denied']);
+  it('announces again after a rearm (a tap that restarted it), within the 30 s limit', () => {
+    const r = rig();
+    r.to('denied');
+    r.to('denied');
+    expect(r.said).toEqual([['denied', 'terminal']]);
+    r.watch.rearm();
+    r.to('starting');
+    r.to('denied');
+    r.advance(MIC_DEAD_REANNOUNCE_MS);
+    expect(r.said).toEqual([['denied', 'terminal'], ['denied', 'terminal']]);
   });
 });

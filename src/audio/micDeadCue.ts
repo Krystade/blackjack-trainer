@@ -43,6 +43,14 @@ export function isMicDead(state: ListenState): boolean {
   return state === 'denied' || state === 'unsupported' || state === 'error';
 }
 
+/**
+ * Review of A5: the least time between two announcements. Each new death is
+ * announced (a false "stuck" alarm no longer silences the real one after
+ * it), but never more often than this; one that comes sooner is deferred
+ * to the end of the window and dropped if the mic came back meanwhile.
+ */
+export const MIC_DEAD_REANNOUNCE_MS = 30_000;
+
 export interface MicDeadWatch {
   onState: (state: ListenState) => void;
   /** A fresh attempt (the tap): the next give-up is announced again. */
@@ -53,20 +61,45 @@ export interface MicDeadWatch {
 export function createMicDeadWatch(deps: {
   schedule: (fn: () => void, ms: number) => number;
   cancel: (handle: number) => void;
+  now: () => number;
   currentState: () => ListenState;
   announce: (state: ListenState, why: 'terminal' | 'stuck') => void;
   stuckMs?: number;
+  reannounceMs?: number;
 }): MicDeadWatch {
+  /** This death has been announced; reset when the mic is live again. */
   let announced = false;
-  let timer: number | null = null;
-  const clear = (): void => {
-    if (timer !== null) deps.cancel(timer);
-    timer = null;
+  let lastAnnouncedAt = Number.NEGATIVE_INFINITY;
+  let stuckTimer: number | null = null;
+  let deferTimer: number | null = null;
+  const clearStuck = (): void => {
+    if (stuckTimer !== null) deps.cancel(stuckTimer);
+    stuckTimer = null;
   };
+  const clearDefer = (): void => {
+    if (deferTimer !== null) deps.cancel(deferTimer);
+    deferTimer = null;
+  };
+  const stillDead = (s: ListenState): 'terminal' | 'stuck' | null =>
+    s === 'denied' || s === 'unsupported' ? 'terminal' : s === 'error' || s === 'restarting' || s === 'starting' ? 'stuck' : null;
   const fire = (state: ListenState, why: 'terminal' | 'stuck'): void => {
     if (announced) return;
+    const wait = lastAnnouncedAt + (deps.reannounceMs ?? MIC_DEAD_REANNOUNCE_MS) - deps.now();
+    if (wait > 0) {
+      if (deferTimer === null) {
+        deferTimer = deps.schedule(() => {
+          deferTimer = null;
+          const now = deps.currentState();
+          const how = stillDead(now);
+          if (how) fire(now, how);
+        }, wait);
+      }
+      return;
+    }
     announced = true;
-    clear();
+    lastAnnouncedAt = deps.now();
+    clearStuck();
+    clearDefer();
     deps.announce(state, why);
   };
   return {
@@ -76,14 +109,17 @@ export function createMicDeadWatch(deps: {
         return;
       }
       if (state === 'listening' || state === 'off') {
-        clear();
+        // The episode is over: the next death is a new one (review of A5).
+        clearStuck();
+        clearDefer();
+        announced = false;
         return;
       }
       // 'error', 'restarting' and the 'starting' of a retry: the clock runs
       // from the first of them and only a live session stops it.
-      if ((state === 'error' || state === 'restarting') && timer === null && !announced) {
-        timer = deps.schedule(() => {
-          timer = null;
+      if ((state === 'error' || state === 'restarting') && stuckTimer === null && !announced) {
+        stuckTimer = deps.schedule(() => {
+          stuckTimer = null;
           const now = deps.currentState();
           if (now === 'listening' || now === 'off') return;
           fire(now, 'stuck');
@@ -91,9 +127,13 @@ export function createMicDeadWatch(deps: {
       }
     },
     rearm() {
-      clear();
+      clearStuck();
+      clearDefer();
       announced = false;
     },
-    dispose: clear,
+    dispose() {
+      clearStuck();
+      clearDefer();
+    },
   };
 }

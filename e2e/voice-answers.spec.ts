@@ -31,6 +31,17 @@ async function withFakeEngine(page: Page): Promise<void> {
 
       start(): void {
         this.aborted = false;
+        const w = window as unknown as { __holdStart?: boolean; __failStart?: boolean };
+        // A start that never confirms (a routine restart caught mid-way).
+        if (w.__holdStart) return;
+        // A start that fails: the controller backs off and retries.
+        if (w.__failStart) {
+          setTimeout(() => {
+            this.onerror?.({ error: 'network' });
+            this.onend?.();
+          }, 0);
+          return;
+        }
         setTimeout(() => {
           this.onstart?.();
           // Safari fires audiostart right after start; without it the app waits out AUDIOSTART_GRACE_MS.
@@ -224,6 +235,50 @@ test('a microphone that gives up says so out loud, once', async ({ page }) => {
   await page.waitForTimeout(500);
   const after = await page.evaluate((n) => ((window as unknown as { __speechLog?: string[] }).__speechLog ?? []).slice(n), spokenBefore);
   expect(after, 'the waking tap also answered the card').toEqual([]);
+});
+
+/**
+ * Review of A5: the tap-to-restart handler belongs to the dead mic, not to
+ * the session. A "stuck" mic that comes back by itself disarms it, so an
+ * answer tapped later, while a routine restart is under way, still answers.
+ */
+test('an answer tap during a routine restart, after a stuck mic recovered, is not swallowed', async ({ page }) => {
+  await page.addInitScript(() => {
+    (window as unknown as { __e2eMicStuckMs?: number }).__e2eMicStuckMs = 600;
+  });
+  await openFlashcardsWithVoice(page);
+  const LINE = 'The microphone has stopped listening. Tap the screen once to turn the microphone back on.';
+  // Stuck: every start fails and the controller keeps retrying.
+  await page.evaluate(() => {
+    const w = window as unknown as { __failStart?: boolean; __rec?: { onerror?: (e: { error: string }) => void; onend?: () => void } };
+    w.__failStart = true;
+    w.__rec?.onerror?.({ error: 'network' });
+    w.__rec?.onend?.();
+  });
+  await expect
+    .poll(() => page.evaluate((line) => ((window as unknown as { __speechLog?: string[] }).__speechLog ?? []).includes(line), LINE), { timeout: 10_000 })
+    .toBe(true);
+  // It comes back by itself, with no tap.
+  await page.evaluate(() => {
+    (window as unknown as { __failStart?: boolean }).__failStart = false;
+  });
+  await expect(page.locator('.voice-status')).toHaveAttribute('data-voice-state', 'listening', { timeout: 15_000 });
+
+  // A routine restart, caught before it confirms.
+  await page.evaluate(() => {
+    const w = window as unknown as { __holdStart?: boolean; __rec?: { onend?: () => void } };
+    w.__holdStart = true;
+    w.__rec?.onend?.();
+  });
+  await expect(page.locator('.voice-status')).not.toHaveAttribute('data-voice-state', 'listening');
+  const words = () =>
+    page.evaluate(() => ((window as unknown as { __speechLog?: string[] }).__speechLog ?? []).filter((t) => !t.startsWith('chime:')));
+  const before = (await words()).length;
+  await page.getByRole('button', { name: 'Stand', exact: true }).click();
+  // The answer is graded aloud; a swallowed tap says nothing (a restart only chimes).
+  await expect
+    .poll(async () => (await words()).length > before, { message: 'the answer tap was swallowed by the tap-to-restart handler' })
+    .toBe(true);
 });
 
 test('the whole vocabulary is on screen, so nothing has to be remembered', async ({ page }) => {

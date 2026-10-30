@@ -7,7 +7,7 @@ import {
   type SuppressedWhy,
   type VoiceController,
 } from '../audio/voiceControl';
-import { chime, isAppSpeaking, setSpeechActivityListener, speak } from '../audio/speech';
+import { chime, isAppSpeaking, isE2eAudioMode, setSpeechActivityListener, speak } from '../audio/speech';
 import { canRestartByTap, createMicDeadWatch, isMicDead, micDeadLine } from '../audio/micDeadCue';
 import { recordHeard } from '../audio/voiceHistory';
 import { looksLikeAnAttempt, type VoiceAction } from '../audio/voiceRecognition';
@@ -277,6 +277,9 @@ export function useVoiceControl({
     const deadWatch = createMicDeadWatch({
       schedule: (fn, ms) => window.setTimeout(fn, ms),
       cancel: (handle) => window.clearTimeout(handle),
+      now: () => Date.now(),
+      // e2e only: a spec cannot wait out ten real seconds of a stuck engine.
+      stuckMs: isE2eAudioMode() ? (window as { __e2eMicStuckMs?: number }).__e2eMicStuckMs : undefined,
       currentState: () => controllerRef.current?.state() ?? 'off',
       announce: (state, why) => {
         diag('mic', 'dead-cue', { state, why, context: contextRef.current });
@@ -291,6 +294,11 @@ export function useVoiceControl({
      * recogniser only inside a gesture, so the restart runs synchronously in
      * the click, and the click is consumed: a tap meant to wake the mic must
      * not also answer the card under the finger.
+     *
+     * Review of A5: armed only while the mic is actually dead. It disarms the
+     * moment the mic is listening again (onState below), and it consumes a
+     * tap only in 'denied' or 'error'. A tap during a 'starting' or
+     * 'restarting' still restarts inside the gesture but goes on to answer.
      */
     let tapRestart: ((e: Event) => void) | null = null;
     const disarmTapRestart = () => {
@@ -304,9 +312,12 @@ export function useVoiceControl({
         disarmTapRestart();
         const now = ctl?.state();
         if (!ctl || now === 'listening' || now === 'off') return;
-        e.preventDefault();
-        e.stopPropagation();
-        diag('mic', 'dead-tap-restart', { from: ctl.state(), context: contextRef.current });
+        const consume = now === 'denied' || now === 'error';
+        if (consume) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+        diag('mic', 'dead-tap-restart', { from: now, consumed: consume, context: contextRef.current });
         deadWatch.rearm();
         ctl.stop();
         ctl.start();
@@ -357,6 +368,8 @@ export function useVoiceControl({
       onState: (state) => {
         setStatus((prev) => ({ ...prev, state }));
         deadWatch.onState(state);
+        // Review of A5: the dead-mic tap handler goes as soon as the mic is back.
+        if (state === 'listening') disarmTapRestart();
         /**
          * THE MICROPHONE CLOSING TAKES THE STEERING WHEEL WITH IT, and
          * nothing used to put it back.
