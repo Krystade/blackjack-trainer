@@ -6,6 +6,7 @@ import {
   waitForMic,
   withProfile,
   withSettings,
+  shownHandRightPlay,
 } from './helpers';
 
 /**
@@ -597,4 +598,48 @@ test('Flashcards feedback says it in words: no raw cell id, no "Box n/5"', async
   expect(body).not.toMatch(/(hard|soft|pair)-\w+-v-\w+/);
   expect(body).not.toMatch(/Box \d\/5/);
   await expectInViewport(page, '.action-bar', 'the answer buttons');
+});
+
+/**
+ * D5: AT 320x568 A MISS IS READ, NOT HIDDEN. The strip renders below the
+ * newly dealt hand and the sticky answer bar covered all but its header, so
+ * "Right play" was never seen without a scroll. The strip now lifts itself
+ * out from under the bar.
+ */
+test('D5: at 320x568 the miss strip\'s right play clears the sticky answer bar', async ({ page }) => {
+  await withSettings(page, { drill: { scopes: ['hard'], flashCategory: 'hard' } });
+  await page.setViewportSize({ width: 320, height: 568 });
+  // An iPhone SE's status bar, as the installed app sees it.
+  await page.addInitScript(() => {
+    document.addEventListener('DOMContentLoaded', () => {
+      const s = document.createElement('style');
+      s.textContent = ':root{--safe-top:20px !important}';
+      document.head.appendChild(s);
+    });
+  });
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Flashcards');
+  const right = await shownHandRightPlay(page);
+  const wrong = right === 'Hit' ? 'Stand' : 'Hit';
+  await page.locator('.action-bar').getByRole('button', { name: wrong, exact: true }).click();
+  const expected = page.locator('[data-testid="result-strip"][data-tone="miss"]').getByTestId('hand-result-expected');
+  await expect(expected).toBeVisible();
+  // The case under test must still arise: laid out unscrolled, the line is
+  // under the bar. Otherwise this would pass with no reveal at all.
+  const natural = await page.evaluate(() => {
+    const e = document.querySelector('[data-testid="hand-result-expected"]')!.getBoundingClientRect();
+    const bar = document.querySelector('.drill-screen .action-bar')!.getBoundingClientRect();
+    return { bottom: e.bottom + window.scrollY, barTop: bar.top };
+  });
+  expect(natural.bottom, 'the miss strip fits without scrolling; this layout no longer tests D5').toBeGreaterThan(natural.barTop);
+  await expect
+    .poll(async () => {
+      const e = (await expected.boundingBox())!;
+      const bar = (await page.locator('.drill-screen .action-bar').boundingBox())!;
+      return e.y + e.height <= bar.y;
+    }, { message: '"Right play" is under the sticky answer bar' })
+    .toBe(true);
+  await page.screenshot({ path: 'e2e/screenshots/d5-miss-320.png' });
 });

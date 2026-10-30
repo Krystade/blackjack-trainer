@@ -1,4 +1,6 @@
+import { useEffect, useRef } from 'react';
 import { ResultStrip } from './ResultStrip';
+import { revealAboveBar } from '../revealAboveBar';
 import { plainCellLabel } from '../../drills/cellLabel';
 import { CLASS_COPY } from '../mistakeCopy';
 import {
@@ -39,6 +41,14 @@ export function HandResultStrip({
    *  i.e. until the next answer, and never in Play's test mode. */
   onWrongTap?: () => void;
 }) {
+  // D5: a miss is the strip that must be read; lift it out from under the
+  // sticky answer bar on a short phone.
+  const missRef = useRef<HTMLDivElement>(null);
+  const isMiss = !result.undone && !result.correct;
+  useEffect(() => {
+    if (isMiss) revealAboveBar(missRef.current);
+  }, [isMiss, result.id]);
+
   if (result.undone) {
     return (
       <ResultStrip id={result.id} tone="ok">
@@ -87,7 +97,7 @@ export function HandResultStrip({
 
   return (
     <ResultStrip id={result.id} tone="miss">
-      <div className="hand-result" data-cell-id={result.cellId} data-result-id={result.id}>
+      <div ref={missRef} className="hand-result" data-cell-id={result.cellId} data-result-id={result.id}>
         <div className="hand-result-head">
           {/* `result-wrong` is the app-wide hook for a graded miss. */}
           <span className="hand-result-verdict result-wrong">{isTimeout(result) ? 'Too slow' : 'Wrong'}</span>
