@@ -119,6 +119,17 @@ function CrashOnDemand(): never {
   throw new Error('Deliberate crash for the error-boundary harness (?crash=1)');
 }
 
+declare global {
+  interface Window {
+    /**
+     * D1b, e2e only (`?e2e=1`): throw from inside the screen that is up, while
+     * it is still mounted -- an eyes-free drill mid-run, say -- rather than
+     * from a page that crashes on load as `?crash=1` does.
+     */
+    __bjCrashScreen?: () => void;
+  }
+}
+
 function App() {
   /**
    * A reload mid-protocol comes back to the protocol, not to Home.
@@ -380,6 +391,14 @@ function App() {
   const crashRequested =
     typeof window !== 'undefined' &&
     new URLSearchParams(window.location.search).has('crash');
+  const [crashNow, setCrashNow] = useState(false);
+  useEffect(() => {
+    if (typeof window === 'undefined' || !new URLSearchParams(window.location.search).has('e2e')) return;
+    window.__bjCrashScreen = () => setCrashNow(true);
+    return () => {
+      delete window.__bjCrashScreen;
+    };
+  }, []);
 
   const tableKey = `${tableEpoch}:${activeProfile.id}:${JSON.stringify(activeProfile)}`;
   const body = (() => {
@@ -489,9 +508,16 @@ function App() {
           even inside a transition.) The fallback only shows at launch onto a
           lazy screen. */}
       <Suspense fallback={null}>
-        <ErrorBoundary key={screen} onReset={() => navigate('home')}>
+        <ErrorBoundary
+          key={screen}
+          onReset={() => {
+            setCrashNow(false);
+            navigate('home');
+          }}
+        >
           <TabSettingsContext.Provider value={tabSettings}>
             {crashRequested ? <CrashOnDemand /> : body}
+            {crashNow && <CrashOnDemand />}
           </TabSettingsContext.Provider>
         </ErrorBoundary>
       </Suspense>

@@ -63,6 +63,7 @@ import { hiLoTag } from '../src/engine/count';
 import { VARIANT_OPENERS, narrateVariantCorrection, narrateVariantTotal } from '../src/audio/narrateVariant';
 import { SPEED_QUESTION } from '../src/drills/speedDrill';
 import { COUNT_AGAIN_PREFIX, COUNT_PAUSED_LINE, COUNT_RESUMING_LINE } from '../src/drills/countPause';
+import { CRASH_LINE } from '../src/ui/crashLineText';
 import { sideBetSentences } from '../src/ui/sideBetFeedback';
 import {
   BET_UNIT_WORDS_MAX,
@@ -329,6 +330,8 @@ export function drillSentences(): string[] {
   // Review of A12: the unheard-card hold's probe, and a replayed card's marker.
   add(COUNT_RESUMING_LINE);
   add(COUNT_AGAIN_PREFIX);
+  // D1b: an eyes-free screen that crashed says so, and how to get out.
+  add(CRASH_LINE);
   // The Test kit's word step: its intro, order and spoken retry.
   add(CALIBRATION_INTRO);
   add(calibrationOrderLine());

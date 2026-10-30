@@ -1,5 +1,5 @@
-import { test, expect } from '@playwright/test';
-import { readStoredDiagnostics } from './helpers';
+import { test, expect, type Page } from '@playwright/test';
+import { readStoredDiagnostics, withSettings, withProfile, openCountOptions } from './helpers';
 
 /**
  * The app has no backend: everything the user has practised lives in this
@@ -149,4 +149,76 @@ test('a caught render throw is written to the diagnostic log', async ({ page }) 
   expect(crash!.detail?.kind).toBe('caught');
   expect(String(crash!.detail?.message)).toContain('Deliberate crash');
   expect(String(crash!.detail?.componentStack)).toContain('CrashOnDemand');
+});
+
+/**
+ * D1b: AN EYES-FREE SCREEN THAT CRASHES SAYS SO. The drill's cleanups stop
+ * speech on the way out and the fallback is silent, so eyes-free -- nobody
+ * looking -- a crash read exactly like the app going quiet. The boundary now
+ * speaks one recorded line, and the whole fallback is the tap target that
+ * line promises. The throw comes from inside a RUNNING eyes-free count drill
+ * (window.__bjCrashScreen, an e2e-only seam in App.tsx).
+ */
+const CRASH_LINE = 'Something went wrong. Tap the screen to get back to Home.';
+
+async function startCountDrill(page: Page, eyesFree: boolean): Promise<void> {
+  await withProfile(page);
+  await withSettings(page, {
+    audio: { enabled: true, verbosity: 'full' },
+    drill: { countLengthCards: 52, countIntervalMs: 800, countGroup: 1, countManual: false },
+  });
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Count drill', exact: true }).click();
+  await openCountOptions(page);
+  if (eyesFree) await page.locator('label', { hasText: 'Eyes-free audio' }).locator('input').check();
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+  // Precondition: the run is under way -- cards are being spoken.
+  await expect.poll(() => page.evaluate(() => (window.__speechLog ?? []).length)).toBeGreaterThan(1);
+}
+
+async function crashLines(page: Page) {
+  return page.evaluate((line) => (window.__speechOptsLog ?? []).filter((s) => s.text === line), CRASH_LINE);
+}
+
+test('D1b: an eyes-free drill that crashes says so once, and a tap anywhere goes Home', async ({ page }) => {
+  await startCountDrill(page, true);
+  await page.evaluate(() => window.__bjCrashScreen!());
+
+  const boundary = page.locator('.error-boundary');
+  await expect(boundary).toBeVisible();
+  await expect.poll(() => crashLines(page)).toHaveLength(1);
+  expect((await crashLines(page))[0].interrupt, 'the line queued behind the drill').toBe(true);
+  // Once: nothing else asks for it again.
+  await page.waitForTimeout(500);
+  expect(await crashLines(page)).toHaveLength(1);
+
+  // "Tap the screen": a blank spot of the fallback, not one of its buttons.
+  const box = (await boundary.boundingBox())!;
+  await page.mouse.click(box.x + box.width / 2, box.y + 8);
+  await expect(boundary).toHaveCount(0);
+  await expect(page.locator('.home-title')).toBeVisible();
+});
+
+test('D1b: a crash with eyes-free off stays silent, and the fallback is not a tap target', async ({ page }) => {
+  await startCountDrill(page, false);
+  await page.evaluate(() => window.__bjCrashScreen!());
+
+  const boundary = page.locator('.error-boundary');
+  await expect(boundary).toBeVisible();
+  await page.waitForTimeout(500);
+  expect(await crashLines(page)).toHaveLength(0);
+  const box = (await boundary.boundingBox())!;
+  await page.mouse.click(box.x + box.width / 2, box.y + 8);
+  await expect(boundary).toBeVisible();
+});
+
+test('D1b: the controls still do their own thing after an eyes-free crash', async ({ page }) => {
+  await startCountDrill(page, true);
+  await page.evaluate(() => window.__bjCrashScreen!());
+  await expect(page.locator('.error-boundary')).toBeVisible();
+  // Opening the details is not a tap "on the screen".
+  await page.locator('.error-boundary summary').click();
+  await expect(page.locator('.error-boundary')).toBeVisible();
+  await expect(page.locator('.error-boundary pre')).toContainText('Deliberate crash');
 });

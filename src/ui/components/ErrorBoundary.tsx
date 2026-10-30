@@ -5,6 +5,7 @@ import { backupFileName, saveTextFile, type SaveResult } from '../../platform/sa
 import { noteBackupHandedOver } from '../../store/backupStatus';
 import { casinoLogFileText, hasCasinoLog } from '../crashSalvage';
 import { exportFileName } from '../../store/casinoLog';
+import { crashLineWanted, sayCrashLine } from '../crashLine';
 
 interface Props {
   children: ReactNode;
@@ -14,6 +15,11 @@ interface Props {
 
 interface State {
   error: Error | null;
+  /**
+   * D1b: the crash happened eyes-free (or on Drive), so the line was spoken
+   * and the whole fallback is a tap target back to Home, as the line says.
+   */
+  heard: boolean;
   /** What the last "Save a backup" press actually did; null before the first. */
   backup: SaveResult | null;
   /** The same for "Save casino log" (B12). */
@@ -49,16 +55,18 @@ const BACKUP_SAID: Record<SaveResult, string> = {
  *      appear, and it is never the only way out.
  */
 export class ErrorBoundary extends Component<Props, State> {
-  state: State = { error: null, backup: null, casino: null };
+  state: State = { error: null, backup: null, casino: null, heard: false };
 
   static getDerivedStateFromError(error: Error): Partial<State> {
-    return { error };
+    return { error, heard: crashLineWanted() };
   }
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
     // Nothing ships errors anywhere, so the console is the only record the
     // user can hand back when reporting a problem.
     console.error('Blackjack Trainer crashed:', error, info.componentStack);
+    // D1b: once per crash, and only when nobody is looking at the screen.
+    if (crashLineWanted()) sayCrashLine();
   }
 
   // B1/B3/B10: the shared share-or-download helper (the iOS share sheet first,
@@ -104,12 +112,19 @@ export class ErrorBoundary extends Component<Props, State> {
   };
 
   private handleReset = (): void => {
-    this.setState({ error: null, backup: null, casino: null });
+    this.setState({ error: null, backup: null, casino: null, heard: false });
     this.props.onReset?.();
   };
 
+  /** D1b: "Tap the screen to get back to Home" -- anywhere but a control. */
+  private handleTapAnywhere = (e: React.MouseEvent<HTMLDivElement>): void => {
+    const target = e.target as Element | null;
+    if (target?.closest?.('button, a, summary, details, input')) return;
+    this.handleReset();
+  };
+
   render(): ReactNode {
-    const { error, backup, casino } = this.state;
+    const { error, backup, casino, heard } = this.state;
     if (!error) return this.props.children;
 
     // Inline styles on purpose: app.css may itself be implicated, and this
@@ -147,7 +162,13 @@ export class ErrorBoundary extends Component<Props, State> {
     };
 
     return (
-      <div style={panel} role="alert" className="error-boundary">
+      <div
+        style={heard ? { ...panel, cursor: 'pointer' } : panel}
+        role="alert"
+        className="error-boundary"
+        data-heard={heard ? 'true' : undefined}
+        onClick={heard ? this.handleTapAnywhere : undefined}
+      >
         <h1 style={{ margin: 0, fontSize: 'var(--fs-2xl, 1.4375rem)' }}>Something broke on this screen.</h1>
         <p style={{ margin: 0, maxWidth: '32ch', color: 'var(--ink-dim, #b7d3c2)' }}>
           Your profiles, stats and drill history are still saved on this device. Save a
