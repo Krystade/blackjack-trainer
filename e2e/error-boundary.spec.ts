@@ -222,3 +222,15 @@ test('D1b: the controls still do their own thing after an eyes-free crash', asyn
   await expect(page.locator('.error-boundary')).toBeVisible();
   await expect(page.locator('.error-boundary pre')).toContainText('Deliberate crash');
 });
+
+/** Review R5: the crash hook is installed under exactly the speech harness's check, `e2e=1`. */
+test('D1b: the crash hook is absent without e2e=1', async ({ page }) => {
+  for (const url of ['/?e2e=0', '/?e2e', '/']) {
+    await page.goto(url);
+    await expect(page.locator('.home-title')).toBeVisible();
+    expect(await page.evaluate(() => typeof window.__bjCrashScreen), url).toBe('undefined');
+  }
+  await page.goto('/?e2e=1');
+  await expect(page.locator('.home-title')).toBeVisible();
+  expect(await page.evaluate(() => typeof window.__bjCrashScreen)).toBe('function');
+});

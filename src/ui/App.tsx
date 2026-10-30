@@ -29,7 +29,7 @@ import { diag } from '../diag/diagnosticLog';
 import { invokeWheelCommand, type WheelCommand } from '../audio/wheelCommands';
 import { releaseAudioFocus } from '../audio/audioFocus';
 import { installAudioUnlock } from '../audio/unlock';
-import { setChimeLevels } from '../audio/speech';
+import { isE2eAudioMode, setChimeLevels } from '../audio/speech';
 import { effectiveVolume } from '../audio/volume';
 import { installAudioContextKeepAlive } from '../audio/audioContext';
 import { setRoutePreferences } from '../audio/audioRoute';
@@ -393,7 +393,8 @@ function App() {
     new URLSearchParams(window.location.search).has('crash');
   const [crashNow, setCrashNow] = useState(false);
   useEffect(() => {
-    if (typeof window === 'undefined' || !new URLSearchParams(window.location.search).has('e2e')) return;
+    // Review R5: the speech harness's own check, so the two can never disagree.
+    if (!isE2eAudioMode()) return;
     window.__bjCrashScreen = () => setCrashNow(true);
     return () => {
       delete window.__bjCrashScreen;
