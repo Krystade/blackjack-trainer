@@ -112,8 +112,9 @@ describe('#11: surrender on soft hands and pairs', () => {
     expect(at(6, true)).toEqual([]);
     // F18: with surrender indices on, 7,7 v 10 is a 14 v 10 wherever the pair
     // cell does not split, so the Fab 4's 14 v 10 surrender can be the answer.
-    expect(at(2, false, false, true)).toEqual(['7,7 v 10', '8,8 v A']);
-    expect(at(2, false, true, true)).toEqual(['7,7 v 10']);
+    // C1: the Fab 4 are six-deck values, so double deck keeps its chart cells.
+    expect(at(2, false, false, true)).toEqual(['8,8 v A']);
+    expect(at(2, false, true, true)).toEqual([]);
     expect(at(6, false, true, true)).toEqual(['7,7 v 10', '8,8 v A']);
     expect(at(6, true, true, true)).toEqual(['7,7 v 10']);
     expect(offered({ ...DEFAULT_RULES, ls: false })).toEqual([]);

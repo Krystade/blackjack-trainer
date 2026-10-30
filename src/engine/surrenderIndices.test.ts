@@ -190,7 +190,7 @@ describe('the rest of the engine still gets its say', () => {
 // day a surrender index lands on an `Rs` cell, the fall-through starts mattering
 // (it must resolve to STAND, not hit) and this test fires to say so.
 describe('the invariant that makes the fall-through unobservable still holds', () => {
-  for (const decks of [1, 2, 6] as const) {
+  for (const decks of [6, 8] as const) {
     for (const s17 of [false, true]) {
       const rules: StrategyRules = { ...DEFAULT_RULES, decks, s17, surrenderIndices: true };
       const label = `${decks}D ${s17 ? 'S17' : 'H17'}`;
@@ -199,11 +199,62 @@ describe('the invariant that makes the fall-through unobservable still holds', (
         const indexed = indexSetFor(rules).filter((d) => d.kind === 'surrender');
         expect(indexed.length).toBeGreaterThan(0); // vacuity guard
         for (const dev of indexed) {
-          expect(chart.HARD[dev.total!]?.[upIndex(dev.up!)]).not.toBe('Rs');
+          const idx = upIndex(dev.up!);
+          expect(chart.HARD[dev.total!]?.[idx]).not.toBe('Rs');
+          // C1: a pair that does not split plays as its hard total
+          // (pairTotalIndex), so 7,7 v 10 is a 14 v 10 cell too.
+          const half = dev.total! / 2;
+          const pairRank = half === 10 ? '10' : String(half);
+          const pairCell = (chart.PAIRS as Record<string, string[] | undefined>)[pairRank]?.[idx];
+          expect(pairCell).not.toBe('Rs');
         }
       });
     }
   }
+});
+
+// C1 (audit 2026-10-29): the Fab 4 are six-deck values. The 1D/2D basic
+// charts disagree with them at TC 0, so below four decks the set is absent and
+// the surrender cells play the deck-class chart.
+describe('single and double deck surrender by their own basic chart', () => {
+  for (const decks of [1, 2] as const) {
+    for (const s17 of [false, true]) {
+      it(`${decks}D ${s17 ? 'S17' : 'H17'}: no surrender index even with the flag on`, () => {
+        const rules: StrategyRules = { ...DEFAULT_RULES, decks, s17, surrenderIndices: true };
+        expect(indexSetFor(rules).filter((d) => d.kind === 'surrender')).toEqual([]);
+      });
+    }
+  }
+
+  it('1D H17 and S17 hit 15 v 10 at TC 0 (the chart cell is H)', () => {
+    for (const s17 of [false, true]) {
+      const rules: StrategyRules = { ...DEFAULT_RULES, decks: 1, s17, surrenderIndices: true };
+      expect(act(15, '10', 0, rules)).toBe('hit');
+      expect(act(15, '10', 3, rules)).toBe('hit');
+    }
+  });
+
+  it('1D and 2D H17 hit 16 v 9 at TC 0', () => {
+    for (const decks of [1, 2] as const) {
+      const rules: StrategyRules = { ...DEFAULT_RULES, decks, surrenderIndices: true };
+      expect(act(16, '9', 0, rules)).toBe('hit');
+    }
+  });
+
+  it('1D surrenders 7,7 v 10 at every count, as its chart prints Rs', () => {
+    const rules: StrategyRules = { ...DEFAULT_RULES, decks: 1, surrenderIndices: true };
+    const sevens: Card[] = [{ rank: '7', suit: 's' }, { rank: '7', suit: 'h' }];
+    for (const tc of [-3, 0, 2]) {
+      expect(correctPlay(sevens, '10', tc, CAN, rules).action).toBe('surrender');
+    }
+  });
+
+  it('6 and 8 decks still carry the set', () => {
+    for (const decks of [6, 8] as const) {
+      const rules: StrategyRules = { ...DEFAULT_RULES, decks, surrenderIndices: true };
+      expect(indexSetFor(rules).filter((d) => d.kind === 'surrender')).toHaveLength(6);
+    }
+  });
 });
 
 describe('the advice is attributed to the index, not to basic strategy', () => {

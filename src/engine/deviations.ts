@@ -158,7 +158,7 @@ export function indexSetFor(rules: {
   bjaExtras?: boolean;
 }): Deviation[] {
   const base = rules.s17 ? ILLUSTRIOUS_18_S17 : ILLUSTRIOUS_18;
-  const withSurrender = rules.surrenderIndices
+  const withSurrender = rules.surrenderIndices && rules.decks >= FAB_4_MIN_DECKS
     ? [...base, ...(rules.s17 ? FAB_4_S17 : FAB_4_H17)]
     : base;
   const withExtras = rules.bjaExtras && !rules.s17
@@ -172,6 +172,17 @@ export function indexSetFor(rules: {
       : dev,
   );
 }
+
+/**
+ * C1 (audit 2026-10-29): the Fab 4 are SHOE values -- Wizard of Odds and
+ * CountingEdge publish them for six decks, and the BJA H17 chart is a shoe
+ * chart. The app's single- and double-deck basic charts (transcribed from the
+ * Wizard of Odds 1D/2D charts) disagree with them at TC 0: 1D plays 15 v 10 and
+ * 16 v 9 as hits and 7,7 v 10 as Rs, 2D H17 hits 16 v 9. So below four decks the
+ * set is absent rather than invented, the policy already used for the S17
+ * 16 v 8 / 16 v 9 cells: those tables surrender by their own basic chart.
+ */
+export const FAB_4_MIN_DECKS = 4;
 
 /**
  * Every surrender index in the app, and the ONLY place a surrender threshold is

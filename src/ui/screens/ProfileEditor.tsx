@@ -22,6 +22,7 @@ import {
 import { parseCvcxRamp } from '../../store/cvcxParse';
 import { Segmented, Stepper } from './Settings';
 import type { TcRounding } from '../../engine/count';
+import { FAB_4_MIN_DECKS } from '../../engine/deviations';
 import {
   BackCountControl,
   CountCheckControls,
@@ -556,12 +557,17 @@ function ProfileEditForm({
               control would be a lie. */}
           <Toggle
             label="Surrender indices (Fab 4)"
-            checked={draft.surrenderIndices === true && draft.rules.ls}
-            disabled={!draft.rules.ls}
+            checked={draft.surrenderIndices === true && draft.rules.ls && draft.rules.decks >= FAB_4_MIN_DECKS}
+            disabled={!draft.rules.ls || draft.rules.decks < FAB_4_MIN_DECKS}
             onChange={(v) => update({ surrenderIndices: v })}
           />
           <p className="stats-detail">
-            {draft.rules.ls ? (
+            {draft.rules.ls && draft.rules.decks < FAB_4_MIN_DECKS ? (
+              <>
+                These are six-deck indices. Single and double deck surrender by their own basic
+                strategy chart instead.
+              </>
+            ) : draft.rules.ls ? (
               <>
                 Surrender by the true count instead of always following basic strategy. It works
                 both ways: you surrender 16 v 8 at +4 where basic strategy hits, and stop
