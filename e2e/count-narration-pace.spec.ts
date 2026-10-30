@@ -56,19 +56,38 @@ test('a visual run at Full verbosity interrupts with each card and with the prom
   expect(lines[promptAt].interrupt, 'the prompt queued behind the cards').toBe(true);
 });
 
-test('at the default verbosity the visual run still says nothing per card', async ({ page }) => {
-  // The fix must not start narrating cards for a user on 'results'.
+test('the interrupting card lines are Full-only: silent at the default, interrupting at Full', async ({ page }) => {
+  // A guard that holds on main as well proves nothing about the fix, so it is
+  // paired: the SAME run at 'results' says nothing per card (the fix must not
+  // go through `say`, which speaks at 'results'), and at 'full' every card
+  // line interrupts. Main fails the second half; a fix through `say` fails
+  // the first.
   await withSettings(page, {
     audio: { enabled: true, verbosity: 'results' },
     drill: { countLengthCards: 6, countIntervalMs: 300, countGroup: 1, countManual: false },
   });
-  await openCountDrill(page);
+  const run = async (): Promise<Spoken[]> => {
+    await openCountDrill(page);
+    await page.evaluate(() => {
+      window.__speechOptsLog = [];
+      window.__speechLog = [];
+    });
+    await page.getByRole('button', { name: 'Start', exact: true }).click();
+    await expect(page.locator('.numpad')).toBeVisible({ timeout: 10_000 });
+    await page.waitForTimeout(300);
+    return spoken(page);
+  };
+
+  expect((await run()).map((s) => s.text), 'cards spoken at the default verbosity').toEqual([]);
+
   await page.evaluate(() => {
-    window.__speechOptsLog = [];
-    window.__speechLog = [];
+    const k = 'bjtrainer.settings.v1';
+    const s = JSON.parse(localStorage.getItem(k) ?? '{}');
+    s.audio = { ...(s.audio ?? {}), verbosity: 'full' };
+    localStorage.setItem(k, JSON.stringify(s));
+    localStorage.setItem('e2e.noReseed', '1');
   });
-  await page.getByRole('button', { name: 'Start', exact: true }).click();
-  await expect(page.locator('.numpad')).toBeVisible({ timeout: 10_000 });
-  await page.waitForTimeout(300);
-  expect((await spoken(page)).map((s) => s.text)).toEqual([]);
+  const full = (await run()).filter((s) => s.text !== PROMPT);
+  expect(full.length, 'no card lines at Full').toBeGreaterThanOrEqual(6);
+  for (const c of full) expect(c.interrupt, `card line "${c.text}" queued`).toBe(true);
 });
