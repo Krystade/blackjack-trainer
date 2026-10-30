@@ -139,6 +139,30 @@ test('C-R10c: the count-check sheet leaves the round banner readable, or repeats
 });
 
 /**
+ * D17: THE FELT'S BANNER IS NOT SLICED IN HALF BEHIND THE SHEET. The sheet
+ * repeats the result in its own body (C-R10c), so the felt copy, cut through
+ * its letters at the sheet's top edge, was pure noise. It is hidden (not
+ * removed: specs and the layout still use its box) while the sheet carries
+ * the banner, and comes back when the sheet closes.
+ */
+test('D17: the felt round banner is hidden while the count sheet repeats it', async ({ page }) => {
+  await withSettings(page, { countCheckEvery: 1, dealSpeedMs: 0 });
+  await withProfile(page, { countCheckEvery: 1, countCheckAsk: 'running' });
+  await page.goto('/?seed=4&e2e=1');
+  await page.addStyleTag({ content: INSET });
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  await page.getByRole('button', { name: 'Deal', exact: true }).click();
+  await resolveInsurance(page, false);
+  await playRoundByAdvice(page);
+  const banner = page.locator('.round-banner').first();
+  await expect(banner).toBeVisible();
+  await page.getByRole('button', { name: 'Deal', exact: true }).click();
+  await expect(page.getByTestId('count-sheet-banner')).toBeVisible();
+  await expect(banner).toHaveCSS('visibility', 'hidden');
+  await expect(banner).toHaveCount(1);
+});
+
+/**
  * D-R10: the strip must not be cut off part way through a line. It used to
  * shrink and scroll inside itself; now every line it shows is whole.
  */
