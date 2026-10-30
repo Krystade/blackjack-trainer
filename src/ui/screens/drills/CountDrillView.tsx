@@ -21,6 +21,7 @@ import {
   rampIntervalMs,
   secondsPerDeck,
   tierStartIntervalMs,
+  timedRunPace,
   RAMP_FLOOR_MS,
   meanTapGapMs,
 } from '../../../drills/countSpeed';
@@ -1299,12 +1300,17 @@ export function CountDrillView({
     // regardless of mode (classified from whatever pace is actually used) so
     // every timed run -- adaptive or not -- feeds the gate real signal.
     if (timedChallenge && !countdownMode) {
-      const startMs = settings.drill.timedAdaptive
-        ? tierStartIntervalMs(computeUnlockedTier(mapTimedHistory(loadStats().timedCount.history)).unlockedTier)
-        : settings.drill.countTimedStartMs;
-      timedStartMsRef.current = startMs;
-      timedFloorMsRef.current = settings.drill.timedAdaptive ? startMs : RAMP_FLOOR_MS;
-      attemptedTierRef.current = classifySpeed(secondsPerDeck(startMs, 1));
+      // C2: an adaptive run records the tier it was given, never a
+      // reclassification of its rounded pace (see timedRunPace).
+      const pace = timedRunPace(
+        settings.drill.timedAdaptive
+          ? computeUnlockedTier(mapTimedHistory(loadStats().timedCount.history)).unlockedTier
+          : null,
+        settings.drill.countTimedStartMs,
+      );
+      timedStartMsRef.current = pace.startMs;
+      timedFloorMsRef.current = pace.floorMs;
+      attemptedTierRef.current = pace.attemptedTier;
     } else {
       attemptedTierRef.current = null;
     }

@@ -6,6 +6,7 @@ import {
   rampIntervalMs,
   RAMP_FLOOR_MS,
   tierStartIntervalMs,
+  timedRunPace,
   meanTapGapMs,
   formatCountRun,
   bestCleanCountRuns,
@@ -185,15 +186,15 @@ describe('tierStartIntervalMs', () => {
   });
 
   it('table-ready starts at the 30s/deck cutoff converted to ms/card', () => {
-    expect(tierStartIntervalMs('table-ready')).toBe(Math.round((30 * 1000) / 52));
+    expect(tierStartIntervalMs('table-ready')).toBe(Math.floor((30 * 1000) / 52));
   });
 
   it('pro starts at the 22s/deck cutoff converted to ms/card', () => {
-    expect(tierStartIntervalMs('pro')).toBe(Math.round((22 * 1000) / 52));
+    expect(tierStartIntervalMs('pro')).toBe(Math.floor((22 * 1000) / 52));
   });
 
   it('expert starts at the 12s/deck cutoff converted to ms/card', () => {
-    expect(tierStartIntervalMs('expert')).toBe(Math.round((12 * 1000) / 52));
+    expect(tierStartIntervalMs('expert')).toBe(Math.floor((12 * 1000) / 52));
   });
 
   it('is strictly faster (lower ms) for each successive tier', () => {
@@ -207,6 +208,30 @@ describe('tierStartIntervalMs', () => {
     for (const tier of ['learning', 'table-ready', 'pro', 'expert'] as SpeedTier[]) {
       expect(tierStartIntervalMs(tier)).toBeGreaterThanOrEqual(RAMP_FLOOR_MS);
     }
+  });
+
+  // C2: a tier's own pace must classify as that tier, or an adaptive run at
+  // table-ready is filed as 'learning' and pro is never unlocked.
+  it('each tier pace classifies back to its own tier', () => {
+    for (const tier of ['learning', 'table-ready', 'pro', 'expert'] as SpeedTier[]) {
+      expect(classifySpeed(secondsPerDeck(tierStartIntervalMs(tier), 1)), tier).toBe(tier);
+    }
+  });
+});
+
+describe('timedRunPace (C2)', () => {
+  it('an adaptive run attempts exactly the unlocked tier, at that tier pace, flat', () => {
+    for (const tier of ['learning', 'table-ready', 'pro', 'expert'] as SpeedTier[]) {
+      const p = timedRunPace(tier, 2000);
+      expect(p.attemptedTier).toBe(tier);
+      expect(p.startMs).toBe(tierStartIntervalMs(tier));
+      expect(p.floorMs).toBe(p.startMs);
+    }
+  });
+
+  it('a fixed-pace run is classified from the pace it uses and ramps to the floor', () => {
+    expect(timedRunPace(null, 2000)).toEqual({ startMs: 2000, floorMs: RAMP_FLOOR_MS, attemptedTier: 'learning' });
+    expect(timedRunPace(null, 400).attemptedTier).toBe('pro');
   });
 });
 

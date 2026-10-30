@@ -274,6 +274,45 @@ test('count drill: adaptive difficulty picks a faster start after a history of a
   await expect(page.locator('.timed-result-gate')).toContainText('Unlocked: Pro');
 });
 
+/**
+ * C2 (audit 2026-10-29): table-ready's pace used to round to 577 ms/card,
+ * which is 30.004 s a deck -- 'learning' by classifySpeed -- so an adaptive
+ * run at table-ready was filed as a learning run and pro was never offered.
+ * The run must be recorded as the tier it was given.
+ */
+test('count drill: an adaptive run at table-ready is recorded as table-ready', async ({ page }) => {
+  const heldLearningRuns = Array.from({ length: 8 }, () => ({
+    date: new Date().toISOString(),
+    cards: 52,
+    elapsedMs: 40_000,
+    secondsPerDeck: 40,
+    tier: 'learning',
+    correct: true,
+    attemptedTier: 'learning',
+  }));
+  await withStats(page, { timedCount: { history: heldLearningRuns } });
+  await withSettings(page, {
+    drill: { countLengthCards: 5, countGroup: 1, countTimedStartMs: 2000 },
+  });
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Count drill', exact: true }).click();
+  await openCountOptions(page);
+  await page.getByLabel('Timed challenge (gets faster every card)').check();
+  await expect(page.locator('.settings-note-row', { hasText: 'Paces this run' })).toContainText('Table-ready');
+
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+  await expect(page.locator('.numpad')).toBeVisible({ timeout: 10_000 });
+  await page.locator('.numpad-btn', { hasText: /^3$/ }).click();
+  await page.getByRole('button', { name: 'OK', exact: true }).click();
+  await expect(page.locator('.timed-result')).toBeVisible();
+
+  const stats = await readStats(page);
+  const timedHistory = (stats?.timedCount as { history: Record<string, unknown>[] } | undefined)?.history ?? [];
+  expect(timedHistory).toHaveLength(9);
+  expect(timedHistory[8]!.attemptedTier).toBe('table-ready');
+});
+
 test('true count drill: answering a question persists a trueCount history entry', async ({ page }) => {
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();

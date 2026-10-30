@@ -104,7 +104,10 @@ export function rampIntervalMs(
  * `msPerCard * 52 / 1000` conversion, kept private since callers only ever
  * need the per-tier mapping below, not the raw conversion. */
 function msPerCardForDeckSeconds(deckSeconds: number): number {
-  return Math.round((deckSeconds * 1000) / 52);
+  // C2: floor, not round. Rounding 30000/52 UP to 577 ms made table-ready's
+  // own pace classify as 30.004 s/deck, which is 'learning'; floor keeps every
+  // tier's pace inside its own band (576 ms = 29.952 s).
+  return Math.floor((deckSeconds * 1000) / 52);
 }
 
 /**
@@ -133,6 +136,27 @@ export function tierStartIntervalMs(tier: SpeedTier): number {
     case 'expert':
       return msPerCardForDeckSeconds(12);
   }
+}
+
+/**
+ * C2: one timed run's pace, and the tier it is recorded as attempting. In
+ * adaptive mode the run attempts the tier the gate unlocked -- recorded as
+ * that tier, not re-derived from the rounded pace, so a rounding change can
+ * never relabel it. A fixed-pace run is classified from the pace it uses.
+ */
+export function timedRunPace(
+  adaptiveTier: SpeedTier | null,
+  fixedStartMs: number,
+): { startMs: number; floorMs: number; attemptedTier: SpeedTier } {
+  if (adaptiveTier !== null) {
+    const startMs = tierStartIntervalMs(adaptiveTier);
+    return { startMs, floorMs: startMs, attemptedTier: adaptiveTier };
+  }
+  return {
+    startMs: fixedStartMs,
+    floorMs: RAMP_FLOOR_MS,
+    attemptedTier: classifySpeed(secondsPerDeck(fixedStartMs, 1)),
+  };
 }
 
 /**
