@@ -50,10 +50,11 @@ describe('reviewCard (RV4 Leitner scheduling)', () => {
     let now = T0;
     for (let i = 0; i < MAX_BOX + 3; i++) {
       c = reviewCard(c, true, now);
-      now += 1;
+      now = c.dueAt; // C3: answered when due, never early
     }
     expect(c!.box).toBe(MAX_BOX); // capped, never exceeds
-    expect(c!.dueAt).toBe(scheduleDueAt(now - 1, MAX_BOX));
+    expect(c!.dueAt).toBe(now);
+    expect(c!.dueAt).toBe(scheduleDueAt(c!.lastSeenAt, MAX_BOX));
   });
 
   it('missing a LEARNED item (box >= LEARNED_BOX) resets to box 0 and counts a lapse', () => {
@@ -181,6 +182,52 @@ describe('a full review journey with an advancing clock', () => {
 /* only ever SLOW promotion -- neither demotes, neither counts a      */
 /* lapse -- so the worst either can do is bring an item round again.  */
 /* ================================================================== */
+
+// C3 (audit 2026-10-29): an answer before the item is due used to promote it,
+// so one drive of not-due cards pushed most indices to the 30-day box.
+describe('reviewCard: an early answer cannot promote (C3)', () => {
+  const learned = (box: number): SrCard => ({
+    box,
+    dueAt: T0 + BOX_INTERVALS_MS[box],
+    lastSeenAt: T0,
+    lapses: 0,
+    reviews: box,
+  });
+
+  it('a correct answer before dueAt keeps the box and the due date', () => {
+    const c = learned(2);
+    const next = reviewCard(c, true, T0 + 1000, { elapsedMs: 500, channel: VOICE_CHANNEL });
+    expect(next.box).toBe(2);
+    expect(next.dueAt).toBe(c.dueAt);
+    expect(next.lastSeenAt).toBe(T0 + 1000);
+    expect(next.reviews).toBe(c.reviews + 1);
+    expect(next.paceMs).toBe(500);
+  });
+
+  it('one session of not-due correct answers leaves the item where it was', () => {
+    let c: SrCard = learned(1);
+    for (let i = 1; i <= 50; i++) c = reviewCard(c, true, T0 + i * 60_000);
+    expect(c.box).toBe(1);
+    expect(c.dueAt).toBe(T0 + BOX_INTERVALS_MS[1]);
+  });
+
+  it('the same answer once due promotes as before', () => {
+    const c = learned(2);
+    const next = reviewCard(c, true, c.dueAt);
+    expect(next.box).toBe(3);
+    expect(next.dueAt).toBe(scheduleDueAt(c.dueAt, 3));
+  });
+
+  it('box 0 still promotes within the session', () => {
+    const first = reviewCard(undefined, true, T0);
+    expect(first.box).toBe(1);
+  });
+
+  it('an early miss still drops to box 0', () => {
+    const next = reviewCard(learned(3), false, T0 + 1000);
+    expect(next.box).toBe(0);
+  });
+});
 
 describe('reviewCard: how fast the answer came', () => {
   it('a fluent correct answer promotes; a hesitant one holds its box', () => {

@@ -278,6 +278,10 @@ export function reviewCard(
   let paceMs = prev.paceMs;
   let channels = prev.channels;
   let learningStep = prev.learningStep;
+  // C3: a correct answer before the item is due cannot promote it. Box 0 is
+  // exempt (its dueAt is lastSeenAt, so it is always due), which keeps the
+  // in-session 0 -> 1 step and the E2 learning step working.
+  const early = card !== undefined && prev.box > 0 && now < prev.dueAt;
 
   if (correct) {
     // A correct answer promotes ONE box, subject to two brakes -- and neither
@@ -287,7 +291,7 @@ export function reviewCard(
     const hesitant = ctx.elapsedMs !== undefined && ctx.elapsedMs >= FLUENT_MS;
     const held = hesitant || ctx.answerShown === true;
     const cap = ctx.channel ? channelBoxCap(ctx.channel) : MAX_BOX;
-    const target = held ? prev.box : Math.min(prev.box + 1, cap);
+    const target = held || early ? prev.box : Math.min(prev.box + 1, cap);
     if (learningStep === undefined) {
       box = Math.max(prev.box, target);
     } else {
@@ -321,7 +325,9 @@ export function reviewCard(
 
   return {
     box,
-    dueAt: scheduleDueAt(now, box),
+    // C3: an early correct answer keeps the due date it had. Recomputing it
+    // from now would let every early review push the item further away.
+    dueAt: correct && early ? prev.dueAt : scheduleDueAt(now, box),
     lastSeenAt: now,
     lapses,
     reviews: prev.reviews + 1,

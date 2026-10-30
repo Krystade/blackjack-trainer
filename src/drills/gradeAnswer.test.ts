@@ -617,6 +617,8 @@ describe('shot-clock timeout (R1)', () => {
 
 describe('the grade path carries pace and channel into the SR deck', () => {
   const NOW2 = 1_700_000_000_000;
+  // Longer than the longest box interval: every review is due (C3).
+  const DUE_GAP = 60 * 86_400_000;
 
   it('flashcards: the elapsed time it was given is the one the scheduler judges', () => {
     const card = drawFlashcard('all', {}, 0, 4242, DEFAULT_RULES);
@@ -643,7 +645,8 @@ describe('the grade path carries pace and channel into the SR deck', () => {
     const grind = (channel: { eyesFree: boolean; handsFree: boolean }) => {
       let deck: SrDeck = {};
       for (let i = 0; i < 10; i++) {
-        deck = gradeFlashcardAnswer(card, card.correct, DEFAULT_RULES, 200, deck, NOW2, channel)
+        // C3: each answer lands after the last one's due date, so it can promote.
+        deck = gradeFlashcardAnswer(card, card.correct, DEFAULT_RULES, 200, deck, NOW2 + i * DUE_GAP, channel)
           .nextDeck;
       }
       return deck[card.cellId]!;
@@ -658,7 +661,7 @@ describe('the grade path carries pace and channel into the SR deck', () => {
     const card = drawFlashcard('all', {}, 0, 4242, DEFAULT_RULES);
     let deck: SrDeck = {};
     for (let i = 0; i < 10; i++) {
-      deck = gradeFlashcardAnswer(card, card.correct, DEFAULT_RULES, 200, deck, NOW2).nextDeck;
+      deck = gradeFlashcardAnswer(card, card.correct, DEFAULT_RULES, 200, deck, NOW2 + i * DUE_GAP).nextDeck;
     }
     // The wrappers are the app's boundary: a caller that forgot to say how the
     // answer arrived gets the conservative reading, never a free pass to the
@@ -679,7 +682,7 @@ describe('the grade path carries pace and channel into the SR deck', () => {
         DEFAULT_RULES,
         200,
         deck,
-        NOW2,
+        NOW2 + i * DUE_GAP,
         BLIND_TAP_CHANNEL,
       ).nextDeck;
     }
