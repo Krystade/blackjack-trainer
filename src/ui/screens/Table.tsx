@@ -1348,10 +1348,15 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange, k
   // slot while it shows (dealing, bots' turns) rather than a row of its own,
   // so the dock never grows over the band. The peek is back when Skip goes.
   const peekGivesWayToSkip = missInDock && skipShown;
+  // Wave L C-extra: nor while the opening deal is still going onto the felt.
+  // The engine has dealt it all, so the peek would count cards not shown yet
+  // -- the sit-out case above, for a round played in. Skip has the dock
+  // meanwhile; the peek is back the moment the cards are down.
+  const peekAheadOfFelt = dealAnimating;
   // A peek held as Skip appears ends there (the button unmounts under the
   // thumb, so its release never arrives). Set in render: past the report's
   // early return, so no hook here.
-  if (peekGivesWayToSkip && peeking) setPeeking(false);
+  if ((peekGivesWayToSkip || peekAheadOfFelt) && peeking) setPeeking(false);
   /**
    * M8: HOW MANY CARDS EACH BOT HAND HAS EARNED ON SCREEN.
    *
@@ -1706,7 +1711,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange, k
         )}
         {/* F9 / B2 #31: no peek while a count check is owed or open -- the
             peeked answer was graded correct. */}
-        {!peekBlocked && !peekGivesWayToSkip && (
+        {!peekBlocked && !peekGivesWayToSkip && !peekAheadOfFelt && (
         <PeekButton
           revealed={peeking}
           onReveal={revealPeek}

@@ -66,7 +66,9 @@ test('the convention reaches the live table count, not just the profile', async 
   // profile would report identical readings throughout.
   const readCounts = async (tcRounding: 'floor' | 'truncate') => {
     const page = await browser.newPage();
-    await withSettings(page, { countCheckEvery: 0 });
+    // Deal speed 0: the peek waits for the opening deal to land (Wave L C-extra),
+    // and 24 rounds of the default stagger would outrun the test's time.
+    await withSettings(page, { countCheckEvery: 0, dealSpeedMs: 0 });
     await withProfile(page, { tcRounding });
     await page.goto('/?seed=102&e2e=1');
     await page.getByRole('button', { name: 'Play', exact: true }).click();
@@ -84,6 +86,8 @@ test('the convention reaches the live table count, not just the profile', async 
       // #40/#41: the peek is held, and its text shows the exact quotient
       // (one decimal); the GRADED integer -- the convention under test --
       // rides on data-tc while it is held.
+      // Wave L C-extra: the peek is back once the opening deal is on the felt.
+      await expect(peek).toBeVisible();
       await peek.focus();
       await page.keyboard.down('Enter');
       const tc = await peek.getAttribute('data-tc');

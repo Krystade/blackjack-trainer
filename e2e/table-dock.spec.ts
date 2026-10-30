@@ -197,6 +197,9 @@ for (const [w, h] of [[375, 812], [320, 568]] as const) {
           await bar.getByRole('button', { name: a[0].toUpperCase() + a.slice(1), exact: true }).dispatchEvent('click');
         }
         await expect(btn('Deal')).toBeVisible();
+        // Settled means on the felt: a round that ends at the deal is still
+        // landing while Skip shows (and the peek waits for it, Wave L C-extra).
+        await expect(page.locator('.fast-forward-btn')).toHaveCount(0);
         const r = await regions(page);
         const stage = `${tag}, settled`;
         for (const c of r.dealerCards) inBand(r, c, `${stage}, a dealer card`);

@@ -85,6 +85,32 @@ test('a solo table with no bots still offers a skip control for the opening deal
   expect(await playerCard0.evaluate((el) => (el as HTMLElement).style.getPropertyValue('--deal-i'))).toBe('');
 });
 
+/**
+ * Wave L C-extra: the engine deals the whole opening at once and the felt
+ * shows it card by card, so a peek during the deal counted cards not yet on
+ * the felt. No peek until the deal is on the felt (Skip has the dock).
+ */
+test('no peek while the opening deal is still going onto the felt; it is back once the cards are down', async ({ page }) => {
+  await withSettings(page, { dealSpeedMs: 5000 });
+  await withProfile(page, { name: 'Deal Animation Peek Profile' });
+
+  await page.goto('/?seed=1&e2e=1');
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  const peekBtn = page.locator('.peek-hold-btn');
+  // Between rounds the peek is there (nothing is in flight).
+  await expect(peekBtn).toHaveCount(1);
+  await page.getByRole('button', { name: 'Deal', exact: true }).click();
+  await resolveInsurance(page, false);
+
+  const ffBtn = page.locator('.fast-forward-btn');
+  await expect(ffBtn).toBeVisible();
+  await expect(peekBtn).toHaveCount(0);
+
+  await ffBtn.click();
+  await expect(ffBtn).toHaveCount(0);
+  await expect(peekBtn).toHaveCount(1);
+});
+
 test('prefers-reduced-motion: reduce suppresses the skip control entirely (nothing is playing to skip)', async ({
   page,
 }) => {
