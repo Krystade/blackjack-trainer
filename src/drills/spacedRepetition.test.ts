@@ -63,7 +63,7 @@ describe('reviewCard (RV4 Leitner scheduling)', () => {
     let now = T0;
     for (let i = 0; i < LEARNED_BOX; i++) {
       c = reviewCard(c, true, now);
-      now += DAY;
+      now = c.dueAt; // C3: answered when due, never early (a fixed DAY step is early in some time zones)
     }
     expect(c!.box).toBe(LEARNED_BOX);
     const before = c!.lapses;
