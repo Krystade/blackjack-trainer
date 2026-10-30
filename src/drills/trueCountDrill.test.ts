@@ -158,3 +158,26 @@ describe('reachable depths, weighted to misses (E3)', () => {
     expect(trueCountDrillDepths(profile, 8)).toEqual({ minDecks: 1.5, maxDecks: 8 });
   });
 });
+
+// C20 (audit 2026-10-29): Play divides the last deck of a 1- or 2-deck shoe in
+// quarters (engine/cards snapDecksRemaining), so the drill asks 0.75 there.
+describe('C20: the quarter-deck divisor on 1- and 2-deck shoes', () => {
+  const seen = (shoeDecks: number | undefined, maxDecks: number) =>
+    new Set(Array.from({ length: 400 }, (_, seed) => makeTrueCountQuestion(seed, { minDecks: 0.5, maxDecks, shoeDecks }).decksRemaining));
+  it('asks 0.75 on a 2-deck shoe, never on a 6-deck one or without a shoe', () => {
+    expect(seen(2, 2).has(0.75)).toBe(true);
+    expect(seen(1, 1).has(0.75)).toBe(true);
+    expect(seen(6, 6).has(0.75)).toBe(false);
+    expect(seen(undefined, 2).has(0.75)).toBe(false);
+  });
+  it('a recent miss at 0.75 weights that depth', () => {
+    const history = Array.from({ length: 5 }, () => ({ decksRemaining: 0.75, correct: false }));
+    const n = Array.from({ length: 400 }, (_, seed) => makeTrueCountQuestion(seed, { minDecks: 0.5, maxDecks: 2, shoeDecks: 2, history })).filter(
+      (q) => q.decksRemaining === 0.75,
+    ).length;
+    const plain = Array.from({ length: 400 }, (_, seed) => makeTrueCountQuestion(seed, { minDecks: 0.5, maxDecks: 2, shoeDecks: 2 })).filter(
+      (q) => q.decksRemaining === 0.75,
+    ).length;
+    expect(n).toBeGreaterThan(plain * 1.5);
+  });
+});

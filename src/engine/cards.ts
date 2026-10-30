@@ -66,6 +66,24 @@ export function snapDecksRemaining(cardsRemaining: number, totalDecks: number): 
   return Math.max(0.5, Math.round(cardsRemaining / 26) / 2);
 }
 
+/**
+ * C20 (audit 2026-10-29): the depths Play divides by from `minDecks` to
+ * `maxDecks`, ascending -- the half-deck grid, plus 0.75 in a 1- or 2-deck
+ * shoe, where snapDecksRemaining reads the last deck in quarters. (Its floor
+ * is half a deck, so 0.25 never comes up.) For drills that ask Play's
+ * divisions. Shoe games get the plain half-deck grid.
+ */
+export function playDepths(minDecks: number, maxDecks: number, totalDecks: number): number[] {
+  const out: number[] = [];
+  const steps = Math.round((maxDecks - minDecks) * 2) + 1;
+  for (let i = 0; i < steps; i++) out.push(minDecks + i * 0.5);
+  if (totalDecks <= 2 && minDecks <= 0.75 && maxDecks >= 0.75 && !out.includes(0.75)) {
+    out.push(0.75);
+    out.sort((a, b) => a - b);
+  }
+  return out;
+}
+
 export class Shoe {
   private cards: Card[];
   private cardsDealtCount: number;

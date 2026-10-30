@@ -6,7 +6,7 @@ import { playConfigFor } from '../ui/playConfig';
 import { EMPTY_STATS, type Profile, type Stats } from '../store/types';
 import {
   appendBetSizingRow, betAnswerLabel, betSizingOptions, betSizingRow, betSizingWorking, correctBetAnswer,
-  gradeBetSizing, makeBetSizingScenario, scenarioTc, trayFloorDecks, type BetAnswer,
+  gradeBetSizing, makeBetSizingScenario, scenarioDecksRemaining, scenarioTc, trayFloorDecks, type BetAnswer,
 } from './betSizing';
 
 /** Play's own verdict on one pre-deal decision: every bet/wong event it grades is correct. */
@@ -126,15 +126,24 @@ describe('makeBetSizingScenario', () => {
   it('is seeded', () => {
     expect(makeBetSizingScenario(42, 6, DEFAULT_SPREAD)).toEqual(makeBetSizingScenario(42, 6, DEFAULT_SPREAD));
   });
-  it.each([1, 2, 6, 8])('%i decks: a half-deck tray and a count the dealt cards could produce', (decks) => {
+  it.each([1, 2, 6, 8])('%i decks: a tray Play divides by and a count the dealt cards could produce', (decks) => {
     for (let seed = 0; seed < 300; seed++) {
       const s = makeBetSizingScenario(seed, decks, DEFAULT_SPREAD);
       expect(s.totalDecks).toBe(decks);
-      expect(s.cardsDealt % 26).toBe(0);
+      // Half decks, and (C20) the 0.75 last-deck quarter in a 1- or 2-deck shoe.
+      const left = decks * 52 - s.cardsDealt;
+      expect(s.cardsDealt % 26 === 0 || (decks <= 2 && left === 39)).toBe(true);
       expect(s.cardsDealt).toBeGreaterThanOrEqual(0);
       expect(s.cardsDealt).toBeLessThan(decks * 52);
       expect(Math.abs(s.rc)).toBeLessThanOrEqual(Math.round((2 * s.cardsDealt) / 52) + 1);
     }
+  });
+  it('C20: 1- and 2-deck trays include the 0.75 Play divides by; shoes do not', () => {
+    const depthsSeen = (decks: number) =>
+      new Set(Array.from({ length: 400 }, (_, seed) => scenarioDecksRemaining(makeBetSizingScenario(seed, decks, DEFAULT_SPREAD))));
+    expect(depthsSeen(1).has(0.75)).toBe(true);
+    expect(depthsSeen(2).has(0.75)).toBe(true);
+    expect([...depthsSeen(6)].every((d) => Number.isInteger(d * 2))).toBe(true);
   });
   it.each([2, 6, 8])('%i decks: every answer the ramp can call comes up, and Sit is no free pass', (decks) => {
     const counts = new Map<BetAnswer, number>();

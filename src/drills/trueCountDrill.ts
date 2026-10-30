@@ -1,4 +1,4 @@
-import { mulberry32 } from '../engine/cards';
+import { mulberry32, playDepths } from '../engine/cards';
 import { trueCount } from '../engine/count';
 import type { TcRounding } from '../engine/count';
 import type { CutSpec } from '../engine/cut';
@@ -66,6 +66,11 @@ export function makeTrueCountQuestion(
     minDecks?: number;
     rounding?: TcRounding;
     history?: readonly TcDepthRow[];
+    /**
+     * C20: the profile's shoe. At 1 or 2 decks Play divides the last deck in
+     * quarters, so 0.75 joins the depths asked. Absent: half decks only.
+     */
+    shoeDecks?: number;
   },
 ): TrueCountQuestion {
   const rng = mulberry32(seed ?? Date.now());
@@ -75,11 +80,12 @@ export function makeTrueCountQuestion(
   // Running count: integer uniform in [RC_MIN, RC_MAX]
   const runningCount = RC_MIN + Math.floor(rng() * (RC_MAX - RC_MIN + 1));
 
-  // Decks remaining: half-deck steps from minDecks up to maxDecks inclusive.
-  const steps = Math.round((maxDecks - minDecks) * 2) + 1;
-  const weights = missWeights(opts?.history ?? [], minDecks, steps);
-  const stepIndex = weights ? weightedIndex(rng(), weights) : Math.floor(rng() * steps);
-  const decksRemaining = minDecks + stepIndex * 0.5;
+  // Decks remaining: half-deck steps from minDecks up to maxDecks inclusive,
+  // and (C20) 0.75 where Play divides by it.
+  const depths = playDepths(minDecks, maxDecks, opts?.shoeDecks ?? Infinity);
+  const weights = missWeights(opts?.history ?? [], depths);
+  const stepIndex = weights ? weightedIndex(rng(), weights) : Math.floor(rng() * depths.length);
+  const decksRemaining = depths[stepIndex]!;
 
   // V5-4 / #54: the answer follows the PLAYER'S convention, and so does the
   // grade (drills/tcFeedback.ts gradeTcConversion).
@@ -89,16 +95,16 @@ export function makeTrueCountQuestion(
 }
 
 /**
- * One weight per half-deck step from `minDecks`, or null when no recent miss
- * falls in range (the caller then takes the plain uniform draw, unchanged).
+ * One weight per depth in `depths`, or null when no recent miss falls on one
+ * (the caller then takes the plain uniform draw, unchanged).
  */
-function missWeights(history: readonly TcDepthRow[], minDecks: number, steps: number): number[] | null {
-  const misses = new Array<number>(steps).fill(0);
+function missWeights(history: readonly TcDepthRow[], depths: readonly number[]): number[] | null {
+  const misses = new Array<number>(depths.length).fill(0);
   let any = false;
   for (const row of history.slice(-TC_MISS_WINDOW)) {
     if (row.correct) continue;
-    const step = (row.decksRemaining - minDecks) * 2;
-    if (!Number.isInteger(step) || step < 0 || step >= steps) continue;
+    const step = depths.indexOf(row.decksRemaining);
+    if (step < 0) continue;
     misses[step] = Math.min(MISS_CAP, misses[step]! + 1);
     any = true;
   }

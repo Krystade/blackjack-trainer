@@ -51,7 +51,8 @@ function formatSigned(n: number): string {
 }
 
 function formatDecks(n: number): string {
-  return Number.isInteger(n) ? String(n) : n.toFixed(1);
+  // C20: 0.75 is a depth now; toFixed(1) would show it as 0.8.
+  return String(n);
 }
 
 function narrateTcQuestion(q: TrueCountQuestion): string {
@@ -356,6 +357,8 @@ export function TrueCountDrillView({
     // depths missed lately.
     const q = makeTrueCountQuestion(randomSeed(), {
       ...trueCountDrillDepths(activeProfile, maxDecks),
+      // C20: Play's quarter-deck last deck on a 1- or 2-deck shoe.
+      shoeDecks: activeProfile.rules.decks,
       rounding: activeProfile.tcRounding,
       history: loadStats().trueCount.history,
     });

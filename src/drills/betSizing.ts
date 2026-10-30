@@ -1,4 +1,4 @@
-import { mulberry32, snapDecksRemaining } from '../engine/cards';
+import { mulberry32, playDepths, snapDecksRemaining } from '../engine/cards';
 import { betWithinStep, spreadSteps } from '../engine/coverBets';
 import { trueCount, type TcRounding } from '../engine/count';
 import { CUT_MIN_DECKS, CUT_VARY_DECKS, type CutSpec } from '../engine/cut';
@@ -114,8 +114,9 @@ export function trayFloorDecks(spec: CutSpec): number {
  */
 function drawScenario(rng: () => number, totalDecks: number, minDecksRemaining = 0.5): BetSizingScenario {
   const floor = Math.min(totalDecks, Math.max(0.5, minDecksRemaining));
-  const steps = Math.round((totalDecks - floor) * 2) + 1;
-  const decksRemaining = floor + 0.5 * Math.floor(rng() * steps);
+  // C20: in a 1- or 2-deck shoe the 0.75 tray Play divides by is dealt too.
+  const depths = playDepths(floor, totalDecks, totalDecks);
+  const decksRemaining = depths[Math.floor(rng() * depths.length)]!;
   const decksDealt = totalDecks - decksRemaining;
   const rcMax = Math.round(2 * decksDealt) + 1;
   const rc = -rcMax + Math.floor(rng() * (2 * rcMax + 1));
