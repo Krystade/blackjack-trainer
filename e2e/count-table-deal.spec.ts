@@ -34,6 +34,18 @@ type Entry = { what: 'round' | 'card' | 'reveal' | 'payout' | 'collect'; where?:
 
 async function openTable(page: Page, drill: Record<string, unknown>): Promise<void> {
   await page.clock.install();
+  // The run's seed comes from Math.random: a fixed stream makes the rounds,
+  // and so their seat counts, the same every time (review: an unseeded run
+  // could put a one-seat round on screen and skip the first-base check).
+  await page.addInitScript(() => {
+    let s = 0x12345678;
+    Math.random = () => {
+      s ^= s << 13;
+      s ^= s >>> 17;
+      s ^= s << 5;
+      return (s >>> 0) / 0x100000000;
+    };
+  });
   await withProfile(page);
   await withSettings(page, {
     drill: { countManual: false, countTableMode: true, countTableRounds: 5, countIntervalMs: CARD_MS, ...drill },
@@ -158,12 +170,12 @@ test('dealt: each round goes down in casino order a time-per-card apart, pays, a
       expect(Math.abs(gap - want), `round ${r + 1}: ${what} came ${gap}ms after the last, not ${want}`).toBeLessThanOrEqual(SLACK);
     }
   }
-  // First base is the dealer's left: the screen's right.
+  // First base is the dealer's left: the screen's right. The seeded run puts
+  // a round of several seats on screen here; a one-seat round fails loudly.
   const seats = page.locator('.count-table .bot-seat');
-  if ((await seats.count()) >= 2) {
-    const [first, second] = [(await seats.nth(0).boundingBox())!, (await seats.nth(1).boundingBox())!];
-    expect(first.x).toBeGreaterThan(second.x);
-  }
+  expect(await seats.count(), 'seats in the round on screen').toBeGreaterThanOrEqual(2);
+  const [first, second] = [(await seats.nth(0).boundingBox())!, (await seats.nth(1).boundingBox())!];
+  expect(first.x).toBeGreaterThan(second.x);
 });
 
 test('instant: the round is down at once, the hole up, for as long as dealing it would take; then the payout and the collect', async ({ page }) => {
