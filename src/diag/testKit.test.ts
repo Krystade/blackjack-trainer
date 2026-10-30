@@ -199,9 +199,22 @@ describe('test kit', () => {
       sample('stand', ['Strength']),
       sample('stand pat', ['stand pat']),
     ]);
-    expect(s.oneWord).toEqual({ right: 1, total: 2 });
-    expect(s.twoWord).toEqual({ right: 2, total: 2 });
+    expect(s.oneWord).toEqual({ right: 1, total: 2, nothingHeard: 0 });
+    expect(s.twoWord).toEqual({ right: 2, total: 2, nothingHeard: 0 });
     expect(s.misheard).toEqual([{ said: 'stand', heard: 'Strength' }]);
+  });
+
+  it('A17: scores windows that heard nothing apart from misrecognition', () => {
+    const s = summariseCalibration([
+      sample('hit', ['hit']),
+      sample('stand', []),
+      sample('hit me', []),
+      sample('stand pat', ['Strength pat']),
+    ]);
+    expect(s.oneWord).toEqual({ right: 1, total: 2, nothingHeard: 1 });
+    expect(s.twoWord).toEqual({ right: 0, total: 2, nothingHeard: 1 });
+    // Nothing heard is not a mishearing of anything.
+    expect(s.misheard).toEqual([{ said: 'stand pat', heard: 'Strength pat' }]);
   });
 
   it('resumes a recent run and refuses a stale or malformed one', () => {

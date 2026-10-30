@@ -13,6 +13,7 @@ import {
   scoreSample,
   summariseCalibration,
   type CalibrationSample,
+  type CalibrationForm,
   type KitId,
   type KitStep,
 } from '../../diag/testKit';
@@ -704,6 +705,7 @@ function CalibrateStep({ ensureMic, mic, onAnswer }: StepProps) {
   const [last, setLast] = useState<string>('');
   const [lastRight, setLastRight] = useState<boolean | null>(null);
   const [retrying, setRetrying] = useState(false);
+  const [micDied, setMicDied] = useState(false);
   const [samples, setSamples] = useState<CalibrationSample[]>([]);
   const cancelled = useRef(false);
 
@@ -841,11 +843,19 @@ function CalibrateStep({ ensureMic, mic, onAnswer }: StepProps) {
       setLastRight(verdict === 'right');
       await wait(1000);
     }
+    // A17: a mic that died mid-step turns every later window into "nothing".
+    const died = mic.current !== null && !mic.current.alive();
+    setMicDied(died);
     await ensureMic('closed');
     const s = summariseCalibration(got);
+    const heardOf = (f: CalibrationForm) => `${f.right}/${f.total - f.nothingHeard}`;
     diag('test', 'kit-calibrate-summary', {
       oneWord: `${s.oneWord.right}/${s.oneWord.total}`,
       twoWord: `${s.twoWord.right}/${s.twoWord.total}`,
+      oneWordHeard: heardOf(s.oneWord),
+      twoWordHeard: heardOf(s.twoWord),
+      nothingHeard: s.oneWord.nothingHeard + s.twoWord.nothingHeard,
+      micDied: died,
       wrongAction: s.wrongAction,
       rescuable: s.rescuable,
     });
@@ -897,6 +907,12 @@ function CalibrateStep({ ensureMic, mic, onAnswer }: StepProps) {
         </li>
         <li>Heard as a different move: {s.wrongAction}</li>
         {s.misheard.length > 0 && <li>Misheard: {s.misheard.map((m) => `${m.said} → ${m.heard}`).join(', ')}</li>}
+        {s.oneWord.nothingHeard + s.twoWord.nothingHeard > 0 && (
+          <li data-testid="testkit-nothing-heard">
+            Heard nothing: {s.oneWord.nothingHeard + s.twoWord.nothingHeard}
+            {micDied ? ' (the microphone stopped during the run, so these say nothing about the words)' : ''}
+          </li>
+        )}
         {last && samples.length === 0 && <li>{last}</li>}
       </ul>
       <button type="button" className="u-btn u-btn-primary testkit-go" onClick={() => onAnswer('done')}>

@@ -473,9 +473,22 @@ export function scoreSample(sample: CalibrationSample): { verdict: SampleVerdict
   return { verdict: got === null ? 'not-a-command' : 'wrong-action', rescued };
 }
 
+/**
+ * `nothingHeard`: windows where nothing reached the engine (offered=0). Scored
+ * apart from misrecognition (audit A17, TODO.md 2026-10-06): they are the
+ * dominant failure, and a run whose mic died at word 3 read as a vocabulary
+ * failure. `right / (total - nothingHeard)` is the rate over windows that
+ * produced a reading.
+ */
+export interface CalibrationForm {
+  right: number;
+  total: number;
+  nothingHeard: number;
+}
+
 export interface CalibrationSummary {
-  oneWord: { right: number; total: number };
-  twoWord: { right: number; total: number };
+  oneWord: CalibrationForm;
+  twoWord: CalibrationForm;
   /** Dangerous: heard as a DIFFERENT command, which would play the wrong move. */
   wrongAction: number;
   rescuable: number;
@@ -484,8 +497,8 @@ export interface CalibrationSummary {
 
 export function summariseCalibration(samples: readonly CalibrationSample[]): CalibrationSummary {
   const s: CalibrationSummary = {
-    oneWord: { right: 0, total: 0 },
-    twoWord: { right: 0, total: 0 },
+    oneWord: { right: 0, total: 0, nothingHeard: 0 },
+    twoWord: { right: 0, total: 0, nothingHeard: 0 },
     wrongAction: 0,
     rescuable: 0,
     misheard: [],
@@ -495,7 +508,8 @@ export function summariseCalibration(samples: readonly CalibrationSample[]): Cal
     const { verdict, rescued } = scoreSample(sample);
     bucket.total += 1;
     if (verdict === 'right') bucket.right += 1;
-    else s.misheard.push({ said: sample.word.say, heard: sample.heard[0] ?? '(nothing)' });
+    else if (verdict === 'nothing-heard') bucket.nothingHeard += 1;
+    else s.misheard.push({ said: sample.word.say, heard: sample.heard[0]! });
     if (verdict === 'wrong-action') s.wrongAction += 1;
     if (rescued) s.rescuable += 1;
   }
