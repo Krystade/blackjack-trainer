@@ -195,6 +195,27 @@ test('a blocked microphone is reported once, not retried forever', async ({ page
   await expect(page.locator('.voice-status-state')).toContainText('blocked');
 });
 
+/**
+ * A5: and it is reported ALOUD. Eyes-free, the status bar is no report at all:
+ * a microphone that has given up must not leave Jack talking into nothing.
+ */
+test('a microphone that gives up says so out loud, once', async ({ page }) => {
+  await openFlashcardsWithVoice(page);
+  const before = await page.evaluate(() => [...((window as unknown as { __speechLog?: string[] }).__speechLog ?? [])]);
+  expect(before).not.toContain('The microphone has stopped listening.');
+  await page.evaluate(() => {
+    const rec = (window as unknown as {
+      __rec?: { onerror?: (e: { error: string }) => void; onend?: () => void };
+    }).__rec;
+    rec?.onerror?.({ error: 'not-allowed' });
+    rec?.onend?.();
+  });
+  await expect(page.locator('.voice-status')).toHaveAttribute('data-voice-state', 'denied');
+  await expect
+    .poll(() => page.evaluate(() => ((window as unknown as { __speechLog?: string[] }).__speechLog ?? []).filter((t) => t === 'The microphone has stopped listening.').length))
+    .toBe(1);
+});
+
 test('the whole vocabulary is on screen, so nothing has to be remembered', async ({ page }) => {
   await openFlashcardsWithVoice(page);
   const words = page.locator('.voice-status-words');

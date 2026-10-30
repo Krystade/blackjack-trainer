@@ -7,7 +7,8 @@ import {
   type SuppressedWhy,
   type VoiceController,
 } from '../audio/voiceControl';
-import { chime, isAppSpeaking, setSpeechActivityListener } from '../audio/speech';
+import { chime, isAppSpeaking, setSpeechActivityListener, speak } from '../audio/speech';
+import { MIC_STOPPED_LINE, createMicDeadWatch, isMicDead } from '../audio/micDeadCue';
 import { recordHeard } from '../audio/voiceHistory';
 import { looksLikeAnAttempt, type VoiceAction } from '../audio/voiceRecognition';
 import { looksLikeSelfEcho } from '../audio/selfEcho';
@@ -272,6 +273,18 @@ export function useVoiceControl({
     // active", and it is the most mundane explanation available for it.
     void requestWakeLock('voice');
 
+    // A5: a microphone that gives up says so, once, instead of going silent.
+    const deadWatch = createMicDeadWatch({
+      schedule: (fn, ms) => window.setTimeout(fn, ms),
+      cancel: (handle) => window.clearTimeout(handle),
+      currentState: () => controllerRef.current?.state() ?? 'off',
+      announce: (state, why) => {
+        diag('mic', 'dead-cue', { state, why, context: contextRef.current });
+        chime('blocked');
+        speak(MIC_STOPPED_LINE, { tag: 'mic-dead' });
+      },
+    });
+
     const controller = createVoiceController({
       createRecognition: browserRecognition,
       now: monoNow,
@@ -314,6 +327,7 @@ export function useVoiceControl({
       onWorked: markMicWorked,
       onState: (state) => {
         setStatus((prev) => ({ ...prev, state }));
+        deadWatch.onState(state);
         /**
          * THE MICROPHONE CLOSING TAKES THE STEERING WHEEL WITH IT, and
          * nothing used to put it back.
@@ -483,6 +497,8 @@ export function useVoiceControl({
           armReadyCue(deafMs);
           return;
         }
+        // A5: no "talk now" tone into a microphone that is not taking answers.
+        if (isMicDead(controller.state())) return;
         const gen = readyGenRef.current;
         if (pendingLiveCueRef.current) {
           // B2 #7: the held "microphone open" cue IS this tone.
@@ -635,6 +651,7 @@ export function useVoiceControl({
       media?.removeEventListener?.('devicechange', onDeviceChange);
       setSpeechActivityListener(null);
       if (readyTimer !== null) clearTimeout(readyTimer);
+      deadWatch.dispose();
       controller.stop();
       setVoiceCaptureActive(false);
       endCaptureRoute('voice-off');

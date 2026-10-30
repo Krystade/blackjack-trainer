@@ -1,3 +1,4 @@
+import { MIC_STOPPED_LINE } from './micDeadCue';
 import type { Card, Rank, Suit } from '../engine/cards';
 import type { Action } from '../engine/deviations';
 import type { GradedEvent, MistakeClass } from '../engine/grade';
@@ -499,6 +500,7 @@ export const SAY_YES_NEXT = 'Say yes for the next one.';
 
 /** Every fixed conversational line, for the clip derivation to walk. */
 export const VOICE_CONVERSATION_LINES: readonly string[] = [
+  MIC_STOPPED_LINE,
   COUNTDOWN_TAG_PROMPT,
   NOT_A_TAG,
   CHECKPOINT_PROMPT,
