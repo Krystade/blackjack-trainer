@@ -49,3 +49,28 @@ export async function warmForFlight(deps: FlightWarmDeps): Promise<WarmResult> {
     concurrency: deps.concurrency,
   });
 }
+
+/**
+ * B26: "Clear" in Settings > Offline removes the SAVED VOICE only. It used to
+ * delete the whole cache, the app shell with it (document, assets, icons), so
+ * a cold launch with no signal before the next online one showed Safari's
+ * cannot-open page in the installed app. The shell stays; only /clips/ go.
+ * Returns how many entries were removed.
+ */
+export async function clearSavedVoice(cache: {
+  keys: () => Promise<readonly Request[]>;
+  delete: (req: Request) => Promise<boolean>;
+}): Promise<number> {
+  let n = 0;
+  for (const req of await cache.keys()) {
+    let path: string;
+    try {
+      path = new URL(req.url).pathname;
+    } catch {
+      continue;
+    }
+    if (!path.includes('/clips/')) continue;
+    if (await cache.delete(req)) n += 1;
+  }
+  return n;
+}

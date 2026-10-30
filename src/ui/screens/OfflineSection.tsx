@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { CollapsibleSection } from '../components/CollapsibleSection';
-import { OFFLINE_CACHE, warmForFlight } from '../../offline/warmForFlight';
+import { OFFLINE_CACHE, clearSavedVoice, warmForFlight } from '../../offline/warmForFlight';
 import { clipsBaseUrl, loadClipIndex, loadVoiceManifest } from '../../audio/clips';
 import { diag } from '../../diag/diagnosticLog';
 import { onStoragePersistence, storagePersistence } from '../../store/backupStatus';
@@ -164,15 +164,18 @@ export function OfflineSection({ clipVoice }: { clipVoice: string }) {
           data-testid="offline-clear"
           disabled={phase === 'saving' || phase === 'unsupported' || !held}
           onClick={() => {
-            void caches.delete(OFFLINE_CACHE).then(() => {
-              diag('offline', 'cleared');
-              setResult(null);
-              setPhase('idle');
-              refreshHeld();
-            });
+            void caches
+              .open(OFFLINE_CACHE)
+              .then((c) => clearSavedVoice(c))
+              .then((removed) => {
+                diag('offline', 'cleared', { removed, kept: 'shell' });
+                setResult(null);
+                setPhase('idle');
+                refreshHeld();
+              });
           }}
         >
-          Clear
+          Remove voice
         </button>
       </div>
     </CollapsibleSection>
