@@ -86,6 +86,7 @@ import { dealerPaceMs, isSlowDecision, slowDecisionsText } from '../dealerPace';
 import { trackedElapsedMs } from '../../drills/idleAnswer';
 import { isAppSpeaking, speakAsync } from '../../audio/speech';
 import { speechOptsFrom } from '../../audio/speechOpts';
+import { diag } from '../../diag/diagnosticLog';
 import { signedTc } from '../../drills/tcFeedback';
 import './tableCountHeld.css';
 import { useEyesFreeToggle } from '../eyesFreeSession';
@@ -1048,6 +1049,8 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
     if (!countVerdict?.rewind || countVerdict.rewind.length === 0) return;
     const cards = countVerdict.rewind;
     setPeeking(false);
+    // Review: field logs should show whether the recount is used.
+    diag('nav', 'count rewind', { stage: 'open', cards: cards.length, from: countVerdict.rewindFrom, held: countVerdict.held === true });
     setRewind({ cards, actual: countVerdict.actualRc, from: countVerdict.rewindFrom ?? 0, shown: 0, stage: 'replay' });
   };
   const submitRewind = (n: number) => {
@@ -1056,6 +1059,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
     // The recount's verdict gives the answer, right or wrong.
     audio.say(narrateCountAnswer(rewind.actual));
     audio.ding(right ? 'good' : 'bad');
+    diag('nav', 'count rewind', { stage: 'recount', cards: rewind.cards.length, guess: n, actual: rewind.actual, right });
     // The count is known again as of the check: a later Rewind starts there.
     if (right) game.confirmCountAt(rewind.cards);
     setCountVerdict((v) => (v ? { ...v, withheld: false } : v));

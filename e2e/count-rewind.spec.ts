@@ -151,6 +151,9 @@ test('tapping, a wrong count is withheld and the deal waits; Rewind replays from
   // The +9 stands in Stats; the recount added nothing.
   const stats = (await readStats(page)) as { categories: { countCheck: { right: number; wrong: number } } };
   expect(stats.categories.countCheck).toEqual({ right: 1, wrong: 1 });
+  // And the diagnostic log shows the recount was used, and how it went.
+  const stored = await page.evaluate(() => Object.values(localStorage).join('\n'));
+  expect(stored).toMatch(/count rewind/);
 });
 
 test('Show count gives the answer and the deal still waits; Deal then deals', async ({ page }) => {
