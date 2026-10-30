@@ -94,6 +94,7 @@ export function useVoiceControl({
   context,
   escalation,
   forceAutoRoute = false,
+  claimsEchoes = false,
 }: {
   enabled: boolean;
   onAction: (action: VoiceAction) => void;
@@ -101,6 +102,13 @@ export function useVoiceControl({
    * microphone -- a count check asking for a number the command vocabulary
    * does not contain. Return a label to consume it, null to pass it on. */
   onTranscript?: (heard: string, offered: readonly string[]) => string | null;
+  /**
+   * Let `onTranscript` see the app's own late echo instead of having it
+   * suppressed first. Only for a screen that records its echoes as evidence
+   * (the field test); see VoiceControllerDeps.claimsEchoes. Read once, when
+   * the microphone opens.
+   */
+  claimsEchoes?: boolean;
   /**
    * Called when something that looked like an answer was not understood.
    *
@@ -290,6 +298,7 @@ export function useVoiceControl({
       // a no-op unless a guided session is running (guided/voiceCommands.ts).
       onTranscript: (heard, offered) =>
         claimGuidedTranscript(heard, offered, saidRef.current) ?? transcriptRef.current?.(heard, offered) ?? null,
+      claimsEchoes,
       biasPhrases,
       log: (event, detail) => diag('mic', event, { ...detail, context: contextRef.current }),
       /*

@@ -88,6 +88,7 @@ function harness(
   opts: {
     create?: () => RecognitionLike | null;
     onTranscript?: (heard: string, offered: readonly string[]) => string | null;
+    claimsEchoes?: boolean;
     speechTailMs?: number;
   } = {},
 ): Harness {
@@ -122,6 +123,7 @@ function harness(
     onAction: (a) => actions.push(a),
     onState: (s) => states.push(s),
     onTranscript: opts.onTranscript,
+    claimsEchoes: opts.claimsEchoes,
     onHeard: (h, v, w) => {
       heard.push([h, v]);
       why.push(w);
@@ -452,6 +454,7 @@ describe('the app must not hear itself after the window has closed', () => {
     // spoke; this only knows the last thing the speaker said.
     const claimed: string[] = [];
     const h = harness({
+      claimsEchoes: true,
       onTranscript: (heard) => {
         claimed.push(heard);
         return 'own-voice';
@@ -466,6 +469,72 @@ describe('the app must not hear itself after the window has closed', () => {
       'Correct play was hit true count was zero',
     ]);
     expect(h.heard).toEqual([['Correct play was hit true count was zero', 'own-voice']]);
+  });
+
+  it("A1: a count check never sees its own readback arriving late", () => {
+    // The readback is a QUESTION, so the short rule (statements only) cannot
+    // be what catches it; the whole line coming back late is the case.
+    const claimed: string[] = [];
+    const h = harness({
+      onTranscript: (heard) => {
+        claimed.push(heard);
+        return 'count';
+      },
+    });
+    h.controller.start();
+    h.controller.suppressFor(1500, 'minus 3. Correct?');
+    h.advance(1500 + SPEECH_TAIL_MS + 1200);
+    h.current().say('Minus 3. Correct?');
+
+    expect(claimed, 'the count screen re-proposed its own readback').toEqual([]);
+    expect(h.heard).toEqual([['Minus 3. Correct?', 'suppressed']]);
+    expect(h.why).toEqual(['echo']);
+    expect(h.logs.filter((l) => l.event === 'suppressed-echo')).toHaveLength(1);
+  });
+
+  it('A1: a short echo of a statement is dropped before a claim too', () => {
+    const claimed: string[] = [];
+    const h = harness({
+      onTranscript: (heard) => {
+        claimed.push(heard);
+        return 'count';
+      },
+    });
+    h.controller.start();
+    h.controller.suppressFor(1500, 'Running count minus 3.');
+    h.advance(1500 + SPEECH_TAIL_MS + 800);
+    h.current().say('minus 3');
+
+    expect(claimed).toEqual([]);
+    expect(h.why).toEqual(['echo']);
+  });
+
+  it('A1: the claim still gets an answer the app never said', () => {
+    const claimed: string[] = [];
+    const h = harness({
+      onTranscript: (heard) => {
+        claimed.push(heard);
+        return 'count';
+      },
+    });
+    h.controller.start();
+    h.controller.suppressFor(1500, 'minus 3. Correct?');
+    h.advance(1500 + SPEECH_TAIL_MS + 300);
+    h.current().say('yes');
+
+    expect(claimed).toEqual(['yes']);
+    expect(h.heard).toEqual([['yes', 'count']]);
+  });
+
+  it('A1: an opted-in screen that passes on an echo still has it suppressed', () => {
+    const h = harness({ claimsEchoes: true, onTranscript: () => null });
+    h.controller.start();
+    h.controller.suppressFor(5000, SAID);
+    h.advance(5000 + SPEECH_TAIL_MS + 2258);
+    h.current().say('Correct play was hit true count was zero');
+
+    expect(h.actions).toEqual([]);
+    expect(h.why).toEqual(['echo']);
   });
 
   it('holds only the latest utterance, not a transcript of the drive', () => {

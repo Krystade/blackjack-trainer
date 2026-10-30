@@ -128,6 +128,20 @@ export interface VoiceControllerDeps {
    */
   onTranscript?: (heard: string, offered: readonly string[]) => string | null;
   /**
+   * Does `onTranscript` see the app's own late echo?
+   *
+   * Off by default: a transcript that the late or short echo checks call the
+   * app's own voice is suppressed BEFORE any screen can claim it. A count
+   * check's readback ("minus 3. Correct?") arriving 2s late through the
+   * microphone parses as -3, so a claim that ran first proposed it again and
+   * the readback looped (audit A1).
+   *
+   * On only for a screen that compares transcripts against its own lines and
+   * records that comparison as evidence -- the field test's
+   * `heard-own-voice`. An echo it does not claim is still suppressed after.
+   */
+  claimsEchoes?: boolean;
+  /**
    * Words to bias the engine toward. Chrome accepts a phrase list with a
    * boost per phrase, which is the single largest accuracy lever available
    * for a closed vocabulary heard over road noise -- the engine is otherwise
@@ -896,14 +910,6 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
         return;
       }
 
-      // A modal that owns the microphone answers first, or not at all.
-      const claimed = deps.onTranscript?.(heard, offered);
-      if (claimed) {
-        timing('claimed');
-        deps.onHeard?.(heard, claimed);
-        return;
-      }
-
       /**
        * THE SAME VOICE, ARRIVING LATE.
        *
@@ -920,38 +926,53 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
        * landed and a window that had already shut are different problems, and
        * one name for both is unreadable after a drive.
        *
-       * AFTER THE CLAIM, NOT BEFORE IT. A screen that owns the microphone
-       * knows more about its own echoes than this does -- the field test
-       * compares against the lines of the step it is actually on, and records
-       * `heard-own-voice` against that step. Put ahead of the claim, this
-       * silently took that away: the outcome stayed right and the field test
-       * lost the evidence it exists to produce. This is the backstop for the
-       * screens that have no such check, which is all of the drills, which is
-       * where the 2026-10-02 drive went wrong.
-       */
-      const sinceClosed = deps.now() - suppressedUntil;
-      if (looksLikeLateSelfEcho(heard, lastSaid, sinceClosed)) {
-        log('suppressed-echo', { heard, sinceMs: sinceClosed, said: lastSaid });
-        timing('suppressed');
-        deps.onHeard?.(heard, 'suppressed', 'echo');
-        return;
-      }
-      /*
        * THE SAME VOICE, SHORT AND LATE. With a 100ms tail the clock no longer
        * covers a one-word fragment of a correction ("hit" from "Correct play
-       * was hit"), and the check above deliberately ignores anything that
-       * short. This one takes it, but only from a statement in the LAST line
-       * and only within SHORT_ECHO_WINDOW_MS of that line ending. See
-       * looksLikeShortSelfEcho.
+       * was hit"), and the late check deliberately ignores anything that
+       * short. The short check takes it, but only from a statement in the
+       * LAST line and only within SHORT_ECHO_WINDOW_MS of that line ending.
+       * See looksLikeShortSelfEcho.
+       *
+       * BEFORE THE CLAIM, unless the screen opted in (`claimsEchoes`). A count
+       * check's own readback, "minus 3. Correct?", came back through the
+       * microphone, parsed as -3 and was proposed again, so the readback
+       * looped and the driver's "yes" landed on the repeat (audit A1). Only
+       * the field test claims echoes: it compares against the lines of the
+       * step it is on and records `heard-own-voice` as evidence, and that
+       * evidence is what the 2026-10 ordering was protecting.
        */
+      const sinceClosed = deps.now() - suppressedUntil;
       const sinceSaidEnded = promptEndAt === null ? Number.POSITIVE_INFINITY : deps.now() - promptEndAt;
-      if (looksLikeShortSelfEcho(heard, lastSaid, sinceSaidEnded)) {
-        log('suppressed-echo', { heard, sinceMs: sinceClosed, sincePromptEndMs: sinceSaidEnded, said: lastSaid, short: true });
+      const lateEcho = looksLikeLateSelfEcho(heard, lastSaid, sinceClosed);
+      const shortEcho = !lateEcho && looksLikeShortSelfEcho(heard, lastSaid, sinceSaidEnded);
+      const dropEcho = (): void => {
+        log(
+          'suppressed-echo',
+          shortEcho
+            ? { heard, sinceMs: sinceClosed, sincePromptEndMs: sinceSaidEnded, said: lastSaid, short: true }
+            : { heard, sinceMs: sinceClosed, said: lastSaid },
+        );
         timing('suppressed');
         deps.onHeard?.(heard, 'suppressed', 'echo');
+      };
+      if ((lateEcho || shortEcho) && !deps.claimsEchoes) {
+        dropEcho();
         return;
       }
 
+      // A modal that owns the microphone answers first, or not at all.
+      const claimed = deps.onTranscript?.(heard, offered);
+      if (claimed) {
+        timing('claimed');
+        deps.onHeard?.(heard, claimed);
+        return;
+      }
+
+      // The backstop for an echo the opted-in screen chose not to claim.
+      if (lateEcho || shortEcho) {
+        dropEcho();
+        return;
+      }
 
       const match = resolveSpoken(offered);
       // How it matched is worth keeping. An engine that ranked the word

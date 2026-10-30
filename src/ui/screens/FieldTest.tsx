@@ -2559,6 +2559,9 @@ function RunningTest({
     context: `field-test:${step.id}`,
     // The field test measures Auto; the Audio route setting must not change that.
     forceAutoRoute: true,
+    // It compares transcripts against its own step's lines and records
+    // `heard-own-voice`, so it sees its echoes before the controller drops them.
+    claimsEchoes: true,
     onAction: (action) => {
       diag('test', 'heard-action', { step: step.id, action });
       setHeard((prev) => [...prev, action]);
