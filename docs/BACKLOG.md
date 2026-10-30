@@ -1331,6 +1331,11 @@ deliberately do not.
 - ⛔ NOT wired, and this is a decision rather than a gap: Deck Estimation and Pair
   Cancellation are judged BY EYE, and Produce-the-True-Count needs a discard tray read off the
   screen. Neither can be done without looking, so a microphone would only be half a loop.
+- ⏳ Bet sizing by voice: "yes" / "no" for its bet propositions (and "repeat" to hear one
+  again), the yes/no shape the true-count drill already uses. Until then Bet sizing is
+  wheel-or-screen only, so Drive guided sessions leave it out (`guided/plan.ts`
+  DRIVE_EXCLUDED); with a microphone it can rejoin them, and the session's own commands
+  would then reach it too.
 - 🚗 Car controls: `src/audio/carControls.ts` + the Settings panel now state the two
   preconditions the wheel needs — the recorded voice ON (live TTS opens no media element, so
   the head unit never sees the app) and the microphone OFF (an open mic switches Bluetooth to

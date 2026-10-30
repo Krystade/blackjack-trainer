@@ -43,7 +43,6 @@ import { setVoiceOn, useVoiceToggle } from '../../voiceSession';
 import { useVoiceControl } from '../../useVoiceControl';
 import { useWheelCommand } from '../../useWheelCommand';
 import { FlashcardsView } from '../drills/FlashcardsView';
-import { SpeedDrillView } from '../drills/SpeedDrillView';
 import { CountDrillView } from '../drills/CountDrillView';
 import { TrueCountDrillView } from '../drills/TrueCountDrillView';
 import { DeviationQuizView } from '../drills/DeviationQuizView';
@@ -501,8 +500,9 @@ function PausedListener({ onResume, onRepeat }: { onResume: () => void; onRepeat
 /** Settings the segment's drill runs with, in memory only (never saved): see `keepOwn`. */
 function segmentSettings(seg: PlannedSegment, drive: boolean, settings: Settings): Settings {
   if (seg.id === 'warmup' && (seg.cells?.length ?? 0) === 0) return launchSettings('flash', undefined, settings);
-  if (seg.id === 'speed' && !drive) {
+  if (seg.id === 'speed') {
     const chart = launchSettings('flash', undefined, settings);
+    if (drive) return chart;
     // The user's shot clock when one is set; five seconds when it is off.
     return { ...chart, drill: { ...chart.drill, shotClockMs: settings.drill.shotClockMs > 0 ? settings.drill.shotClockMs : 5000 } };
   }
@@ -562,7 +562,11 @@ function SegmentDrill({
         <FlashcardsView {...common} />
       );
     case 'speed':
-      return drive ? <SpeedDrillView {...common} /> : <FlashcardsView {...common} />;
+      // Flashcards on the chart either way: by tap against a shot clock, or by
+      // voice in Drive (eyes-free suspends the clock). Not the Speed drill: it
+      // records misses only, so a right answer would never reach the tally,
+      // and it has no microphone for answers or the session's commands.
+      return <FlashcardsView {...common} />;
     case 'count':
       return <CountDrillView settings={run} autoStart onBack={onPause} onSettingsChange={change} />;
     case 'truecount':

@@ -118,8 +118,20 @@ export function answerTarget(minutes: number, perMinute: number): number {
   return Math.min(ANSWER_TARGET_MAX, Math.max(5, Math.round((minutes * perMinute) / 5) * 5));
 }
 
-export function planSession(preset: GuidedPreset, input: PlanInput): PlannedSegment[] {
-  const flagged = SEGMENTS.map((def) => ({ def, weak: isWeak(def, input) }));
+/**
+ * Segments a Drive session leaves out. Bet sizing is answered on the screen
+ * or the wheel only (no microphone), and a commands-only microphone over it
+ * would take the wheel from it (an open mic puts Bluetooth on the call route);
+ * until it answers its yes/no propositions by voice (docs/BACKLOG.md) it has
+ * no place in a session run by voice.
+ */
+export const DRIVE_EXCLUDED: readonly SegmentId[] = ['bets'];
+
+export function planSession(preset: GuidedPreset, input: PlanInput, opts: { drive?: boolean } = {}): PlannedSegment[] {
+  const flagged = SEGMENTS.filter((def) => !(opts.drive && DRIVE_EXCLUDED.includes(def.id))).map((def) => ({
+    def,
+    weak: isWeak(def, input),
+  }));
   let included = flagged;
   if (preset === 5) {
     const others = flagged

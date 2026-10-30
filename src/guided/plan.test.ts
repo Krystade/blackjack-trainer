@@ -68,6 +68,16 @@ describe('planSession', () => {
     expect(ids(planSession(5, input({ rungsPassed: { ...ALL_PASSED, deviations: false } })))).toEqual(['warmup', 'speed', 'deviations']);
   });
 
+  it('Drive leaves bet sizing out (no microphone) and shares its minutes among the rest', () => {
+    const p = planSession(15, input(), { drive: true });
+    expect(ids(p)).toEqual(['warmup', 'speed', 'count', 'truecount', 'deviations']);
+    expect(p.reduce((a, s) => a + s.minutes, 0)).toBe(15);
+    // Even when bets is the weakest thing there is.
+    const five = planSession(5, input({ rungsPassed: { ...ALL_PASSED, betramp: false } }), { drive: true });
+    expect(ids(five)).not.toContain('bets');
+    expect(ids(planSession(5, input({ rungsPassed: { ...ALL_PASSED, betramp: false } })))).toContain('bets');
+  });
+
   it('a rung missing from the ladder reads as not passed', () => {
     const p = planSession(5, input({ rungsPassed: { basic: true, repair: true, count: true, tc: true, deviations: true } }));
     expect(ids(p)).toEqual(['warmup', 'speed', 'bets']);

@@ -42,6 +42,6 @@ export function planInputFor(stats: Stats, profile: Profile, now: number, built?
 }
 
 export function startGuided(preset: GuidedPreset, drive: boolean, stats: Stats, profile: Profile, now: number, built?: Ladder): GuidedSession {
-  const plan = planSession(preset, planInputFor(stats, profile, now, built));
+  const plan = planSession(preset, planInputFor(stats, profile, now, built), { drive });
   return newSession(preset, drive, plan, now, localDayKey(new Date(now)));
 }

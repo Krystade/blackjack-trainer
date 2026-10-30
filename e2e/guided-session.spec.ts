@@ -245,9 +245,15 @@ test('Drive: spoken transitions, answers and commands by voice, an answer is nev
   await sayCommand(page, 'skip segment', () => expect(page.locator('[data-segment="speed"]')).toBeVisible({ timeout: 1000 }));
   await expect.poll(() => spoken(page)).toContain(`Skipped. Next: speed. ${answersSentence(answers(plan[1]!))}`);
 
-  // Speed is the wheel-only drill in Drive; tapped past, to the count.
+  // Speed in Drive is answered by voice like the warm-up, and every answer
+  // counts (right or wrong); its microphone also takes the session's commands.
   await expect(running(page, 'speed')).toBeVisible({ timeout: 15_000 });
-  await page.locator('.guided-strip').getByRole('button', { name: 'Skip', exact: true }).click();
+  const speedN = answers(plan[1]!);
+  await sayOnceListening(page, 'stand');
+  await expect(strip(page)).toHaveText(`1/${speedN}`);
+  await sayOnceListening(page, 'hit');
+  await expect(strip(page)).toHaveText(`2/${speedN}`);
+  await sayCommand(page, 'skip segment', () => expect(page.locator('[data-segment="count"]')).toBeVisible({ timeout: 1000 }));
   await expect(running(page, 'count')).toBeVisible({ timeout: 15_000 });
 
   await sayCommand(page, 'end session', () => expect(page.getByTestId('guided-summary')).toBeVisible({ timeout: 1000 }));
