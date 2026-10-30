@@ -45,6 +45,38 @@ function safe(fn: () => void): void {
 }
 
 /**
+ * The build, install mode and recognition engine, as one stamp for a line that
+ * must stand on its own (audit A8). A test kit's scoped copy keeps only lines
+ * written after the kit started, so the boot-time `env page-load` and
+ * `env capabilities` lines never reached a kit export, and a kit log could not
+ * be tied to the build that produced it -- in an app that reloads itself onto
+ * a new build mid-drive.
+ */
+export function environmentStamp(): {
+  build: string;
+  builtAt: string;
+  standalone: boolean | 'unknown';
+  recognition: 'standard' | 'webkit' | 'none' | 'unknown';
+} {
+  const stamp = {
+    build: runningBuildId() ?? 'unknown',
+    builtAt: runningBuiltAt() ?? 'unknown',
+    standalone: 'unknown' as boolean | 'unknown',
+    recognition: 'unknown' as 'standard' | 'webkit' | 'none' | 'unknown',
+  };
+  safe(() => {
+    if (typeof window === 'undefined') return;
+    const w = window as unknown as Record<string, unknown>;
+    const nav = navigator as unknown as { standalone?: boolean };
+    stamp.standalone =
+      nav.standalone === true ||
+      (typeof matchMedia === 'function' && matchMedia('(display-mode: standalone)').matches);
+    stamp.recognition = w.SpeechRecognition ? 'standard' : w.webkitSpeechRecognition ? 'webkit' : 'none';
+  });
+  return stamp;
+}
+
+/**
  * The facts that do not change during a page load.
  *
  * Written once, at the top of the log, because the first question about any

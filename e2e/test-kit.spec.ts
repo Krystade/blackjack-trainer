@@ -140,3 +140,22 @@ test('the phone-mic wheel step registers the wheel and holds focus, opened strai
     }, { timeout: 10_000 })
     .toEqual({ held: true, registered: true });
 });
+
+/**
+ * A8: a kit's scoped copy keeps only lines written after it started, so the
+ * build and device facts have to be on the kit's own first line.
+ */
+test('kit-start carries the build, install mode and recognition engine', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/?e2e=1');
+  await page.getByTestId('testkit-open').click();
+  await page.getByRole('button', { name: /Speaker check/ }).click();
+  await expect
+    .poll(async () => {
+      const raw = await readStoredDiagnostics(page);
+      const rows = raw ? (JSON.parse(raw) as Array<{ event?: string; detail?: Record<string, unknown> }>) : [];
+      const d = rows.filter((r) => r.event === 'kit-start').pop()?.detail;
+      return d ? { build: typeof d.build, builtAt: typeof d.builtAt, standalone: d.standalone, recognition: typeof d.recognition } : null;
+    }, { timeout: 10_000 })
+    .toEqual({ build: 'string', builtAt: 'string', standalone: false, recognition: 'string' });
+});

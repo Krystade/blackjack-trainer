@@ -54,6 +54,7 @@ import { ROUTE_ANSWERS, isRouteKitId, routeKitSummary, type RouteAnswer, type Ro
 import { RouteSnapshotStep, RouteVoiceStep } from './RouteKitSteps';
 import { diag, formatDiagnosticLog, readDiagnosticLog, scopeSince } from '../../diag/diagnosticLog';
 import { localRecordingStamp } from '../../platform/saveFile';
+import { environmentStamp } from '../../diag/environment';
 import { listMicrophones, probeMicSpectrum, type MicProbeResult } from '../../diag/micSpectrum';
 import { FIELD_TEST_STEPS } from '../../diag/fieldTest';
 import { readFieldTestRun, subscribeFieldTestRun } from '../../diag/fieldTestRun';
@@ -111,7 +112,10 @@ export function TestKit({ onNavigate }: { onNavigate: (s: Screen) => void }) {
   useEffect(() => subscribeFieldTestRun(() => setFieldRun(readFieldTestRun())), []);
 
   useEffect(() => {
-    if (resumed.current) diag('test', 'kit-resumed', { kit: resumed.current.kit, step: resumed.current.stepIndex });
+    // A8: stamped with the build -- a resume after an update reload can be on a different one.
+    if (resumed.current) {
+      diag('test', 'kit-resumed', { kit: resumed.current.kit, step: resumed.current.stepIndex, ...environmentStamp() });
+    }
     return () => {
       void releaseAll();
     };
@@ -163,7 +167,7 @@ export function TestKit({ onNavigate }: { onNavigate: (s: Screen) => void }) {
     } catch {
       /* the copy falls back to the whole log */
     }
-    diag('test', 'kit-start', { kit: id });
+    diag('test', 'kit-start', { kit: id, ...environmentStamp() });
     resumedAt.current = null;
     routeResults.current = [];
     setKit(id);
