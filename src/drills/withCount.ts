@@ -31,6 +31,13 @@ export const PLAIN_MIN = -3;
 export const PLAIN_MAX = 5;
 /** How often a hand with an index is dealt at or past it. */
 export const INDEX_SHARE = 0.5;
+/**
+ * C19 (audit 2026-10-29): how often a hand with an index is dealt one or two
+ * counts SHORT of it, where the chart play is still right and deviating early
+ * is the classic error. Without this band "one short" came up only from the
+ * uniform draw: about 5.5% of the hand's cards against 22% at the index.
+ */
+export const NEAR_SHARE = 0.2;
 
 /**
  * The play for a With-count card: `correctPlay`, except that an index the
@@ -99,9 +106,11 @@ export function drawCountTc(
   rng: () => number,
 ): number {
   const indexes = reachableIndexes(cards, up, ctx, rules);
-  if (indexes.length > 0 && rng() < INDEX_SHARE) {
+  const branch = indexes.length > 0 ? rng() : 1;
+  if (branch < INDEX_SHARE + NEAR_SHARE) {
     const dev = indexes[Math.floor(rng() * indexes.length)]!;
-    const past = intIn(rng, 0, 2);
+    // At or 1-2 past the index; or (C19) 1-2 short of it.
+    const past = branch < INDEX_SHARE ? intIn(rng, 0, 2) : -intIn(rng, 1, 2);
     return clamp(dev.dir === 'gte' ? dev.threshold + past : dev.threshold - past);
   }
   return intIn(rng, PLAIN_MIN, PLAIN_MAX);

@@ -35,6 +35,22 @@ describe('#53 drawCountTc', () => {
     }
     expect(past / N).toBeGreaterThan(0.5);
   });
+  it('C19: a hand with an index is often dealt one or two counts short of it', () => {
+    // 16 v 10 without surrender: stand at TC >= 0. Short of it is -1 and -2.
+    const rng = mulberry32(11);
+    const N = 6000;
+    let short = 0;
+    let atOrPast = 0;
+    for (let i = 0; i < N; i++) {
+      const tc = drawCountTc(hand('10', '6'), '10', FULL_CTX, NO_LS, rng);
+      if (tc === -1 || tc === -2) short++;
+      if (tc >= 0) atOrPast++;
+    }
+    // NEAR_SHARE 0.2 plus the plain draw's 2 of 9: about 27% (11% before).
+    expect(short / N).toBeGreaterThan(0.22);
+    expect(short / N).toBeLessThan(0.32);
+    expect(atOrPast / N).toBeGreaterThan(0.6);
+  });
   it('a hand with no index draws from the plain range', () => {
     const rng = mulberry32(6);
     const seen = new Set<number>();
