@@ -68,17 +68,19 @@ function keepOffTheCards(el: HTMLElement): void {
   const s = screen.getBoundingClientRect();
   el.style.top = `${Math.round(a.top + (a.height - r.height) / 2 - h.top)}px`;
   el.style.bottom = 'auto';
-  // Still on the side away from the thumb, from the same gutter as before,
-  // and over WHOLE controls: a half-covered Voice reads as a broken label. A
-  // right thumb leaves End showing (Repeat and Voice covered); a left thumb
-  // leaves Repeat showing.
+  // Still on the side away from the thumb, and over WHOLE controls: a
+  // half-covered Voice reads as a broken label. End is never covered, by
+  // either hand (review R3: a left thumb's readout ran to the gutter and left
+  // a sliver of End showing). A right thumb covers Repeat and Voice from the
+  // gutter; a left thumb covers Voice alone, between Repeat and End.
   const gutter = 16;
   const bar = screen.querySelector(':scope > .topbar');
   const left = el.closest('.peek-dock')?.getAttribute('data-hand') === 'left';
   const keep = bar?.querySelector(left ? '.repeat-btn' : '.end-btn')?.getBoundingClientRect();
   if (left) {
+    const end = bar?.querySelector('.end-btn')?.getBoundingClientRect();
     el.style.left = keep ? `${Math.round(keep.right + 8 - h.left)}px` : 'auto';
-    el.style.right = `${Math.round(h.right - (s.right - gutter))}px`;
+    el.style.right = `${Math.round(h.right - ((end ? end.left - 8 : s.right - gutter)))}px`;
   } else {
     el.style.left = `${Math.round(s.left + gutter - h.left)}px`;
     el.style.right = keep ? `${Math.round(h.right - (keep.left - 8))}px` : 'auto';
@@ -88,9 +90,11 @@ function keepOffTheCards(el: HTMLElement): void {
 export function PeekButton({ revealed, onReveal, onHide, readout, dataTc }: PeekButtonProps) {
   const heldRef = useRef(false);
   const readoutRef = useRef<HTMLDivElement>(null);
+  // Every render while held, not only when the peek opens: a card dealt
+  // mid-peek (by voice, say) re-renders this with the new count.
   useLayoutEffect(() => {
     if (revealed && readoutRef.current) keepOffTheCards(readoutRef.current);
-  }, [revealed]);
+  });
 
   const press = () => {
     if (heldRef.current) return;

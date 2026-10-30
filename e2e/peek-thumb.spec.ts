@@ -79,6 +79,18 @@ for (const [w, h] of [[375, 812], [320, 568], [480, 900]] as const) {
         });
       });
       expect(onCard, 'readout covers a card').toBe(false);
+      // Review R3: and not over End -- not a sliver of it, either hand -- and
+      // a second finger on the readout lands on the readout, not on whatever
+      // control is underneath it.
+      const end = page.locator('.table-screen > .topbar .end-btn');
+      if (await end.count()) expect(overlaps(readout, (await end.boundingBox())!), 'readout over End').toBe(false);
+      const hit = await page.evaluate(() => {
+        const el = document.querySelector('[data-testid="peek-readout"]')!;
+        const r = el.getBoundingClientRect();
+        const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        return !!at && el.contains(at);
+      });
+      expect(hit, 'a tap on the readout reaches what is under it').toBe(true);
       // Its text is not clipped by its own box.
       const clipped = await page
         .getByTestId('peek-readout')
