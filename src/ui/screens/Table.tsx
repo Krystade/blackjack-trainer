@@ -1,6 +1,7 @@
 import { strategyRulesFor } from '../../store/profiles';
 import { TabSettingsButton } from '../components/TabSettingsButton';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { releaseWakeLock, requestWakeLock } from '../../audio/wakeLock';
 import type { CSSProperties } from 'react';
 import type { Screen } from '../App';
 import type { Profile, Settings } from '../../store/types';
@@ -1128,6 +1129,16 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
    */
   const [eyesFreeSwitch] = useEyesFreeToggle('table');
   const eyesFree = eyesFreeSwitch || voiceOn;
+  // B9: an eyes-free table holds the screen awake for itself. The only hold
+  // here was useVoiceControl's, taken while a microphone window is open, so
+  // between windows (narration, a dealer round, a pause between shoes) the
+  // phone could auto-lock mid-shoe in the car. Its own key, so it cannot
+  // collide with the drills' shared one or the recogniser's.
+  useEffect(() => {
+    if (!eyesFree) return;
+    void requestWakeLock('table');
+    return () => void releaseWakeLock('table');
+  }, [eyesFree]);
   const paceMs = dealerPaceMs(settings, eyesFree);
   // G2 (L-8): read live, like the pace clock -- rounds that settle from here
   // on use it. Off eyes-free. Wave I: at the mode's rate.
