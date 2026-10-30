@@ -2473,6 +2473,31 @@ describe('Wave A engine fixes', () => {
     expect(tcCorrect).toBe(true);
   });
 
+  // C11 (audit 2026-10-29): the BJA chart prints 12 v 4 as "0-", any
+  // negative running count. Truncate rounds RC -3 over ~6 decks to TC 0, which
+  // graded the stand as right and the hit as wrong.
+  it('C11: under truncate, 12 v 4 at a small negative running count is a hit', () => {
+    for (const [taken, right] of [['hit', true], ['stand', false]] as const) {
+      const game = Game.withRiggedShoe(cfg({ tcRounding: 'truncate' }), rig('10', '4', '2', '10', '5', '5', '5', '5'));
+      game.startRound();
+      if (game.phase === 'insurance') game.insuranceDecision(false);
+      game.runningCount = -3;
+      expect(game.trueCountNow).toBe(0);
+      game.act(taken);
+      const ev = game.events.find((e) => e.kind === 'action')!;
+      expect(ev.correct, taken).toBe(right);
+      expect(ev.expected).toBe('hit');
+    }
+  });
+
+  it('C11: floor grading of the zero cells is unchanged', () => {
+    const game = Game.withRiggedShoe(cfg({ tcRounding: 'floor' }), rig('10', '4', '2', '10', '5', '5', '5', '5'));
+    game.startRound();
+    game.runningCount = 0;
+    game.act('stand');
+    expect(game.events.find((e) => e.kind === 'action')!.correct).toBe(true);
+  });
+
   it('F10: no double after a split without DAS', () => {
     const deal = rig('8', '6', '8', '10', '3', '2', '10', '10', '10', '10');
     const noDas = Game.withRiggedShoe(cfg({ rules: { ...DEFAULT_RULES, das: false } }), deal);

@@ -44,6 +44,17 @@ function deviation(dev: Deviation, action: Action): Advice {
   return { action, source: 'illustrious18', deviationId: dev.id, reason: dev.label };
 }
 
+/**
+ * Whether an index is reached at this count. C11: a zero-count cell
+ * (`rcSign`) reads the running count's sign when the caller knows it --
+ * negative is TC -1, otherwise TC 0 -- so truncate and round cannot turn a
+ * negative count into "0". Without `rc` it reads the true count as before.
+ */
+function reached(d: Deviation, tc: number, rc: number | undefined): boolean {
+  const t = d.rcSign && rc !== undefined ? (rc < 0 ? -1 : 0) : tc;
+  return d.dir === 'gte' ? t >= d.threshold : t <= d.threshold;
+}
+
 /** Hard/soft chart action for a hand total, ignoring the PAIRS table entirely. */
 function hardSoftChartAction(cards: Card[], dealerUp: Rank, chart: Chart): { action: ChartAction; total: number; soft: boolean } {
   const hv = handValue(cards);
@@ -77,12 +88,13 @@ function findTotalDeviation(
   total: number,
   dealerUp: Rank,
   tc: number,
+  rc?: number,
 ): Deviation | undefined {
   const idx = upIndex(dealerUp);
   return deviations.find((d) => {
     if (!d.active || d.kind !== kind || d.total !== total || d.up === undefined) return false;
     if (upIndex(d.up) !== idx) return false;
-    return d.dir === 'gte' ? tc >= d.threshold : tc <= d.threshold;
+    return reached(d, tc, rc);
   });
 }
 
@@ -122,6 +134,7 @@ function resolveAsTotal(
   ctx: PlayContext,
   deviations: Deviation[],
   chart: Chart,
+  rc?: number,
 ): Advice {
   const { action, total, soft } = hardSoftChartAction(cards, dealerUp, chart);
 
@@ -144,7 +157,7 @@ function resolveAsTotal(
   if (ctx.canSurrender) {
     const sur = soft ? undefined : findSurrenderDeviation(deviations, total, dealerUp);
     if (sur) {
-      if (sur.dir === 'gte' ? tc >= sur.threshold : tc <= sur.threshold) {
+      if (reached(sur, tc, rc)) {
         return deviation(sur, 'surrender');
       }
       surBelow = sur;
@@ -169,7 +182,7 @@ function resolveAsTotal(
   // Step 3: total deviations, matched by the hand's own kind -- hard entries
   // for hard hands, soft entries (the opt-in BJA H17 extras) for soft hands.
   // A soft entry matches any soft hand of that total, so A,2,6 is an A,8.
-  const dev = findTotalDeviation(deviations, soft ? 'soft' : 'hard', total, dealerUp, tc);
+  const dev = findTotalDeviation(deviations, soft ? 'soft' : 'hard', total, dealerUp, tc, rc);
   if (dev) {
     if (dev.action === 'double') {
       if (ctx.canDouble) return deviation(dev, 'double');
@@ -235,6 +248,7 @@ function pairTotalIndex(
   ctx: PlayContext,
   deviations: Deviation[],
   action: ChartAction,
+  rc?: number,
 ): Advice | undefined {
   const hv = handValue(cards);
   if (hv.soft) return undefined;
@@ -242,13 +256,13 @@ function pairTotalIndex(
   if (ctx.canSurrender) {
     const sur = findSurrenderDeviation(deviations, hv.total, dealerUp);
     if (sur) {
-      if (sur.dir === 'gte' ? tc >= sur.threshold : tc <= sur.threshold) return deviation(sur, 'surrender');
+      if (reached(sur, tc, rc)) return deviation(sur, 'surrender');
       surrenderOff = true;
     } else if (action === 'Rh' || action === 'Rs') {
       return undefined; // basic surrender wins, as in resolveAsTotal
     }
   }
-  const dev = findTotalDeviation(deviations, 'hard', hv.total, dealerUp, tc);
+  const dev = findTotalDeviation(deviations, 'hard', hv.total, dealerUp, tc, rc);
   if (dev) {
     if (dev.action !== 'double') return deviation(dev, dev.action as Action);
     if (ctx.canDouble) return deviation(dev, 'double');
@@ -275,6 +289,8 @@ export function play(
   ctx: PlayContext,
   deviations: Deviation[],
   chart: Chart,
+  /** C11: the running count, when known, for the zero-count cells (`rcSign`). */
+  rc?: number,
 ): Advice {
   // Step 1: pair path. Entered for any pair (not gated on ctx.canSplit --
   // several resolved cell types, e.g. Rs/Rh/S/H, don't involve splitting at
@@ -294,7 +310,7 @@ export function play(
             d.kind === 'pair10' &&
             d.up !== undefined &&
             upIndex(d.up) === idx &&
-            (d.dir === 'gte' ? tc >= d.threshold : tc <= d.threshold),
+            reached(d, tc, rc),
         );
         if (split) return deviation(split, 'split');
       }
@@ -306,7 +322,7 @@ export function play(
       const idx = upIndex(dealerUp);
       const action = chart.PAIRS[rank]![idx];
       if (action === 'Rs' || action === 'Rh' || action === 'H' || action === 'S' || action === 'Dh' || action === 'Ds') {
-        const indexed = pairTotalIndex(cards, dealerUp, tc, ctx, deviations, action);
+        const indexed = pairTotalIndex(cards, dealerUp, tc, ctx, deviations, action, rc);
         if (indexed) return indexed;
       }
       switch (action) {
@@ -356,12 +372,20 @@ export function play(
 
   // Step 2-4: non-pair hands, or pairs re-looked-up as hard/soft totals
   // (either !canSplit, or a pair rank absent from PAIRS).
-  return resolveAsTotal(cards, dealerUp, tc, ctx, deviations, chart);
+  return resolveAsTotal(cards, dealerUp, tc, ctx, deviations, chart, rc);
 }
 
-export function correctPlay(cards: Card[], dealerUp: Rank, tc: number, ctx: PlayContext, rules: StrategyRules = DEFAULT_RULES): Advice {
+/** `rc` (C11): the running count, where the caller has one, for the zero-count cells. */
+export function correctPlay(
+  cards: Card[],
+  dealerUp: Rank,
+  tc: number,
+  ctx: PlayContext,
+  rules: StrategyRules = DEFAULT_RULES,
+  rc?: number,
+): Advice {
   const deviations = indexSetFor(rules);
-  return play(cards, dealerUp, tc, ctx, deviations, getChart(rules));
+  return play(cards, dealerUp, tc, ctx, deviations, getChart(rules), rc);
 }
 
 /** Same algorithm with deviations OFF (used by the grader). */

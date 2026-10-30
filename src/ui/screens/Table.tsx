@@ -1239,7 +1239,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange, k
     advice =
       game.cfg.gradeDeviations === false
         ? basicPlay(activeHand.cards, game.dealerCards[0].rank, ctx, rules).action
-        : correctPlay(activeHand.cards, game.dealerCards[0].rank, game.trueCountNow, ctx, rules).action;
+        : correctPlay(activeHand.cards, game.dealerCards[0].rank, game.trueCountNow, ctx, rules, game.runningCount).action;
   }
 
   let barMode: ActionBarMode;

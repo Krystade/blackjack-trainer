@@ -57,6 +57,16 @@ export interface Deviation {
   // (threshold + 1). The user is always shown that form ("12 v 6: stand at
   // TC ≥ −3"), never the stored hit threshold; see drills/indexDisplay.ts.
   above?: Action;
+  /**
+   * C11 (audit 2026-10-29): a zero-count cell -- one the BJA H17 chart
+   * (docs/sources/BJA_H17.pdf) prints as `0-` ("the deviation happens at any
+   * negative running count"), and the 16 v 10 stand at 0. It is decided by
+   * the running count's SIGN, not by the rounded true count: under truncate
+   * or round, RC -3 with 5 decks left rounds to TC 0 and would read as "not
+   * negative". A negative RC reads as TC -1, otherwise TC 0, which is what the
+   * floor convention already gives, so floor is unchanged.
+   */
+  rcSign?: true;
 }
 
 // VERIFIED H17-ADJUSTED INDICES — transcribed verbatim from the task-6 brief.
@@ -65,7 +75,7 @@ export interface Deviation {
 // 11vA is inactive under H17).
 export const ILLUSTRIOUS_18: Deviation[] = [
   { id: 'ins', kind: 'insurance', action: 'take-insurance', threshold: 3, dir: 'gte', active: true, label: 'Insurance: take at TC ≥ +3' },
-  { id: '16v10', kind: 'hard', total: 16, up: '10', action: 'stand', threshold: 0, dir: 'gte', active: true, label: '16 v 10: stand at TC ≥ 0' },
+  { id: '16v10', kind: 'hard', total: 16, up: '10', action: 'stand', threshold: 0, dir: 'gte', active: true, rcSign: true, label: '16 v 10: stand at TC ≥ 0' },
   { id: '15v10', kind: 'hard', total: 15, up: '10', action: 'stand', threshold: 4, dir: 'gte', active: true, label: '15 v 10: stand at TC ≥ +4' },
   { id: 'TTv5', kind: 'pair10', up: '5', action: 'split', threshold: 5, dir: 'gte', active: true, label: '10,10 v 5: split at TC ≥ +5' },
   { id: 'TTv6', kind: 'pair10', up: '6', action: 'split', threshold: 4, dir: 'gte', active: true, label: '10,10 v 6: split at TC ≥ +4' },
@@ -78,7 +88,7 @@ export const ILLUSTRIOUS_18: Deviation[] = [
   { id: '9v7', kind: 'hard', total: 9, up: '7', action: 'double', threshold: 3, dir: 'gte', active: true, label: '9 v 7: double at TC ≥ +3' },
   { id: '16v9', kind: 'hard', total: 16, up: '9', action: 'stand', threshold: 4, dir: 'gte', active: true, label: '16 v 9: stand at TC ≥ +4 (H17)' },
   { id: '13v2', kind: 'hard', total: 13, up: '2', action: 'hit', threshold: -2, dir: 'lte', above: 'stand', active: true, label: '13 v 2: stand at TC ≥ −1; hit below' },
-  { id: '12v4', kind: 'hard', total: 12, up: '4', action: 'hit', threshold: -1, dir: 'lte', above: 'stand', active: true, label: '12 v 4: stand at TC ≥ 0; hit below' },
+  { id: '12v4', kind: 'hard', total: 12, up: '4', action: 'hit', threshold: -1, dir: 'lte', above: 'stand', active: true, rcSign: true, label: '12 v 4: stand at TC ≥ 0; hit below' },
   { id: '12v5', kind: 'hard', total: 12, up: '5', action: 'hit', threshold: -3, dir: 'lte', above: 'stand', active: true, label: '12 v 5: stand at TC ≥ −2; hit below' },
   // F6: published H17 index is "stand at TC ≥ −3", so -- like every other
   // negative index here -- the stored hit threshold is the index minus one.
@@ -210,7 +220,7 @@ export const FAB_4_H17: Deviation[] = [
   // Wizard of Odds and CountingEdge.
   { id: 'sur15v9', kind: 'surrender', total: 15, up: '9', action: 'surrender', threshold: 2, dir: 'gte', active: true, label: '15 v 9: surrender at TC ≥ +2' },
   // Three sources: BJA chart `0-`, WoO Fab 4 (+0), CountingEdge Fab 4 (0).
-  { id: 'sur15v10', kind: 'surrender', total: 15, up: '10', action: 'surrender', threshold: 0, dir: 'gte', active: true, label: '15 v 10: surrender at TC ≥ 0' },
+  { id: 'sur15v10', kind: 'surrender', total: 15, up: '10', action: 'surrender', threshold: 0, dir: 'gte', active: true, rcSign: true, label: '15 v 10: surrender at TC ≥ 0' },
   // One chart plus a structural argument (see the doc's §1a): BJA prints this
   // cell `-1+`, and on this grid a `+` suffix marks a hand their own basic does
   // NOT surrender. Weakest-justified row in the set.
@@ -242,7 +252,7 @@ export const FAB_4_H17: Deviation[] = [
  */
 export const FAB_4_S17: Deviation[] = [
   { id: 'sur15v9', kind: 'surrender', total: 15, up: '9', action: 'surrender', threshold: 2, dir: 'gte', active: true, label: '15 v 9: surrender at TC ≥ +2' },
-  { id: 'sur15v10', kind: 'surrender', total: 15, up: '10', action: 'surrender', threshold: 0, dir: 'gte', active: true, label: '15 v 10: surrender at TC ≥ 0' },
+  { id: 'sur15v10', kind: 'surrender', total: 15, up: '10', action: 'surrender', threshold: 0, dir: 'gte', active: true, rcSign: true, label: '15 v 10: surrender at TC ≥ 0' },
   { id: 'sur15vA', kind: 'surrender', total: 15, up: 'A', action: 'surrender', threshold: 1, dir: 'gte', active: true, label: '15 v A: surrender at TC ≥ +1 (S17)' },
   { id: 'sur14v10', kind: 'surrender', total: 14, up: '10', action: 'surrender', threshold: 3, dir: 'gte', active: true, label: '14 v 10: surrender at TC ≥ +3' },
 ];
@@ -282,7 +292,7 @@ export const BJA_H17_EXTRAS: Deviation[] = [
   { id: '8v6', kind: 'hard', total: 8, up: '6', action: 'double', threshold: 2, dir: 'gte', active: true, extra: true, label: '8 v 6: double at TC ≥ +2' },
   { id: 'A8v4', kind: 'soft', total: 19, up: '4', action: 'double', threshold: 3, dir: 'gte', active: true, extra: true, label: 'A,8 v 4: double at TC ≥ +3' },
   { id: 'A8v5', kind: 'soft', total: 19, up: '5', action: 'double', threshold: 1, dir: 'gte', active: true, extra: true, label: 'A,8 v 5: double at TC ≥ +1' },
-  { id: 'A8v6', kind: 'soft', total: 19, up: '6', action: 'stand', threshold: -1, dir: 'lte', above: 'double', active: true, extra: true, label: 'A,8 v 6: double at TC ≥ 0; stand below' },
+  { id: 'A8v6', kind: 'soft', total: 19, up: '6', action: 'stand', threshold: -1, dir: 'lte', above: 'double', active: true, extra: true, rcSign: true, label: 'A,8 v 6: double at TC ≥ 0; stand below' },
   { id: 'A6v2', kind: 'soft', total: 17, up: '2', action: 'double', threshold: 1, dir: 'gte', active: true, extra: true, label: 'A,6 v 2: double at TC ≥ +1' },
   { id: 'TTv4', kind: 'pair10', up: '4', action: 'split', threshold: 6, dir: 'gte', active: true, extra: true, label: '10,10 v 4: split at TC ≥ +6' },
 ];

@@ -300,3 +300,23 @@ describe('a play below a surrender index is filed under the index (C5)', () => {
     });
   });
 });
+
+// C11: the BJA chart's "0-" on 15 v 10 means stop surrendering at any negative
+// running count; with the RC known, a truncated TC 0 cannot hide it.
+describe('zero-count cells read the running count when it is known (C11)', () => {
+  it('15 v 10: RC -3 is below the index even at TC 0; RC 0 is at it', () => {
+    expect(correctPlay(hard(15), '10', 0, CAN, H17, -3).action).toBe('hit');
+    expect(correctPlay(hard(15), '10', 0, CAN, H17, 0).action).toBe('surrender');
+    expect(correctPlay(hard(15), '10', 0, CAN, H17).action).toBe('surrender'); // no rc: TC as before
+  });
+
+  it('16 v 10 stands only from RC 0 up, with surrender unavailable', () => {
+    expect(correctPlay(hard(16), '10', 0, CANNOT, H17_OFF, -2).action).toBe('hit');
+    expect(correctPlay(hard(16), '10', 0, CANNOT, H17_OFF, 0).action).toBe('stand');
+  });
+
+  it('the cells that carry it are exactly the zero-count ones', () => {
+    const ids = indexSetFor({ ...H17, bjaExtras: true }).filter((d) => d.rcSign).map((d) => d.id).sort();
+    expect(ids).toEqual(['12v4', '16v10', 'A8v6', 'sur15v10']);
+  });
+});

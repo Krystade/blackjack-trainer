@@ -1164,7 +1164,8 @@ export class Game {
     // #34: with deviations off, the right play is basic strategy at every
     // count; correctPlay's index plays are never asked for.
     const withCount: Advice =
-      this.cfg.gradeDeviations === false ? basicOnly : correctPlay(hand.cards, up, tc, ctx, this.rules);
+      // C11: the running count rides along for the zero-count cells.
+      this.cfg.gradeDeviations === false ? basicOnly : correctPlay(hand.cards, up, tc, ctx, this.rules, this.runningCount);
     const { classification, correct, phantomOf } = classifyAction(action, withCount, basicOnly, hand.cards, up, tc, this.rules);
     const category = actionCategory(hand.cards, withCount.action);
     // #25: a basic error is priced, on the hand as it stood at the decision,
