@@ -5,7 +5,7 @@ import { subscribeToExternalWrites } from './crossTab';
 import { methodsFor, type BetMethod } from '../engine/betMethods';
 import type { Accum, SimSpec } from '../engine/casinoSim';
 import type { RunStatus } from '../engine/casinoRun';
-import { CUT_MIN_DECKS } from '../engine/cut';
+import { simCutDecks } from '../engine/cut';
 import { MULBERRY32_STEP } from '../engine/cards';
 import type { RuleSet } from '../engine/ruleset';
 
@@ -83,6 +83,8 @@ export interface SimInput {
   assumed: AssumedField[];
   /** The cut the simulator actually used, in decks (clamped to the shoe). */
   cutUsed: number;
+  /** C4: a cut was logged, and the simulator dealt a different one (its own bound, simCutDecks). */
+  cutClamped?: true;
   methods: BetMethod[];
   /** Wave M: dollars per $100 the simulation charged (0 = none). */
   commissionPer100: number;
@@ -166,7 +168,10 @@ export function simInputFor(
     assumed.push('cut');
     cut = ASSUMED_CUT;
   }
-  const cutUsed = Math.min(Math.max(CUT_MIN_DECKS, shoeDecks - CUT_MIN_DECKS), Math.max(CUT_MIN_DECKS, cut));
+  // C4: the simulator's own quarter-deck bound, not Play's half deck, so a
+  // single-deck game is dealt at the cut it was logged with.
+  const cutUsed = simCutDecks(cut, shoeDecks);
+  const cutClamped = game.cutDecksLeft != null && cutUsed !== game.cutDecksLeft;
   let unit = game.minBet;
   if (unit === null || unit === undefined || !(unit > 0)) {
     assumed.push('minBet');
@@ -188,7 +193,7 @@ export function simInputFor(
   // Review S4: a method's label is only its name -- renaming it changes no round -- so it is left out of the key.
   const text = JSON.stringify({ v: SIM_VERSION, ...spec, methods: spec.methods.map(({ label: _label, ...m }) => m) });
   const h = fnv1a(text);
-  return { spec, key: `${SIM_VERSION}:${h.toString(36)}:${text.length.toString(36)}`, seed: h, assumed, cutUsed, methods, commissionPer100: wm.commissionPer100 };
+  return { spec, key: `${SIM_VERSION}:${h.toString(36)}:${text.length.toString(36)}`, seed: h, assumed, cutUsed, ...(cutClamped ? { cutClamped: true as const } : {}), methods, commissionPer100: wm.commissionPer100 };
 }
 
 /**

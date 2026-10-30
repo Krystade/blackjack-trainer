@@ -15,6 +15,23 @@ export const CUT_VARY_DECKS = 0.5;
  * ever dealt before it. */
 export const CUT_MIN_DECKS = 0.5;
 
+/**
+ * C4 (audit 2026-10-29): the casino simulator's own bound, in decks, on each
+ * side of the cut. Play's half-deck rule (CUT_MIN_DECKS) is a table-feel
+ * choice; reused by the simulator it pinned every single-deck game to exactly
+ * half a deck, whatever cut was logged. A quarter deck (13 cards) behind the
+ * cut and in front of it is room for a heads-up round, and a round that runs
+ * the shoe dry is already handled (CasinoSim.draw reshuffles).
+ */
+export const SIM_CUT_MIN_DECKS = 0.25;
+
+/** Decks behind the cut the simulator deals a logged cut at, clamped to [SIM_CUT_MIN_DECKS, shoe - SIM_CUT_MIN_DECKS]. */
+export function simCutDecks(cutDecks: number, shoeDecks: number): number {
+  const lo = SIM_CUT_MIN_DECKS;
+  const hi = Math.max(lo, shoeDecks - SIM_CUT_MIN_DECKS);
+  return Math.min(hi, Math.max(lo, cutDecks));
+}
+
 /** The part of a Profile the cut is read from (a Profile satisfies it). */
 export interface CutSpec {
   penetration: number;

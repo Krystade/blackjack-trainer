@@ -330,3 +330,27 @@ describe('runSeed', () => {
     expect(seen.size).toBe(SPACED_RUNS * 16);
   });
 });
+
+// C4 (audit 2026-10-29): a single-deck game keeps its logged cut.
+describe('the simulator cut follows the logged cut on single deck (C4)', () => {
+  const oneDeck = (cutDecksLeft: number | null): CasinoGame => ({ ...GAME, decks: 1, cutDecksLeft });
+
+  it('0.75 and 0.25 decks left are simulated as logged, with different keys', () => {
+    const shallow = simInputFor(oneDeck(0.75), profile, []);
+    const deep = simInputFor(oneDeck(0.25), profile, []);
+    expect(shallow.cutUsed).toBe(0.75);
+    expect(deep.cutUsed).toBe(0.25);
+    expect(shallow.spec.cutDecks).toBe(0.75);
+    expect(shallow.key).not.toBe(deep.key);
+    expect(shallow.cutClamped).toBeUndefined();
+  });
+
+  it('a cut the simulator cannot deal is clamped, and says so', () => {
+    const silly = simInputFor(oneDeck(1), profile, []);
+    expect(silly.cutUsed).toBe(0.75);
+    expect(silly.cutClamped).toBe(true);
+    const zero = simInputFor({ ...GAME, cutDecksLeft: 0 }, profile, []);
+    expect(zero.cutUsed).toBe(0.25);
+    expect(zero.cutClamped).toBe(true);
+  });
+});

@@ -178,3 +178,25 @@ describe('the decision cache answers exactly as play() does', () => {
     }
   });
 });
+
+// C4 (audit 2026-10-29): the simulator reused Play's half-deck cut bound, so
+// every single-deck game was dealt to exactly half a deck whatever was logged.
+describe('the simulator deals a single-deck game at its logged cut (C4)', () => {
+  const shuffles = (cutDecks: number): number => {
+    const sim = new CasinoSim(spec({ rules: { ...H17_6D, decks: 1 }, cutDecks }), 'basic', 4242);
+    let n = 0;
+    sim.onRound = (r) => {
+      if (r.shuffled) n += 1;
+    };
+    sim.run(20_000);
+    return n;
+  };
+
+  it('a shallow cut (0.75 left) shuffles more often than a deep one (0.25 left)', () => {
+    const shallow = shuffles(0.75);
+    const half = shuffles(0.5);
+    const deep = shuffles(0.25);
+    expect(shallow).toBeGreaterThan(half * 1.3);
+    expect(half).toBeGreaterThan(deep * 1.3);
+  });
+});

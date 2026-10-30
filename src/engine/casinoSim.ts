@@ -8,7 +8,7 @@ import type { Action, Deviation } from './deviations';
 import { getChart } from './charts';
 import type { Chart } from './charts';
 import { upIndex } from './basicStrategy';
-import { cutCardsFor, cutRngSeed } from './cut';
+import { simCutDecks } from './cut';
 import type { StrategyRules } from './ruleset';
 import type { SpreadRow } from './game';
 import { methodBet, methodSpread } from './betMethods';
@@ -20,8 +20,9 @@ import type { BetMethod } from './betMethods';
  * and playing them with the app's own engine:
  *
  *   - the shoe is `Shoe`'s: the same card order, the same `mulberry32`
- *     stream through the same `fisherYatesShuffle`, the cut from
- *     `cutCardsFor` on `Game`'s cut stream -- so a seed deals here exactly
+ *     stream through the same `fisherYatesShuffle`, the same fixed cut as
+ *     `cutCardsFor` gives Play wherever both bounds allow it (C4: the
+ *     simulator's bound is a quarter deck, Play's half) -- so a seed deals here exactly
  *     the cards it deals in Play (casinoSim.test.ts compares them card for
  *     card). Only the bookkeeping differs: an index into the shuffled array
  *     instead of `Shoe.draw`'s shift and a fresh set of card objects per shoe,
@@ -65,7 +66,7 @@ export type SimMode = 'basic' | 'count';
 export interface SimSpec {
   /** The game's rules plus the profile's index flags (strategyRulesFor). */
   rules: StrategyRules;
-  /** Decks left behind the cut card. `cutCardsFor` clamps it to [0.5, decks - 0.5]. */
+  /** Decks left behind the cut card. `simCutDecks` clamps it to [0.25, decks - 0.25]. */
   cutDecks: number;
   /** A continuous shuffler: a fresh shoe for every round. */
   csm: boolean;
@@ -323,10 +324,12 @@ export class CasinoSim {
     const ins = this.deviations.find((d) => d.id === 'ins');
     this.insThreshold = counting && ins ? ins.threshold : null;
     this.bjPays = spec.rules.bj65 ? 1.2 : 1.5;
-    // The cut, seeded the way Game seeds it, so a seed deals the same shoe here as there.
-    const cutRng = mulberry32(cutRngSeed(seed));
-    const cutSpec = { penetration: 0.75, cutDecks: spec.cutDecks, cutVary: false, rules: { decks: this.decks } };
-    this.cutCards = () => cutCardsFor(cutSpec, cutRng);
+    // The cut, fixed per game (no vary), so a seed deals the same shoe here as
+    // in Game wherever both allow the cut. C4: clamped to the simulator's own
+    // quarter-deck bound, not Play's half deck, so a single-deck game keeps
+    // the cut it was logged with.
+    const cutCards = Math.round(simCutDecks(spec.cutDecks, this.decks) * 52);
+    this.cutCards = () => cutCards;
     for (let d = 0; d < this.decks; d++) for (const suit of SUITS) for (const rank of RANKS) this.base.push({ rank, suit });
     this.seed = seed >>> 0;
     const shoeRng = mulberry32(seed);
@@ -479,7 +482,7 @@ export class CasinoSim {
       if (this.left) this.left[typeOfCard(c)]! -= 1;
       return c;
     }
-    // cutCardsFor never leaves fewer than half a deck behind the cut, so a
+    // simCutDecks never leaves fewer than a quarter deck behind the cut, so a
     // round only runs the shoe dry on a freak run of splits and small cards.
     // A dealer then shuffles the discards back in; a fresh shoe stands in.
     // Review N7: the round is scored in the old shoe, then that shoe is closed

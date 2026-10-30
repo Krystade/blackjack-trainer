@@ -288,6 +288,13 @@ export function GameStats({
             {row.input.spec.doubleOn ? '' : ', double any two'}, min bet {money(row.input.spec.unit)}
             {row.input.spec.maxBet !== null ? `, max ${money(row.input.spec.maxBet)}` : ', no table max'}, {rph} rounds/h.
           </p>
+          {/* C4: a logged cut the simulator cannot deal is moved to the nearest one it can. */}
+          {row.input.cutClamped && game.cutDecksLeft != null && (
+            <p data-testid="gs-cut-clamped">
+              <strong>Cut:</strong> logged at {game.cutDecksLeft} decks left, simulated at {row.input.cutUsed}: the simulator keeps at least a
+              quarter deck on each side of the cut.
+            </p>
+          )}
           {row.input.commissionPer100 > 0 && (
             <p data-testid="gs-commission">
               <strong>Commission:</strong> {money(row.input.commissionPer100)} per $100 wagered, taken from every hand dealt to you, win or lose
