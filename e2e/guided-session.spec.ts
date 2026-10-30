@@ -1,6 +1,8 @@
 import { test, expect, type Page } from '@playwright/test';
 import { readStoredDiagnostics, sayOnceListening, submitZero, withProfile, withSettings } from './helpers';
-import { answersSentence } from '../src/guided/lines';
+import { answersSentence, driveIntroLine } from '../src/guided/lines';
+import { driveTransitionCapMs } from '../src/guided/transitionCap';
+import { DRIVE_INTRO_LISTEN_MS } from '../src/guided/transitionCap';
 
 /**
  * Wave L (lane v): the guided session. One tap on Home runs warm-up, speed and
@@ -566,4 +568,29 @@ test('Drive: the transition microphone listens long enough after its line for a 
       return end !== null && end <= goneAt! ? goneAt! - end : null;
     }, { timeout: 10_000 })
     .toBeGreaterThanOrEqual(2500);
+});
+
+/**
+ * Review of A9: the first Drive transition's cap is computed from the measured
+ * clips it queues behind (intro, hint, first line) plus the beat and 3 s.
+ */
+test('Drive: the first transition cap is the measured lines, the listen beat and 3 s', async ({ page }) => {
+  test.setTimeout(60_000);
+  await withFakeEngine(page);
+  await base(page);
+  await page.goto('/?e2e=1');
+  const card = page.locator('.guided-card');
+  await card.getByRole('radio', { name: /^5/ }).click();
+  await card.getByRole('button', { name: 'Drive', exact: true }).click();
+  await expect(running(page, 'warmup')).toBeVisible({ timeout: 15_000 });
+  const plan = await storedPlan(page);
+  const first = `First: warm-up. ${answersSentence(answers(plan[0]!))}`;
+  const want = driveTransitionCapMs([driveIntroLine(5), first], DRIVE_INTRO_LISTEN_MS);
+  await expect
+    .poll(async () => {
+      const raw = await readStoredDiagnostics(page);
+      const rows = raw ? (JSON.parse(raw) as Array<{ event?: string; detail?: Record<string, unknown> }>) : [];
+      return rows.find((r) => r.event === 'transition-cap')?.detail?.ms ?? null;
+    }, { timeout: 10_000 })
+    .toBe(Math.round(want));
 });

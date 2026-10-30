@@ -30,6 +30,7 @@ import {
   GUIDED_PAUSED,
   GUIDED_SKIPPED,
   bestSentence,
+  driveIntroLine,
   improvedSentence,
   percentSentence,
   resumeSentence,
@@ -38,6 +39,8 @@ import {
 import { checkAchievementsNow, onStatsSaved } from '../../../habits/progressStore';
 import { isAppSpeaking, speak } from '../../../audio/speech';
 import { speechOptsFrom } from '../../../audio/speechOpts';
+import { DRIVE_INTRO_LISTEN_MS, driveTransitionCapMs } from '../../../guided/transitionCap';
+import { diag } from '../../../diag/diagnosticLog';
 import { isEyesFreeOn, setEyesFreeOn } from '../../eyesFreeSession';
 import { isVoiceOn, setVoiceOn, useVoiceToggle } from '../../voiceSession';
 import { clearGuidedPriorModes, peekGuidedPriorModes, type GuidedModes } from '../../../guided/launch';
@@ -66,22 +69,8 @@ import './guidedSession.css';
 
 /** Tap mode: how long the "Up next" card shows before the segment starts by itself. */
 export const TAP_TRANSITION_MS = 2500;
-/** Drive: the most a transition line may hold the segment (a line that never reports its end). */
-// A9: 16 s, not 12: the first line now queues behind the tap's intro plus the
-// command hint (about 4 s more), and the cap must not cut the listen beat.
-const DRIVE_TRANSITION_CAP_MS = 16_000;
-/**
- * Drive: after the transition line, the beat the transition's microphone
- * listens before the segment starts -- the only moment the bare "skip",
- * "pause" and "end" are commands (over a running drill they could be answers).
- *
- * 3000ms (audit A9), not the 1500ms it shipped with. A word said after the
- * line has to be endpointed and delivered before the segment starts, because
- * starting it unmounts this microphone and its stop() throws away a result
- * still in flight -- and the car has delivered results 2258ms after the
- * speech ended (2026-10-02). At 1500ms the window existed on paper only.
- */
-export const DRIVE_INTRO_LISTEN_MS = 3000;
+// Review of A9: the listen beat and the Drive cap live in guided/transitionCap.ts.
+export { DRIVE_INTRO_LISTEN_MS } from '../../../guided/transitionCap';
 /** After the answer that ends a segment, let its verdict be said: at least this... */
 const END_SETTLE_MIN_MS = 700;
 /** ...and at most this, before the transition cuts in. */
@@ -391,7 +380,12 @@ export function GuidedSessionView({
     if (session.drive) {
       // The first line queues behind the protected "Guided session." said in the tap.
       say(line, { interrupt: reason !== 'first', onEnd: () => window.setTimeout(go, DRIVE_INTRO_LISTEN_MS) });
-      timer = window.setTimeout(go, DRIVE_TRANSITION_CAP_MS);
+      // Review of A9: from the measured clips of every line ahead of the beat
+      // (the first one queues behind the tap's intro and hint), plus 3 s.
+      const queued = reason === 'first' ? [driveIntroLine(session.preset), line] : [line];
+      const capMs = Math.round(driveTransitionCapMs(queued, DRIVE_INTRO_LISTEN_MS, audioRef.current.rate));
+      diag('life', 'transition-cap', { ms: capMs, reason });
+      timer = window.setTimeout(go, capMs);
     } else {
       timer = window.setTimeout(go, TAP_TRANSITION_MS);
     }
