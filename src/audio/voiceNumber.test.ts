@@ -162,3 +162,19 @@ describe('affirmsProposal is never the readback itself (review of A7)', () => {
     expect(affirmsProposal(['yes minus 3'], -3)).toBe(true);
   });
 });
+
+describe('a number word followed by to/too/for/four (review of A7)', () => {
+  it('is a misheard compound, refused rather than proposed wrong', () => {
+    expect(parseCountSpeech('twenty to')).toBe(null);
+    expect(parseCountSpeech('minus twenty for')).toBe(null);
+    expect(parseCountSpeech('plus twenty too')).toBe(null);
+    expect(parseCountSpeech('20 to')).toBe(null);
+    expect(parseCountSpeech('twenty four')).toBe(null);
+  });
+
+  it('leaves a homophone in front of the number, or after a sign, alone', () => {
+    expect(parseCountSpeech('minus for')).toEqual({ kind: 'value', value: -4 });
+    expect(parseCountSpeech('it was too minus three')).toEqual({ kind: 'value', value: -3 });
+    expect(parseCountSpeech('twenty')).toEqual({ kind: 'value', value: 20 });
+  });
+});

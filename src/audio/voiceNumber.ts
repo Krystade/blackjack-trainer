@@ -70,6 +70,14 @@ const NUMBER_WORDS: Record<string, number> = {
  */
 const HOMOPHONES = new Set(['oh', 'none', 'won', 'to', 'too', 'for', 'fore', 'free', 'ate', 'tree', 'fife', 'sicks']);
 
+/**
+ * Review of A7: a number followed by one of these is the engine's rendering
+ * of a compound it split ("twenty to" for twenty-two, "minus twenty for" for
+ * minus twenty-four). Treating the tail as filler proposed the wrong value;
+ * refusing it asks again, which is what happened before A7.
+ */
+const COMPOUND_TAILS = new Set(['to', 'too', 'for', 'four', 'fore']);
+
 const NEGATIVE_WORDS = new Set(['minus', 'negative', 'neg', 'down']);
 const POSITIVE_WORDS = new Set(['plus', 'positive', 'up']);
 
@@ -127,6 +135,7 @@ export function parseCountSpeech(transcript: string): CountSpeech | null {
     const numeric = /^(-?)(\d+)$/.exec(token);
     if (numeric) {
       if (magnitude !== null) return null; // two numbers is not an answer
+      if (COMPOUND_TAILS.has(tokens[i + 1] ?? '')) return null;
       magnitude = Number(numeric[2]);
       if (numeric[1] === '-') {
         sign = -1;
@@ -142,6 +151,7 @@ export function parseCountSpeech(transcript: string): CountSpeech | null {
       (token === 'oh' || i === 0 || !(NEGATIVE_WORDS.has(tokens[i - 1]!) || POSITIVE_WORDS.has(tokens[i - 1]!)));
     if (word !== undefined && !homophoneIsFiller) {
       if (magnitude !== null) return null;
+      if (COMPOUND_TAILS.has(tokens[i + 1] ?? '')) return null;
       magnitude = word;
       continue;
     }
