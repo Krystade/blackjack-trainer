@@ -70,6 +70,7 @@ test('Settings > Offline says whether the phone promised to keep the data', asyn
   });
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Settings' }).click();
-  await page.locator('summary', { hasText: 'Offline' }).click();
+  // Under ?e2e=1 every section starts open (CollapsibleSection).
+  await expect(page.getByTestId('storage-persisted')).toBeVisible();
   await expect(page.getByTestId('storage-persisted')).toHaveText('The phone may clear it: keep a backup');
 });
