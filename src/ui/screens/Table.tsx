@@ -953,7 +953,10 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
   // opens on the next Deal, so in between the peek read off the exact answer
   // about to be graded. A peek held as the check falls due ends there (the
   // button unmounts under the thumb, so its release never arrives).
-  const peekBlocked = game.countCheckDue || game.countCheckOpen || rewind !== null;
+  // Wave X review: nor while a round Out is still going onto the felt -- the
+  // engine has played all of it, so the peek would count the hole card and the
+  // dealer's draws before they are shown. Skip has the dock meanwhile.
+  const peekBlocked = game.countCheckDue || game.countCheckOpen || rewind !== null || sitOutPace.pending;
   useEffect(() => {
     if (peekBlocked) setPeeking(false);
   }, [peekBlocked]);

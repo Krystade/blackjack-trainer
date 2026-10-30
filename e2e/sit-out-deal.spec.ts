@@ -108,6 +108,22 @@ test('Out: the voice is not held to the felt -- each bot line is said a beat apa
   expect(await felt(page)).toEqual(OPENING_FELT);
 });
 
+test('Out: no peek while the round is still going onto the felt -- it would count cards not shown yet', async ({ page }) => {
+  await dealOut(page);
+  const peekBtn = page.locator('.peek-hold-btn');
+  await expect.poll(() => felt(page)).toEqual(OPENING_FELT);
+  await expect(peekBtn).toHaveCount(0);
+  // The hole card is up and the dealer's draw is still to come.
+  await page.clock.runFor((OPENING + 4) * BEAT + BEAT / 2);
+  await expect.poll(() => felt(page)).toEqual(HOLE);
+  await expect(peekBtn).toHaveCount(0);
+  await expect(page.locator('.fast-forward-btn')).toBeVisible();
+  // On the felt, all of it: the peek is back.
+  await page.clock.runFor(BEAT);
+  await expect.poll(() => felt(page)).toEqual(SETTLED);
+  await expect(peekBtn).toHaveCount(1);
+});
+
 test('Out: Skip puts the rest of the round on the felt at once', async ({ page }) => {
   await dealOut(page);
   await expect.poll(() => felt(page)).toEqual(OPENING_FELT);
