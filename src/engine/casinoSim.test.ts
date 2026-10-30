@@ -219,4 +219,33 @@ describe('C11: the simulator reads the zero-count cells by the running count', (
     sim.rc = 4;
     expect(sim.rcSignNow()).toBe(0);
   });
+  it('step() hands every counted decision the running count sign at that moment', () => {
+    type Spy = { rc: number; decide: (...a: unknown[]) => unknown; run(n: number): void };
+    const sim = new CasinoSim(spec({ rules: H17_6D, tcRounding: 'truncate' }), 'count', 7) as unknown as Spy;
+    const real = sim.decide.bind(sim);
+    const seen: { passed: unknown; live: number }[] = [];
+    sim.decide = (...a: unknown[]) => {
+      seen.push({ passed: a[7], live: sim.rc });
+      return real(...a);
+    };
+    sim.run(400);
+    expect(seen.length).toBeGreaterThan(400);
+    for (const s of seen) expect(s.passed).toBe(s.live < 0 ? -1 : 0);
+    // Both signs occur, so the check reads something.
+    expect(seen.some((s) => s.passed === -1)).toBe(true);
+    expect(seen.some((s) => s.passed === 0)).toBe(true);
+  });
+  it('a basic-strategy run passes no running count', () => {
+    type Spy = { decide: (...a: unknown[]) => unknown; run(n: number): void };
+    const sim = new CasinoSim(spec({ rules: H17_6D, tcRounding: 'truncate' }), 'basic', 7) as unknown as Spy;
+    const real = sim.decide.bind(sim);
+    const passed: unknown[] = [];
+    sim.decide = (...a: unknown[]) => {
+      passed.push(a[7]);
+      return real(...a);
+    };
+    sim.run(100);
+    expect(passed.length).toBeGreaterThan(100);
+    expect(passed.every((x) => x === undefined)).toBe(true);
+  });
 });
