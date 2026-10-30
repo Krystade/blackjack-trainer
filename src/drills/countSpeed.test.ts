@@ -324,3 +324,13 @@ describe('eyes-free runs are paced by what their cards took (C6)', () => {
     expect(formatCountRun(eyes)).toBe('52 cards · eyes-free · 900ms avg');
   });
 });
+
+describe('bestCleanCountRuns: self-reported runs (R7)', () => {
+  it('a self-reported "right" is never the best clean run', async () => {
+    const { bestCleanCountRuns } = await import('./countSpeed');
+    const graded = { cards: 52, intervalMs: 800, correct: true };
+    const selfAuto = { cards: 52, intervalMs: 300, correct: true, selfReport: true as const };
+    const selfManual = { cards: 52, intervalMs: 200, correct: true, manual: true, meanTapMs: 200, selfReport: true as const };
+    expect(bestCleanCountRuns([graded, selfAuto, selfManual])).toEqual({ auto: graded, manual: null });
+  });
+});

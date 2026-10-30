@@ -30,11 +30,13 @@ export interface CountRunLike {
   cards: number;
   /** A self-paced run (#20): absent or false on a paced run. */
   manual?: boolean;
+  /** C12: no number was given, the operator's own verdict. R7: never qualifies. */
+  selfReport?: boolean;
 }
 
-/** A paced run of at least one deck. */
+/** A paced, graded run of at least one deck. */
 export function isQualifyingRun(run: CountRunLike): boolean {
-  return run.manual !== true && run.cards >= FLUENCY_MIN_CARDS;
+  return run.manual !== true && run.selfReport !== true && run.cards >= FLUENCY_MIN_CARDS;
 }
 
 export interface CountFluency {

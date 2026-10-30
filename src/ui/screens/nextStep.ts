@@ -310,7 +310,7 @@ export function ladder(stats: Stats, ctx: LadderContext): Ladder {
   const cats = handCategoryProgress(stats);
   const weak = weakCells(stats);
   // C12: self-reported runs are not graded evidence for the rung.
-  const fluency = countFluency((stats.countDrill?.history ?? []).filter((r) => r.selfReport !== true));
+  const fluency = countFluency(stats.countDrill?.history ?? []);
   const dt = deckTcResult(stats);
   const bets = betRampResult(stats);
   const play = playResult(stats);

@@ -215,15 +215,17 @@ export function formatCountRun(run: CountRunPace): string {
 /**
  * The fastest correct run of each kind. Auto runs rank by the interval they
  * were dealt at, manual runs by their measured mean tap gap; the two are
- * never compared, and a manual run with no measured taps ranks in neither.
+ * never compared, and a manual run with no measured taps ranks in neither,
+ * nor does a self-reported run (R7).
  */
-export function bestCleanCountRuns<T extends CountRunPace & { correct: boolean }>(
+export function bestCleanCountRuns<T extends CountRunPace & { correct: boolean; selfReport?: boolean }>(
   history: readonly T[],
 ): { auto: T | null; manual: T | null } {
   let auto: T | null = null;
   let manual: T | null = null;
   for (const run of history) {
-    if (!run.correct) continue;
+    // R7: a self-reported run was not graded, so it is not a clean run.
+    if (!run.correct || run.selfReport === true) continue;
     if (run.manual) {
       if (run.meanTapMs === undefined) continue;
       if (manual === null || run.meanTapMs < (manual.meanTapMs ?? Infinity)) manual = run;

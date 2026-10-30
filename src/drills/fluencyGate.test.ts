@@ -31,3 +31,14 @@ describe('countFluency (F15: the one rule for Home and the Drills picker)', () =
     expect(countFluency([...short, ...manual, run(true)])).toEqual({ judged: 1, right: 1, fluent: false });
   });
 });
+
+// R7 (review of C12): a self-reported run (no number given) is the operator's
+// own verdict, not a graded count, so it never counts toward fluency -- in
+// countFluency itself, for every reader (Drills, CountDrillView, nextStep).
+describe('self-reported runs (R7)', () => {
+  it('do not qualify, however many', () => {
+    const self = Array.from({ length: COUNT_RUNS_JUDGED }, () => ({ ...run(true), selfReport: true as const }));
+    expect(isCountFluent(self)).toBe(false);
+    expect(countFluency([...self, run(true)])).toEqual({ judged: 1, right: 1, fluent: false });
+  });
+});
