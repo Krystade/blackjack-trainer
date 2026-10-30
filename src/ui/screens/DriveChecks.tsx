@@ -337,23 +337,24 @@ export function DriveChecks({
       const from = mark(def.id);
       // The instruction goes out BEFORE the microphone opens, so the
       // controller never holds it as its last line, and nothing spoken during
-      // the trials contains the answer word (review of A14).
+      // the trials contains the answer word (review of A14). Each trial is the
+      // spoken cue, so every answer is timed from the end of speech (R1).
       await say(DC_LINES.voiceTimingIntro);
       setVoiceOn(true);
       let timeouts = 0;
-      const toneToAnswer: number[] = [];
+      const cueToAnswer: number[] = [];
       try {
         for (let i = 0; i < VOICE_TIMING_PROMPTS; i++) {
-          setLine(`Tone ${i + 1} of ${VOICE_TIMING_PROMPTS}`);
+          setLine(`Trial ${i + 1} of ${VOICE_TIMING_PROMPTS}`);
           await sleep(400);
           guard();
-          chime('turn', { volume: settingsRef.current.audio.volume });
-          diag('test', 'drive-check-tone', { trial: i + 1 });
-          const toneAt = performance.now();
+          await say(DC_LINES.voiceTimingCue, { show: false });
+          diag('test', 'drive-check-cue', { trial: i + 1 });
+          const cueAt = performance.now();
           const got = await waitVoice(7_000);
           guard();
           if (got === null) timeouts += 1;
-          else toneToAnswer.push(performance.now() - toneAt);
+          else cueToAnswer.push(performance.now() - cueAt);
           await sleep(600);
         }
       } finally {
@@ -363,11 +364,11 @@ export function DriveChecks({
       guard();
       const rows = voiceTimingRows(readDiagnosticLog(), from);
       const why = rows.length > 0 ? voiceTimingFailWhy(rows) : null;
-      const toneMedian = medianMs(toneToAnswer);
+      const cueMedian = medianMs(cueToAnswer);
       settle(def, run, voiceTimingStatus(rows), {
         prompts: VOICE_TIMING_PROMPTS,
         timeouts,
-        toneMedianMs: toneMedian === null ? null : Math.round(toneMedian),
+        cueMedianMs: cueMedian === null ? null : Math.round(cueMedian),
         ...summariseVoiceTiming(rows),
         ...(why ? { why } : {}),
       });

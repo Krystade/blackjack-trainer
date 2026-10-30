@@ -250,11 +250,17 @@ async function fakeRecognition(page: Page): Promise<void> {
   });
 }
 
-/** One voice-timing trial: its tone, then (unless `answer` is false) "hit". */
+/** One voice-timing trial: its spoken cue, then (unless `answer` is false) "hit". */
 async function timingTrial(page: Page, i: number, answer: boolean): Promise<void> {
-  await expect(page.getByTestId('drive-checks-line')).toHaveText(`Tone ${i + 1} of 5`, { timeout: 20_000 });
+  await expect(page.getByTestId('drive-checks-line')).toHaveText(`Trial ${i + 1} of 5`, { timeout: 20_000 });
+  await expect
+    .poll(
+      () => page.evaluate((l) => (window.__speechLog ?? []).filter((x) => x === l).length, DC_LINES.voiceTimingCue),
+      { timeout: 15_000 },
+    )
+    .toBe(i + 1);
   if (!answer) return;
-  await page.waitForTimeout(900);
+  await page.waitForTimeout(600);
   await waitForMic(page);
   await page.evaluate(() => {
     const rec = (window as unknown as { __rec?: { onresult?: (e: unknown) => void } }).__rec;
@@ -262,7 +268,7 @@ async function timingTrial(page: Page, i: number, answer: boolean): Promise<void
   });
 }
 
-test('voice timing: five tones answered, timings summarised into the result', async ({ page }) => {
+test('voice timing: five cues answered, timings summarised into the result', async ({ page }) => {
   test.setTimeout(120_000);
   await fakeRecognition(page);
   await openDriveChecks(page);
@@ -271,8 +277,15 @@ test('voice timing: five tones answered, timings summarised into the result', as
   for (let i = 0; i < 5; i++) await timingTrial(page, i, true);
   const r = await result(page, 'voice-timing');
   expect(r).toMatchObject({ status: 'pass', prompts: 5, timeouts: 0, tailMs: SPEECH_TAIL_MS, answers: 5, accepted: 5, ownWords: 0 });
-  expect(typeof r.toneMedianMs).toBe('number');
-  expect(String(r.rows).split(',').length).toBe(r.answers);
+  expect(typeof r.cueMedianMs).toBe('number');
+  // Review R1: every answer is timed from the end of a spoken line, so the
+  // tail SPEECH_TAIL_MS is tuned from is exercised. A tone-only trial left
+  // every row 'na' and the median null.
+  expect(typeof r.medianMs).toBe('number');
+  expect(r.medianMs as number).toBeGreaterThanOrEqual(0);
+  const rows = String(r.rows).split(',');
+  expect(rows.length).toBe(r.answers);
+  for (const row of rows) expect(row).toMatch(/^[0-9]+[/]real[/]accepted$/);
 });
 
 /**

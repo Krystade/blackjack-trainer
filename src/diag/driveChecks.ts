@@ -74,10 +74,14 @@ export const DC_LINES = {
   yesNo: 'Forward for yes, back for no.',
   skipped: 'Skipped.',
   finished: 'Drive checks finished. Send the diagnostic log.',
-  // Review of A14: said ONCE, before the microphone opens; each trial is then
-  // only a tone. A trial prompt containing its answer ("Say hit.") made every
-  // real "hit" read as the app's own words, so a good run could fail.
-  voiceTimingIntro: 'Check one, voice timing. Say hit after each tone.',
+  // Review of A14: said ONCE, before the microphone opens. A trial prompt
+  // containing its answer ("Say hit.") made every real "hit" read as the
+  // app's own words, so a good run could fail.
+  voiceTimingIntro: 'Check one, voice timing. Each time I say now, say hit.',
+  // Review R1: each trial is a short SPOKEN line, so the answer is timed from
+  // the end of speech and the tail SPEECH_TAIL_MS is tuned from is exercised
+  // (a tone sets no prompt end). It does not contain the answer word.
+  voiceTimingCue: 'Now.',
   misheardIntro: 'Check two. When asked, mumble something that is not an answer. Do it twice.',
   misheardPrompt: 'Say stand.',
   misheardQuestion: 'Did you hear a tone, the question again, then a tone?',
@@ -199,7 +203,7 @@ export function summariseVoiceTiming(rows: readonly VoiceTimingRow[]): VoiceTimi
     ownWords: rows.filter((r) => r.ownWords).length,
     tailMs: rows[0]?.tailMs ?? null,
     rows: rows
-      .map((r) => `${r.sincePromptEndMs ?? 'na'}/${r.ownWords ? 'own' : 'real'}/${r.outcome}`)
+      .map((r) => `${r.sincePromptEndMs === null ? 'na' : Math.round(r.sincePromptEndMs)}/${r.ownWords ? 'own' : 'real'}/${r.outcome}`)
       .join(','),
   };
 }
