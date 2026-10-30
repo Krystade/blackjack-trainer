@@ -825,6 +825,11 @@ export function flushDiagnostics(): void {
     // Written beside the entries, so a reload inherits the count rather than
     // starting again at zero while the trimmed entries stay gone.
     persistDropped();
+    // B30: once per page load, after a write has landed.
+    if (!agedRedactionDone) {
+      agedRedactionDone = true;
+      redactAgedDiagnostics();
+    }
   } catch (e) {
     // A flush that half-landed is unwound, so the buffer (which still holds
     // every one of those entries) is not exported twice.
@@ -990,7 +995,92 @@ export function diag(
 
 /** Everything recorded, oldest first, including anything not yet flushed. */
 export function readDiagnosticLog(): DiagEntry[] {
-  return [...readStored(), ...buffer];
+  // B30: aged speech and device names never leave in an export, even before
+  // this load's first flush has rewritten them in storage.
+  const cutoff = Date.now() - REDACT_AFTER_DAYS * 86_400_000;
+  return [...readStored().map((e) => redactEntry(e, cutoff)), ...buffer];
+}
+
+/**
+ * B30: how long the words heard in the car and the audio device names stay
+ * on the phone in full. Only the caps ever evicted, so a passenger's words
+ * from one drive stayed for months and went out with the next Copy. Whole
+ * entries are NOT dropped by age -- an unanalysed field-test drive, and the
+ * shape of every session, stay -- only these fields are replaced.
+ */
+export const REDACT_AFTER_DAYS = 30;
+const PRIVATE_KEYS: ReadonlySet<string> = new Set([
+  'heard',
+  'transcript',
+  'transcripts',
+  'alternatives',
+  'labels',
+  'label',
+  'inputs',
+  'outputs',
+  'wanted',
+  'got',
+]);
+const REDACTED = `[removed after ${REDACT_AFTER_DAYS} days]`;
+let agedRedactionDone = false;
+
+/** The entry with its private fields replaced when it is older than `cutoff`; the same object otherwise. */
+function redactEntry(e: DiagEntry, cutoff: number): DiagEntry {
+  const t = Date.parse(e.at);
+  if (!(t < cutoff) || !e.detail) return e;
+  let detail: Record<string, unknown> | null = null;
+  for (const [k, v] of Object.entries(e.detail)) {
+    if (!PRIVATE_KEYS.has(k) || v === REDACTED || v === undefined || v === null || v === '') continue;
+    detail ??= { ...e.detail };
+    detail[k] = REDACTED;
+  }
+  return detail ? { ...e, detail } : e;
+}
+
+/**
+ * B30: rewrite, in storage, every segment holding an entry past
+ * REDACT_AFTER_DAYS whose private fields are still there. Segments are oldest
+ * first, so the walk stops at the first one with nothing that old. Returns
+ * how many entries changed.
+ */
+export function redactAgedDiagnostics(now: number = Date.now()): number {
+  const s = storage();
+  if (!s) return 0;
+  const cutoff = now - REDACT_AFTER_DAYS * 86_400_000;
+  let changed = 0;
+  try {
+    const idx = syncIndex(s);
+    for (const key of [...idx.keys()]) {
+      const seg = parseSegment(s.getItem(key));
+      if (!seg) continue;
+      let anyOld = false;
+      let segChanged = false;
+      const out = seg.kept.map((e) => {
+        if (Date.parse(e.at) < cutoff) anyOld = true;
+        const r = redactEntry(e, cutoff);
+        if (r !== e) {
+          segChanged = true;
+          changed += 1;
+        }
+        return r;
+      });
+      if (segChanged) {
+        const json = JSON.stringify(out);
+        s.setItem(key, json);
+        idx.set(key, { count: out.length, bytes: json.length });
+      }
+      if (!anyOld) break;
+    }
+  } catch {
+    // Storage refused the rewrite: the read path still redacts the export.
+    segIndex = null;
+  }
+  return changed;
+}
+
+/** Test-only: let the next flush run the aged redaction again. */
+export function _resetAgedRedactionForTest(): void {
+  agedRedactionDone = false;
 }
 
 export function clearDiagnosticLog(): void {
