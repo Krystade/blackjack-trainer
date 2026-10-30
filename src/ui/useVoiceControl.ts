@@ -18,6 +18,7 @@ import { claimGuidedTranscript } from '../guided/voiceCommands';
 import { createMisheardLadder } from '../audio/misheardLadder';
 import { requestWakeLock, releaseWakeLock } from '../audio/wakeLock';
 import { diag } from '../diag/diagnosticLog';
+import { runVoiceAction } from './voiceActionGuard';
 import { reassertAudioFocus } from '../audio/audioFocus';
 import { markMicSessionOpened, setVoiceCaptureActive } from '../audio/micSessionCost';
 import { markInputDeviceChanged } from '../diag/deviceChurn';
@@ -348,7 +349,8 @@ export function useVoiceControl({
          * unaffected.
          */
         endPushToTalk('heard');
-        actionRef.current(action);
+        // D8: a throw is logged and answered with "say again", not swallowed.
+        runVoiceAction(action, actionRef.current, contextRef.current, () => unheardRef.current?.('rejected'));
       },
       // Wave L (lane v): a guided session's "skip segment" / "pause" first --
       // a no-op unless a guided session is running (guided/voiceCommands.ts).
