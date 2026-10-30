@@ -162,6 +162,38 @@ test('D17: the felt round banner is hidden while the count sheet repeats it', as
   await expect(banner).toHaveCount(1);
 });
 
+/** Review R4: D17 took the sheet line's own style (C-R10c) with it. It keeps it. */
+test('R4: the count sheet line keeps its own quiet style', async ({ page }) => {
+  await withSettings(page, { countCheckEvery: 1, dealSpeedMs: 0 });
+  await withProfile(page, { countCheckEvery: 1, countCheckAsk: 'running' });
+  await page.goto('/?seed=4&e2e=1');
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  await page.getByRole('button', { name: 'Deal', exact: true }).click();
+  await resolveInsurance(page, false);
+  await playRoundByAdvice(page);
+  await page.getByRole('button', { name: 'Deal', exact: true }).click();
+  const line = page.getByTestId('count-sheet-banner');
+  await expect(line).toBeVisible();
+  const got = await line.evaluate((el) => {
+    // The tokens, resolved through a probe so the comparison is in px and rgb.
+    const probe = document.createElement('div');
+    probe.style.cssText = 'padding-bottom:var(--space-1);font-size:var(--fs-sm);color:var(--ink-soft)';
+    el.parentElement!.appendChild(probe);
+    const want = getComputedStyle(probe);
+    const cs = getComputedStyle(el);
+    const out = {
+      pad: [cs.paddingBottom, want.paddingBottom],
+      size: [cs.fontSize, want.fontSize],
+      color: [cs.color, want.color],
+    };
+    probe.remove();
+    return out;
+  });
+  expect(got.pad[0]).toBe(got.pad[1]);
+  expect(got.size[0]).toBe(got.size[1]);
+  expect(got.color[0]).toBe(got.color[1]);
+});
+
 /**
  * D-R10: the strip must not be cut off part way through a line. It used to
  * shrink and scroll inside itself; now every line it shows is whole.

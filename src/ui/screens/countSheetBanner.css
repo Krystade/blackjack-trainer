@@ -1,3 +1,11 @@
+/* C-R10c: the round's result, repeated in the count-check sheet that covers
+   the felt's banner. One quiet line under the question. */
+.bottom-sheet-body > .count-sheet-banner {
+  padding-bottom: var(--space-1);
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+}
+
 /* D17: while the count-check sheet repeats the round's result in its own
    body (.count-sheet-banner, C-R10c), the felt's copy sits at the sheet's top
    edge cut through its letters. Hidden, not removed: the layout keeps its
