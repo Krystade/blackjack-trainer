@@ -16,6 +16,14 @@ import './casinoImport.css';
 const names = (list: { name: string }[]) => list.map((c) => c.name).join(', ');
 const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
+/** "a casino", "2 sessions", "a casino and a session". */
+function deletedWhat(ds: readonly { kind?: 'session' }[]): string {
+  const n = ds.filter((d) => d.kind !== 'session').length;
+  const m = ds.length - n;
+  const one = (k: number, w: string) => (k === 1 ? `a ${w}` : `${k} ${w}s`);
+  return [n > 0 ? one(n, 'casino') : '', m > 0 ? one(m, 'session') : ''].filter(Boolean).join(' and ');
+}
+
 export function ImportPreview({
   plan,
   onName,
@@ -93,7 +101,7 @@ export function ImportPreview({
             <span className="cas-badge" data-tone="warn">
               Deleted here
             </span>{' '}
-            The file still has {r.deleted.length === 1 ? 'a casino' : `${r.deleted.length} casinos`} you deleted. Left out unless ticked:
+            The file still has {deletedWhat(r.deleted)} you deleted. Left out unless ticked:
           </p>
           <ul className="cas-imp-deleted">
             {r.deleted.map((d) => (
@@ -101,7 +109,15 @@ export function ImportPreview({
                 <label className="cas-imp-restore">
                   <input type="checkbox" checked={d.restore} onChange={(e) => onRestore(d.id, e.target.checked)} data-testid="import-restore" data-id={d.id} />
                   <span>
-                    Add <strong>{d.name}</strong> back, with its sessions in the file
+                    {d.kind === 'session' ? (
+                      <>
+                        Add the session <strong>{d.name}</strong> back
+                      </>
+                    ) : (
+                      <>
+                        Add <strong>{d.name}</strong> back, with its sessions in the file
+                      </>
+                    )}
                   </span>
                 </label>
               </li>

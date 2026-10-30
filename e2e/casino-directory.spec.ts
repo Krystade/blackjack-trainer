@@ -528,3 +528,33 @@ test('Paste of an older file: a casino deleted here is listed as Deleted here an
   await page.getByTestId('import-confirm').click();
   await expect(page.getByTestId('casino-row')).toHaveCount(3);
 });
+
+/*
+ * B15: the same for a SESSION deleted here -- it used to come back as
+ * "1 session added" on every Paste of the master file.
+ */
+test('Paste of an older file: a session deleted here stays out unless ticked', async ({ page }) => {
+  const s = { id: 's-dup', casinoId: 'c1', start: AT, end: AT, buyIns: [500], cashOut: null, heat: 'none', notes: '', createdAt: AT, updatedAt: AT };
+  // The phone: v3, the session already deleted (as deleteSession records it).
+  await seed(page, { ...LOG, version: 3, deletedSessions: [{ id: 's-dup', label: 'Golden Nugget, 2026-09-30, buy-in $500', at: AT }] });
+  await page.goto('/?e2e=1');
+  await openCasino(page);
+  const text = JSON.stringify({ app: 'bjtrainer-casino-log', version: 2, exportedAt: AT, ...LOG, sessions: [s] });
+  const paste = async () => {
+    await page.getByRole('button', { name: 'Paste JSON' }).click();
+    await page.getByTestId('casino-paste-text').fill(text);
+    await page.getByTestId('casino-paste-import').click();
+  };
+  await paste();
+  const deleted = page.getByTestId('import-preview').getByTestId('import-deleted');
+  await expect(deleted).toContainText('The file still has a session you deleted');
+  await expect(deleted).toContainText('Add the session Golden Nugget, 2026-09-30, buy-in $500 back');
+  await deleted.scrollIntoViewIfNeeded();
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/import-deleted-session-${page.viewportSize()!.width}.png` });
+  await page.getByTestId('import-confirm').click();
+  expect((await stored(page)).sessions).toHaveLength(0);
+  await paste();
+  await page.getByTestId('import-restore').check();
+  await page.getByTestId('import-confirm').click();
+  expect((await stored(page)).sessions.map((x: { id: string }) => x.id)).toEqual(['s-dup']);
+});

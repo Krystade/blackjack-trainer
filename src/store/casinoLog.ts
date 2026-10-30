@@ -323,6 +323,20 @@ export interface CasinoLog {
    * bookkeeping, never exported.
    */
   deletedCasinos?: DeletedCasino[];
+  /**
+   * B15: sessions deleted in the app, remembered the same way, so an Import
+   * or Paste of an older file does not quietly put a deleted session (and
+   * its money) back. Storage bookkeeping, never exported.
+   */
+  deletedSessions?: DeletedSession[];
+}
+
+/** B15: a session deleted here, remembered; `label` says which, for the import preview. */
+export interface DeletedSession {
+  id: string;
+  label: string;
+  /** ISO. */
+  at: string;
 }
 
 /** Re-review R5: a casino deleted here, remembered. */
@@ -808,6 +822,12 @@ export function migrateCasinoLog(parsed: unknown): { log: CasinoLog; skipped: nu
     );
     if (gone.length > 0) log.deletedCasinos = gone;
   }
+  if (v === 3 && Array.isArray(parsed.deletedSessions)) {
+    const gone = parsed.deletedSessions.flatMap((d): DeletedSession[] =>
+      isObj(d) && typeof d.id === 'string' && d.id !== '' ? [{ id: d.id, label: typeof d.label === 'string' ? d.label : '', at: iso(d.at) ?? EPOCH }] : [],
+    );
+    if (gone.length > 0) log.deletedSessions = gone;
+  }
   return { log, skipped: casinos.skipped + sessions.skipped };
 }
 
@@ -1199,8 +1219,23 @@ export function updateSession(log: CasinoLog, session: CasinoSession, now: numbe
   return { ...log, sessions: log.sessions.map((s) => (s.id === clean.id ? clean : s)) };
 }
 
-export function deleteSession(log: CasinoLog, id: string): CasinoLog {
-  return { ...log, sessions: log.sessions.filter((s) => s.id !== id) };
+export function deleteSession(log: CasinoLog, id: string, now: number = Date.now()): CasinoLog {
+  const gone = log.sessions.find((s) => s.id === id);
+  // B15: remembered, so an older file does not bring it back unasked.
+  const deletedSessions = gone
+    ? [...(log.deletedSessions ?? []).filter((d) => d.id !== id), { id, label: sessionLabel(log, gone), at: stamp(now) }]
+    : log.deletedSessions;
+  return { ...log, sessions: log.sessions.filter((s) => s.id !== id), ...(deletedSessions ? { deletedSessions } : {}) };
+}
+
+/** "Wynn, 2026-10-18, buy-in $500": which session, in the import preview. */
+function sessionLabel(log: CasinoLog, s: CasinoSession): string {
+  const d = new Date(s.start);
+  const p = (n: number) => String(n).padStart(2, '0');
+  const day = Number.isNaN(d.getTime()) ? s.start : `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  const buyIn = s.buyIns.reduce((a, b) => a + b, 0);
+  const name = casinoById(log, s.casinoId)?.name ?? 'a casino';
+  return `${name}, ${day}${buyIn > 0 ? `, buy-in $${buyIn.toLocaleString('en-US')}` : ''}`;
 }
 
 export function setStartingBankroll(log: CasinoLog, amount: number | null, now: number): CasinoLog {
@@ -1303,7 +1338,7 @@ export interface MergeReport {
    * Re-review R5: casinos in the file that were deleted here. Left out
    * unless `restore` names them; `restore` here says which are coming back.
    */
-  deleted: { id: string; name: string; restore: boolean }[];
+  deleted: { id: string; name: string; restore: boolean; kind?: 'session' }[];
 }
 
 /** Re-review R2: a game whose rules a versionless file changes. */
@@ -1632,15 +1667,28 @@ function keepDeleted(
   const gone = new Map((local.deletedCasinos ?? []).filter((d) => !local.casinos.some((c) => c.id === d.id)).map((d) => [d.id, d]));
   const deleted: MergeReport['deleted'] = [];
   for (const c of inc.casinos) if (gone.has(c.id)) deleted.push({ id: c.id, name: c.name || gone.get(c.id)!.name, restore: restore[c.id] === true });
+  // B15: a deleted session the file still holds stays out the same way.
+  const goneS = new Map((local.deletedSessions ?? []).filter((d) => !local.sessions.some((x) => x.id === d.id)).map((d) => [d.id, d]));
+  const casinoOut = new Set(deleted.filter((d) => !d.restore).map((d) => d.id));
+  for (const x of inc.sessions) {
+    if (goneS.has(x.id) && !casinoOut.has(x.casinoId)) {
+      deleted.push({ id: x.id, name: goneS.get(x.id)!.label || sessionLabel(inc, x), restore: restore[x.id] === true, kind: 'session' });
+    }
+  }
   if (deleted.length === 0) return { local, inc, deleted };
   const out = new Set(deleted.filter((d) => !d.restore).map((d) => d.id));
   const back = new Set(deleted.filter((d) => d.restore).map((d) => d.id));
   const rest = (local.deletedCasinos ?? []).filter((d) => !back.has(d.id));
-  const { deletedCasinos: _d, ...base } = local;
+  const restS = (local.deletedSessions ?? []).filter((d) => !back.has(d.id));
+  const { deletedCasinos: _d, deletedSessions: _s, ...base } = local;
   return {
     deleted,
-    local: rest.length > 0 ? { ...base, deletedCasinos: rest } : base,
-    inc: { ...inc, casinos: inc.casinos.filter((c) => !out.has(c.id)), sessions: inc.sessions.filter((s) => !out.has(s.casinoId)) },
+    local: { ...base, ...(rest.length > 0 ? { deletedCasinos: rest } : {}), ...(restS.length > 0 ? { deletedSessions: restS } : {}) },
+    inc: {
+      ...inc,
+      casinos: inc.casinos.filter((c) => !out.has(c.id)),
+      sessions: inc.sessions.filter((x) => !out.has(x.casinoId) && !out.has(x.id)),
+    },
   };
 }
 
