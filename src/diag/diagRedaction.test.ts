@@ -55,17 +55,20 @@ function stored(): { event: string; detail?: Record<string, unknown> }[] {
 describe('aged redaction of the diagnostic log (B30)', () => {
   it('rewrites old speech and device names in storage, keeps the entries and the recent words', async () => {
     seed();
+    const before = data[segmentKey(1)]!.length + data[segmentKey(2)]!.length;
     vi.resetModules();
     const log = await import('./diagnosticLog');
     log.diag('mic', 'session-start', { n: 1 });
     log.flushDiagnostics();
     const all = stored();
     expect(all.map((e) => e.event)).toEqual(['heard', 'route', 'heard', 'session-start']);
-    expect(all[0]!.detail).toEqual({ heard: '[removed after 30 days]', verdict: 'unmatched' });
-    expect(all[1]!.detail).toEqual({ labels: '[removed after 30 days]', count: 1 });
+    expect(all[0]!.detail).toEqual({ heard: '[r]', verdict: 'unmatched' });
+    expect(all[1]!.detail).toEqual({ labels: '[r]', count: 1 });
     expect(all[2]!.detail).toEqual({ heard: 'hit', verdict: 'action' });
     expect(JSON.stringify(data)).not.toContain('did you see her text');
     expect(JSON.stringify(data)).not.toContain('AirPods');
+    // R3: never grows the log: the rewritten segments are no longer than they were.
+    expect(data[segmentKey(1)]!.length + data[segmentKey(2)]!.length).toBeLessThanOrEqual(before);
   });
 
   it('an export before the first flush already leaves them out', async () => {
@@ -76,5 +79,6 @@ describe('aged redaction of the diagnostic log (B30)', () => {
     expect(text).not.toContain('did you see her text');
     expect(text).not.toContain('AirPods');
     expect(text).toContain('hit');
+    expect(text).toContain('# [r] = words heard or a device name, removed after 30 days');
   });
 });

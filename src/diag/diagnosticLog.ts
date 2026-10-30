@@ -52,6 +52,7 @@
  */
 
 import { DIAG_BASE_KEY, listDiagKeys, segmentKey, segmentSeq } from './diagStore';
+import { REDACT_AFTER_DAYS, REDACTED, redactDetail } from './diagPrivacy';
 import { driveChecksBlock } from './driveChecksReport';
 
 /**
@@ -1008,32 +1009,18 @@ export function readDiagnosticLog(): DiagEntry[] {
  * entries are NOT dropped by age -- an unanalysed field-test drive, and the
  * shape of every session, stay -- only these fields are replaced.
  */
-export const REDACT_AFTER_DAYS = 30;
-const PRIVATE_KEYS: ReadonlySet<string> = new Set([
-  'heard',
-  'transcript',
-  'transcripts',
-  'alternatives',
-  'labels',
-  'label',
-  'inputs',
-  'outputs',
-  'wanted',
-  'got',
-]);
-const REDACTED = `[removed after ${REDACT_AFTER_DAYS} days]`;
+export { REDACT_AFTER_DAYS };
 let agedRedactionDone = false;
 
-/** The entry with its private fields replaced when it is older than `cutoff`; the same object otherwise. */
+/**
+ * The entry with its private fields replaced when it is older than `cutoff`;
+ * the same object otherwise. R3: which fields are private, per event, is
+ * diagPrivacy.ts, checked against every real call site.
+ */
 function redactEntry(e: DiagEntry, cutoff: number): DiagEntry {
   const t = Date.parse(e.at);
   if (!(t < cutoff) || !e.detail) return e;
-  let detail: Record<string, unknown> | null = null;
-  for (const [k, v] of Object.entries(e.detail)) {
-    if (!PRIVATE_KEYS.has(k) || v === REDACTED || v === undefined || v === null || v === '') continue;
-    detail ??= { ...e.detail };
-    detail[k] = REDACTED;
-  }
+  const detail = redactDetail(e.event, e.detail);
   return detail ? { ...e, detail } : e;
 }
 
@@ -1520,6 +1507,10 @@ export function formatDiagnosticLog(entries: readonly DiagEntry[], scope?: strin
     `# browser and OS version; the app URL; profile names, along with their`,
     `# rules, stake sizes and starting bankroll; and timestamps showing`,
     `# when and for how long this device was being driven.`,
+    // R3: says what the short marker is, only when some line carries it.
+    ...(entries.some((e) => e.detail && Object.values(e.detail).includes(REDACTED))
+      ? [`# ${REDACTED} = words heard or a device name, removed after ${REDACT_AFTER_DAYS} days`]
+      : []),
     // BOTH CLOCKS NAMED. The body prints local time and these print UTC, and
     // nothing said so -- so a reader anchoring "I merged onto the 101 around
     // ten past" against the header landed hours away from the body lines. The
