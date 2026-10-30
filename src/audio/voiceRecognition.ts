@@ -222,8 +222,20 @@ const ACTIONS: ReadonlySet<VoiceAction> = new Set<VoiceAction>([
   'surrender',
 ]);
 
+/**
+ * Apostrophes and periods are DELETED, not turned into spaces, so a transcript
+ * meets an alias in the shape `normaliseAlias` stored it (audit A6): "That's
+ * it" -> "thats it", "Don't" -> "dont", "O.K." -> "ok". As spaces they became
+ * "that s it" and "o k", which no stored alias could ever equal. A period at
+ * a sentence end is followed by a space anyway, so "Hit. Stand." still splits.
+ */
 function normalise(transcript: string): string {
-  return transcript.toLowerCase().replace(/[^a-z ]/g, ' ').trim();
+  return transcript
+    .toLowerCase()
+    .replace(/['’.]/g, '')
+    .replace(/[^a-z ]/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
 }
 
 /**

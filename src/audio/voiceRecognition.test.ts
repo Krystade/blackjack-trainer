@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import type { VoiceAction } from './voiceRecognition';
 import spokenPhrases from '../../scripts/spoken-phrases.json';
-import { MAX_ALIAS_WORDS } from './voiceAliases';
+import { MAX_ALIAS_WORDS, normaliseAlias } from './voiceAliases';
 import { MISHEARD_FORMS, SPOKEN_FORM, looksLikeAnAttempt, matchSpokenAlternatives, matchVoiceAction, nearestVoiceAction, resolveSpoken, detectVoiceSupport, setUserVoiceAliases, voicePhrases, VOICE_ACTIONS } from './voiceRecognition';
 
 /**
@@ -473,6 +473,20 @@ describe('aliases the operator added', () => {
     expect(matchVoiceAction('strength')).toBeNull();
     setUserVoiceAliases({ strength: 'stand' });
     expect(matchVoiceAction('strength')).toBe('stand');
+  });
+
+  it('A6: fires an alias typed with an apostrophe or periods', () => {
+    // Settings stores normaliseAlias(phrase); the engine returns the
+    // punctuated form. Both must meet in one shape.
+    setUserVoiceAliases({
+      [normaliseAlias("That's it")]: 'stand',
+      [normaliseAlias("Don't")]: 'no',
+      [normaliseAlias('O.K.')]: 'yes',
+    });
+    expect(matchVoiceAction("That's it")).toBe('stand');
+    expect(matchVoiceAction('That’s it.')).toBe('stand');
+    expect(matchVoiceAction("Don't")).toBe('no');
+    expect(matchVoiceAction('O.K.')).toBe('yes');
   });
 
   it('matches inside a sentence, as the shipped aliases do', () => {
