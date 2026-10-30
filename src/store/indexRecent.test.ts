@@ -118,3 +118,12 @@ describe('a self-report is volume, not mastery evidence (C12)', () => {
     expect(s.latencyHistory).toHaveLength(1);
   });
 });
+
+// C13 (audit 2026-10-29): index-only answers stay out of `categories` (H1/R9)
+// but fed the hand accuracy windows through latencyHistory.
+describe('index-only answers are tagged in latencyHistory (C13)', () => {
+  it('the row is kept for pace, marked indexOnly', () => {
+    const s = applyEvents(EMPTY_STATS, [{ ...quiz(true, '2026-10-21T10:00:00.000Z'), elapsedMs: 700, indexOnly: true }]);
+    expect(s.latencyHistory).toEqual([{ category: 'hard', elapsedMs: 700, date: '2026-10-21T10:00:00.000Z', correct: true, indexOnly: true }]);
+  });
+});

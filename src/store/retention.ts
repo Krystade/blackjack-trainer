@@ -79,7 +79,9 @@ function foldDroppedLatency(next: Stats): Stats['latencyHistory'] {
   const daily: NonNullable<Stats['latencyDaily']> =
     next.latencyDaily && typeof next.latencyDaily === 'object' ? { ...next.latencyDaily } : {};
   for (const r of dropped) {
-    if (!r || r.correct === undefined) continue;
+    // C13: an index-quiz row is filed under its hand's category but is not a
+    // hand answer; folded, it could no longer be told apart, so it is not.
+    if (!r || r.correct === undefined || r.indexOnly) continue;
     const day = dayKeyOfIso(r.date);
     if (day === null) continue;
     const cats = { ...(daily[day] ?? {}) };

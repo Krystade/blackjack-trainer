@@ -97,7 +97,10 @@ const CASES: Record<string, [AchievementContext, AchievementContext]> = {
   ],
   'freeze-full': [ctx({ progress: { days: metRun(13) } }), ctx({ progress: { days: metRun(14) } })],
   // Hand accuracy: the last 200 timed answers, all from the last 180 days.
-  'accuracy-hard-90': [ctx({ stats: { latencyHistory: latency('hard', 179, 21) } }), ctx({ stats: { latencyHistory: latency('hard', 180, 20) } })],
+  'accuracy-hard-90': [
+    ctx({ stats: { latencyHistory: latency('hard', 179, 21) } }),
+    ctx({ stats: { latencyHistory: latency('hard', 180, 20) } }),
+  ],
   'accuracy-hard-95': [ctx({ stats: { latencyHistory: latency('hard', 189, 11) } }), ctx({ stats: { latencyHistory: latency('hard', 190, 10) } })],
   'accuracy-hard-99': [ctx({ stats: { latencyHistory: latency('hard', 197, 3) } }), ctx({ stats: { latencyHistory: latency('hard', 198, 2) } })],
   // 199 recent and one exactly 180 days old is short of 200; 179 days old counts.
@@ -362,5 +365,15 @@ describe('achievements', () => {
     expect(backfillDate('streak-3', c.streak)).toBe('2026-10-05');
     expect(backfillDate('streak-7', c.streak)).toBe('2026-10-09');
     expect(backfillDate('answers-100', c.streak)).toBe('');
+  });
+});
+
+// C13 (audit 2026-10-29): index-only answers stay out of the hand window.
+describe('hand accuracy leaves index-only answers out (C13)', () => {
+  it('200 right Deviation-quiz answers do not earn Hard hands sharp', () => {
+    const a = ACHIEVEMENTS.find((x) => x.id === 'accuracy-hard-90')!;
+    const indexOnly = latency('hard', 200, 0).map((r) => ({ ...r, indexOnly: true as const }));
+    expect(a.measure(ctx({ stats: { latencyHistory: indexOnly } })).value).toBe(0);
+    expect(a.measure(ctx({ stats: { latencyHistory: latency('hard', 200, 0) } })).value).toBeGreaterThan(0);
   });
 });

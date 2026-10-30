@@ -319,6 +319,8 @@ export function applyEvents(stats: Stats, events: GradedEvent[], fallbackAt?: st
         ...(event.at === undefined ? {} : { date: event.at }),
         // s10: lets Stats window hand accuracy by the range picker.
         correct: event.correct,
+        // C13: tagged, so hand accuracy can leave index answers out (H1/R9).
+        ...(event.indexOnly ? { indexOnly: true as const } : {}),
       });
     }
 

@@ -70,3 +70,23 @@ describe('capHistories folds the latency rows it drops (B6)', () => {
     expect(rangedAccuracy(capped, { id: '7d' }, NOW, 'hard').total).toBe(7 * 200);
   });
 });
+
+describe('index-only rows are not hand answers (C13, after B6)', () => {
+  it('a category range skips them in the kept rows, and the cap does not fold them in', () => {
+    const s = structuredClone(EMPTY_STATS);
+    const at = (i: number) => new Date(NOW - (i + 1) * 60_000).toISOString();
+    for (let i = 0; i < 10; i++) s.latencyHistory.push({ category: 'hard', elapsedMs: 900, date: at(i), correct: false });
+    for (let i = 10; i < 30; i++) s.latencyHistory.push({ category: 'hard', elapsedMs: 900, date: at(i), correct: true, indexOnly: true });
+    const range = { id: '30d' } as const;
+    expect(rangedAccuracy(s, range, NOW, 'hard')).toEqual({ right: 0, total: 10 });
+    // Overall accuracy keeps every graded answer, as before.
+    expect(rangedAccuracy(s, range, NOW).total).toBe(30);
+    // Pushed past the cap, oldest first: the dropped index rows are not folded into 'hard'.
+    const big = structuredClone(EMPTY_STATS);
+    for (let i = 0; i < HISTORY_CAP + 50; i++) {
+      big.latencyHistory.push({ category: 'hard', elapsedMs: 900, date: new Date(NOW - (HISTORY_CAP + 50 - i) * 1000).toISOString(), correct: true, ...(i < 50 ? { indexOnly: true as const } : {}) });
+    }
+    const capped = capHistories(big);
+    expect(Object.values(capped.latencyDaily ?? {}).reduce((n, d) => n + (d?.hard?.n ?? 0), 0)).toBe(0);
+  });
+});

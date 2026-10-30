@@ -869,6 +869,10 @@ export interface Stats {
     // Wave A (s10): whether the answer was right, so hand accuracy can answer
     // the Stats range picker. Absent on rows written before it shipped.
     correct?: boolean;
+    // C13: an index-only answer (Deviation quiz, a with-count index card).
+    // Kept for pace; left out of hand accuracy, as H1/R9 keep it out of
+    // `categories`.
+    indexOnly?: true;
   }[];
   /**
    * B6: the graded latency rows the history cap dropped, folded into a count

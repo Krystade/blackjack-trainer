@@ -21,6 +21,8 @@ export function rangedAccuracy(
   let total = 0;
   for (const r of filterByRange(stats.latencyHistory, range, now)) {
     if (r.correct === undefined || (cat !== undefined && r.category !== cat)) continue;
+    // C13: a category's accuracy is hand answers only; an index-quiz row filed under it is not one.
+    if (cat !== undefined && r.indexOnly) continue;
     total += 1;
     if (r.correct) right += 1;
   }

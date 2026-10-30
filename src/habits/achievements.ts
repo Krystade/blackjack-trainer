@@ -172,7 +172,8 @@ function handWindow(ctx: AchievementContext, category: string): { right: number;
     let n = 0;
     for (let i = rows.length - 1; i >= 0 && n < ACCURACY_WINDOW; i -= 1) {
       const r = rows[i];
-      if (!r || r.category !== category || typeof r.correct !== 'boolean' || !isRecent(r.date, ctx.nowMs, RECENT_DAYS)) continue;
+      // C13: index-only answers are not hand answers (H1/R9).
+      if (!r || r.indexOnly || r.category !== category || typeof r.correct !== 'boolean' || !isRecent(r.date, ctx.nowMs, RECENT_DAYS)) continue;
       n += 1;
       if (r.correct) right += 1;
     }

@@ -506,8 +506,9 @@ export function Stats({ activeProfile, settings, onSettingsChange, onNavigate }:
     // Table-only categories (bet sizing, play or sit, count checks) never
     // write a timed row; "no timed answers" under them in every range is noise.
     // R8: or whose rows the history cap has all folded into daily counts.
+    // C13: index-only rows are not hand answers (H1/R9), here or below.
     const folded = Object.values(stats.latencyDaily ?? {}).some((d) => (d?.[cat]?.n ?? 0) > 0);
-    if (!folded && !stats.latencyHistory.some((r) => r.category === cat)) return null;
+    if (!folded && !stats.latencyHistory.some((r) => r.category === cat && !r.indexOnly)) return null;
     const label = range.id === 'since' ? `Since ${range.since ?? '…'}` : RANGE_LABEL[range.id];
     // B6: the kept rows plus the daily counts the cap folded older rows into.
     const { right, total } = rangedAccuracy(stats, range, now, cat);
