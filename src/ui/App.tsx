@@ -35,6 +35,7 @@ import { installAudioContextKeepAlive } from '../audio/audioContext';
 import { setRoutePreferences } from '../audio/audioRoute';
 import { useActivityLive } from './activityLive';
 import { mayLeave } from './leaveGuard';
+import { noteNavigation } from './tableKeep';
 import { lazyScreen, preloadWhenIdle } from './lazyScreen';
 
 // F11 (W2-24): rarely opened screens, each its own chunk (see lazyScreen.ts).
@@ -153,6 +154,9 @@ function App() {
    * whatever drill or table you had open to go and check a cell.
    */
   const [chartsReturn, setChartsReturn] = useState<Screen>('home');
+  /** Where a Settings visit came from, as `chartsReturn` (D3): All settings
+   * in a gear sheet, then "Back to Home", lost the table it came from. */
+  const [settingsReturn, setSettingsReturn] = useState<Screen>('home');
   const [settings, setSettings] = useState<SettingsData>(() => {
     const loaded = loadSettings();
     // Review N2: seeded with the settings themselves, before any child mounts.
@@ -330,6 +334,9 @@ function App() {
     // Remember the origin of a Charts visit, but never Charts itself -- a
     // second tap on the Charts tab must not make "back" a no-op loop.
     if (next === 'charts' && screen !== 'charts') setChartsReturn(screen);
+    if (next === 'settings' && screen !== 'settings') setSettingsReturn(screen);
+    // D3: Play left for Settings keeps its shoe for the way back.
+    noteNavigation(screen, next);
     // Which screen was open bounds every other question about a session: the
     // voice vocabulary, the wake lock and the suppression behaviour all differ
     // between the table and a drill.
@@ -374,6 +381,7 @@ function App() {
     typeof window !== 'undefined' &&
     new URLSearchParams(window.location.search).has('crash');
 
+  const tableKey = `${tableEpoch}:${activeProfile.id}:${JSON.stringify(activeProfile)}`;
   const body = (() => {
     switch (screen) {
       case 'home':
@@ -396,7 +404,8 @@ function App() {
         // "you changed the game definition": a new table, not a spliced-in change.
         return (
           <Table
-            key={`${tableEpoch}:${activeProfile.id}:${JSON.stringify(activeProfile)}`}
+            key={tableKey}
+            keepKey={tableKey}
             settings={settings}
             onNavigate={navigate}
             onSettingsChange={setSettings}
@@ -422,7 +431,14 @@ function App() {
           />
         );
       case 'settings':
-        return <Settings settings={settings} onNavigate={navigate} onSettingsChange={setSettings} />;
+        return (
+          <Settings
+            settings={settings}
+            onNavigate={navigate}
+            onSettingsChange={setSettings}
+            backTo={settingsReturn === 'home' ? undefined : { screen: settingsReturn, label: SCREEN_LABEL[settingsReturn] }}
+          />
+        );
       case 'profiles':
         return <ProfileEditor onNavigate={navigate} />;
       // Its own screen rather than a panel floating over a drill. The

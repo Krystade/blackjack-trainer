@@ -164,6 +164,71 @@ test('All settings leaves the sheet for the Settings screen', async ({ page }) =
   await expect(page.locator('.settings-heading')).toHaveText('Settings');
 });
 
+/** Every graded tally in Stats, summed: a re-applied round shows up here. */
+async function statsTally(page: Page): Promise<{ graded: number; sessions: { rounds: number }[] }> {
+  return page.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('bjtrainer.stats.v1') ?? '{}');
+    let graded = 0;
+    for (const t of Object.values(s.categories ?? {}) as { right: number; wrong: number }[]) {
+      graded += t.right + t.wrong;
+    }
+    return { graded, sessions: s.sessions ?? [] };
+  });
+}
+
+/**
+ * D3: ALL SETTINGS AND BACK IS THE SAME SHOE. Before, the Table unmounted,
+ * Settings offered only "Back to Home", and Play came back at Round 0 with
+ * the count gone. Now Settings offers "Back to the table", and the table it
+ * returns to is the one left: same round, same session row, nothing graded
+ * twice.
+ */
+test('All settings and back resumes the same shoe, under one session', async ({ page }) => {
+  await openTable(page);
+  await playOneRound(page);
+  const before = await statsTally(page);
+  expect(before.sessions).toHaveLength(1);
+  const discards = await page.locator('.table-discard-fill').getAttribute('style');
+  expect(discards).not.toMatch(/width: 0%/);
+
+  await page.getByRole('button', { name: 'Play settings' }).click();
+  await page.getByRole('dialog', { name: 'Play settings' }).getByRole('button', { name: 'All settings' }).click();
+  await expect(page.locator('.settings-heading')).toHaveText('Settings');
+  await page.getByRole('button', { name: 'Back to the table' }).click();
+
+  await expect(page.locator('.table-screen')).toBeVisible();
+  await expect(roundStat(page)).toHaveText('Round 1');
+  expect(await page.locator('.table-discard-fill').getAttribute('style')).toBe(discards);
+  // The resumed session must not write round 1's events a second time.
+  await page.waitForTimeout(300);
+  expect((await statsTally(page)).graded).toBe(before.graded);
+
+  await page.getByRole('button', { name: 'Deal', exact: true }).click();
+  await playRoundByAdvice(page);
+  await expect(roundStat(page)).toHaveText('Round 2');
+  const after = await statsTally(page);
+  expect(after.sessions, 'the resumed shoe opened a second session row').toHaveLength(1);
+  expect(after.sessions[0]!.rounds).toBe(2);
+});
+
+test('Settings then anywhere but the table drops the kept shoe', async ({ page }) => {
+  await openTable(page);
+  await playOneRound(page);
+  await page.getByRole('button', { name: 'Play settings' }).click();
+  await page.getByRole('dialog', { name: 'Play settings' }).getByRole('button', { name: 'All settings' }).click();
+  // Not the round trip that promised to come back: a fresh table, as ever.
+  const tabs = page.locator('.tab-bar');
+  await tabs.getByRole('button', { name: 'Home', exact: true }).click();
+  await tabs.getByRole('button', { name: 'Play', exact: true }).click();
+  await expect(roundStat(page)).toHaveText('Round 0');
+});
+
+test('Settings opened from Home still says Back to Home', async ({ page }) => {
+  await page.goto('/?e2e=1');
+  await page.locator('.home-settings-btn').click();
+  await expect(page.locator('.settings-back-btn')).toHaveText('Back to Home');
+});
+
 test('the bet spread can be switched on from the Play gear (s06)', async ({ page }) => {
   await openTable(page);
   // Wave J toggle rework: the In/Out toggle is on every table, spread or not.

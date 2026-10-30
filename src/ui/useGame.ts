@@ -13,6 +13,7 @@ import { hotShoeActive } from '../engine/shoeBias';
 import { playConfigFor } from './playConfig';
 import { datedSessionEvents } from './sessionEvents';
 import { makePlayGame, realignLosingShoe, type PlayGame } from './losingShoe';
+import { dropKeptTable, offerKeptTable, peekKeptTable } from './tableKeep';
 import type { AudioApi } from '../audio/useAudio';
 import { lockstepTell, type BetRound, type LockstepTell } from '../engine/coverBets';
 import { mistakeUnits } from './reportSections';
@@ -361,8 +362,12 @@ type PendingDeal = { kind: 'deal'; bets?: number | number[] } | { kind: 'sitOut'
  * dealSpeedMs/drill.* are read directly by the screens). The
  * `?seed=` override remains for deterministic e2e/test runs.
  */
-export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
-  const playRef = useRef<PlayGame | null>(null);
+export function useGame(settings: Settings, profile: Profile, audio: AudioApi, keepKey?: string) {
+  // D3: a shoe set aside on the way to Settings, taken back on the
+  // way home (ui/tableKeep.ts). Read on every render but used only by the
+  // first, as every useRef initial value below is.
+  const kept = keepKey === undefined ? null : peekKeptTable(keepKey);
+  const playRef = useRef<PlayGame | null>(kept?.playGame ?? null);
   if (playRef.current === null) {
     // #42: the bankroll carries over from the last session on this profile.
     const cfg = playConfigFor(profile, resumeBankroll(profile), readSeed());
@@ -389,18 +394,18 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
    * disagree. End finalises the same row. F22: nothing is written before the
    * first round.
    */
-  const committedRef = useRef(0);
+  const committedRef = useRef(kept?.session.committed ?? 0);
   /** Wave L: side-bet decisions committed to Stats so far (as `committedRef`). */
-  const sideCommittedRef = useRef(0);
-  const sessionIdRef = useRef<string | null>(null);
+  const sideCommittedRef = useRef(kept?.session.sideCommitted ?? 0);
+  const sessionIdRef = useRef<string | null>(kept?.session.id ?? null);
   sessionIdRef.current ??= newSessionId();
   /** R7: peek reveals this session, counted here so the provisional row has them. */
-  const peeksRef = useRef(0);
+  const peeksRef = useRef(kept?.session.peeks ?? 0);
   const notePeek = useCallback(() => {
     peeksRef.current += 1;
   }, []);
   /** F5: decisions taken with the dealer-pace clock running, this session. */
-  const pacedRef = useRef(0);
+  const pacedRef = useRef(kept?.session.paced ?? 0);
   /** What the last row write described, so an unchanged render writes nothing. */
   const rowKeyRef = useRef('');
   /** End has finalised the row; nothing may turn it provisional again. */
@@ -479,7 +484,7 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
    * events, so the stored bankroll and the stored stats always describe the
    * same rounds. An insurance loss mid-round is stored when the round settles.
    */
-  const storedBankrollRef = useRef(game.bankroll);
+  const storedBankrollRef = useRef(kept?.session.storedBankroll ?? game.bankroll);
   useEffect(() => {
     if (game.phase === 'player' || game.phase === 'insurance') return;
     persistSession(false);
@@ -488,6 +493,32 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
     storedBankrollRef.current = game.bankroll;
     storeBankrollNow(profileId, game.bankroll);
   });
+
+  /**
+   * D3: whatever was set aside has now been taken (or did not match), so
+   * clear it; and on the way out, offer this shoe to the next mount.
+   * tableKeep only accepts it when Play is being left for Settings, and an ended session or an undealt shoe is not worth keeping.
+   */
+  useEffect(() => {
+    dropKeptTable();
+    return () => {
+      if (keepKey === undefined || endedRef.current || game.roundNo === 0) return;
+      offerKeptTable({
+        key: keepKey,
+        playGame,
+        session: {
+          id: sessionIdRef.current!,
+          committed: committedRef.current,
+          sideCommitted: sideCommittedRef.current,
+          peeks: peeksRef.current,
+          paced: pacedRef.current,
+          storedBankroll: storedBankrollRef.current,
+        },
+      });
+    };
+    // The key and the game are fixed for the life of a mount (App keys the Table).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [overlay, setOverlay] = useState<OverlayInfo | null>(null);
   const [report, setReport] = useState<SessionReport | null>(null);

@@ -209,6 +209,9 @@ interface TableProps {
    * hearing the reply, and a control that sits dead until you visit another
    * screen is the bug that made eyes-free unusable once already. */
   onSettingsChange: (settings: Settings) => void;
+  /** D3: the key App mounts this Table under, so a shoe set aside on the
+   * way to Settings is taken back only by the same table. */
+  keepKey?: string;
 }
 
 // What the microphone is doing, in words that say what to do about it. Kept
@@ -456,7 +459,7 @@ function ReportScreen({
   );
 }
 
-export function Table({ settings, activeProfile, onNavigate, onSettingsChange }: TableProps) {
+export function Table({ settings, activeProfile, onNavigate, onSettingsChange, keepKey }: TableProps) {
   // Cycle-3 Task 4: constructed once here (Table owns `settings`) and
   // threaded into useGame, which wraps every engine call (deal/act/insure/
   // submitCount) and the existing bot-narration pacing timer -- that's
@@ -504,7 +507,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
     setIn,
     dealAnimating,
     skipDeal,
-  } = useGame(settings, activeProfile, audio);
+  } = useGame(settings, activeProfile, audio, keepKey);
   // Wave X: a round Out is dealt onto the felt card by card, as one in is.
   const sitOutPace = useSitOutPacing(game, settings.dealSpeedMs);
   // Cycle-2 Task 8: one selected bet per player hand. `playerHandsCount`

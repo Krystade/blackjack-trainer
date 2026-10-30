@@ -46,6 +46,8 @@ interface SettingsProps {
   settings: SettingsData;
   onNavigate: (screen: Screen) => void;
   onSettingsChange: (settings: SettingsData) => void;
+  /** D3: the screen Settings was opened from, when it was not Home. */
+  backTo?: { screen: Screen; label: string };
 }
 
 function round2(n: number): number {
@@ -147,7 +149,7 @@ export function Stepper({
   );
 }
 
-export function Settings({ settings, onNavigate, onSettingsChange }: SettingsProps) {
+export function Settings({ settings, onNavigate, onSettingsChange, backTo }: SettingsProps) {
   const commit = (next: SettingsData) => {
     saveSettings(next);
     onSettingsChange(next);
@@ -221,8 +223,12 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
   return (
     <div className="settings-screen">
       <div className="settings-topbar">
-        <button type="button" className="settings-back-btn" onClick={() => onNavigate('home')}>
-          Back to Home
+        <button
+          type="button"
+          className="settings-back-btn"
+          onClick={() => onNavigate(backTo?.screen ?? 'home')}
+        >
+          Back to {backTo?.label ?? 'Home'}
         </button>
         <div className="settings-heading">Settings</div>
       </div>
