@@ -1,3 +1,5 @@
+import { estimateWatchdogMs } from '../audio/watchdog';
+
 /** C-R2 (W11): what a count run says when the wheel pauses it. A full
  *  sentence so the clip library can carry it (scripts/spokenPhrases.ts). */
 export const COUNT_PAUSED_LINE = 'Paused.';
@@ -33,4 +35,15 @@ export const COUNT_RESUME_WORDS: readonly string[] = ['resume', 'go on'];
 export function isCountResumeWord(readings: readonly string[]): boolean {
   const top = (readings[0] ?? '').toLowerCase().replace(/[^a-z ]/g, ' ').replace(/\s+/g, ' ').trim();
   return COUNT_RESUME_WORDS.includes(top);
+}
+
+/**
+ * R8 (review of C6): what one card adds to an eyes-free run's time. A line
+ * the speech watchdog settled took the whole watchdog, not the card, so a
+ * card counts for at most a quarter of its watchdog; and a replayed card
+ * counts only its share (by characters) of the "Again: ..." line.
+ */
+export function countedCardMs(measuredMs: number, spoken: string, card: string): number {
+  const share = spoken.length > card.length && spoken.length > 0 ? (measuredMs * card.length) / spoken.length : measuredMs;
+  return Math.min(share, estimateWatchdogMs(card) / 4);
 }

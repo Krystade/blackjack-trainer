@@ -87,7 +87,7 @@ import './countLeadIn.css';
 import './countTableDeal.css';
 import { tableDealOf, tableHoldMs, tableRoundPlan, tableView, type TableDeal } from '../../countTableDeal';
 import { DEALER_SEAT } from '../../dealSequence';
-import { COUNT_AGAIN_PREFIX, COUNT_HIDE_PAUSED_LINE, COUNT_PAUSED_LINE, COUNT_RESUMING_LINE, isCountResumeWord } from '../../../drills/countPause';
+import { COUNT_AGAIN_PREFIX, COUNT_HIDE_PAUSED_LINE, COUNT_PAUSED_LINE, COUNT_RESUMING_LINE, countedCardMs, isCountResumeWord } from '../../../drills/countPause';
 import { EASY_FIRST_RUN, hiLoLabel, hiLoShown, offersEasyFirstRun } from '../../../drills/hiLoAid';
 import './hiLoAid.css';
 
@@ -741,7 +741,8 @@ export function CountDrillView({
 
         const cardAt = performance.now();
         const cards = narrateCards(g, 'rank');
-        const outcome = await speakAsync(again ? `${COUNT_AGAIN_PREFIX} ${cards}` : cards, speechOptsFrom(settings.audio));
+        const spoken = again ? `${COUNT_AGAIN_PREFIX} ${cards}` : cards;
+        const outcome = await speakAsync(spoken, speechOptsFrom(settings.audio));
         again = false;
         if (isStale()) return;
         // A12: a card nobody heard (a call, Siri, a dead route: the clip and
@@ -755,8 +756,9 @@ export function CountDrillView({
           return;
         }
         // C6: only a card that was heard counts toward the run's time; an
-        // unheard one is said again on resume and counted then.
-        eyesFreeDealtMsRef.current += performance.now() - cardAt;
+        // unheard one is said again on resume and counted then. R8: capped,
+        // and without the "Again:" prefix (countedCardMs).
+        eyesFreeDealtMsRef.current += countedCardMs(performance.now() - cardAt, spoken, cards);
 
         const isLast = i >= groups.length - 1;
 
