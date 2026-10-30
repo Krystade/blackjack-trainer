@@ -42,9 +42,23 @@ describe('spaced repetition due by local day (B17)', () => {
     expect(reviewCard(undefined, false, t).dueAt).toBe(t);
   });
 
-  it('an answer at 1am belongs to the evening before', () => {
-    expect(scheduleDueAt(at(2026, 10, 27, 1), 1)).toBe(at(2026, 10, 27, 4));
+  it('R7: an answer between midnight and 4am is never due minutes later, or a day early', () => {
+    const late = at(2026, 10, 27, 3, 59);
+    // Box 1: the next morning, not one minute on.
+    expect(scheduleDueAt(late, 1)).toBe(at(2026, 10, 28, 4));
+    // Box 2: three days on, not two.
+    expect(scheduleDueAt(late, 2)).toBe(at(2026, 10, 30, 4));
+    for (const h of [0, 1, 2, 3]) {
+      for (let box = 1; box <= 5; box++) {
+        const t = at(2026, 10, 27, h, 30);
+        const days = [0, 1, 3, 7, 14, 30][box]!;
+        expect(scheduleDueAt(t, box) - t, `${h}:30 box ${box}`).toBeGreaterThanOrEqual(days * 86_400_000 - 3_600_000);
+      }
+    }
     expect(scheduleDueAt(at(2026, 10, 27, 5), 1)).toBe(at(2026, 10, 28, 4));
+    // Said plainly: the next morning is "tomorrow".
+    const c = reviewCard({ box: 0, dueAt: late, lastSeenAt: late, lapses: 0, reviews: 1 }, true, late);
+    expect(formatReviewPlain(c, late)).toBe("You'll see this again tomorrow");
   });
 
   it('the end of daylight saving (1 Nov 2026) does not move the due hour', () => {

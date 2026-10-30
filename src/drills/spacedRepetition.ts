@@ -108,10 +108,16 @@ export const MAX_BOX = BOX_INTERVALS_MS.length - 1; // 5
  * B17: a learned card comes due at the START of a local day, not at the exact
  * minute it was answered N*24h later. A cell promoted on the 17:45 drive home
  * was due at 17:45 three days on, so the next morning's commute skipped it
- * (not due, not a gap review, no retention row). The day turns over at 4am,
- * as Anki's does, so an answer at 1am still belongs to the evening before.
+ * (not due, not a gap review, no retention row). It is due at 4am on the
+ * N-th calendar day after the one it was answered on.
+ *
+ * R7: counted from the CALENDAR day, not a day that turns over at 4am. With
+ * the turnover, an answer at 03:59 belonged to the day before: box 1 came due
+ * one minute later and box 2 a day early, a near-zero gap counted as a gap
+ * review. From the calendar day, an answer between midnight and 4am waits a
+ * little longer than N days, never less.
  */
-export const SR_ROLLOVER_HOUR = 4;
+export const SR_DUE_HOUR = 4;
 
 /**
  * When a card answered at `now` and placed in `box` comes due. Box 0 is due
@@ -121,8 +127,8 @@ export const SR_ROLLOVER_HOUR = 4;
 export function scheduleDueAt(now: number, box: number): number {
   const days = Math.round((BOX_INTERVALS_MS[box] ?? 0) / DAY_MS);
   if (days <= 0) return now;
-  const day = new Date(now - SR_ROLLOVER_HOUR * 60 * 60 * 1000);
-  return new Date(day.getFullYear(), day.getMonth(), day.getDate() + days, SR_ROLLOVER_HOUR).getTime();
+  const day = new Date(now);
+  return new Date(day.getFullYear(), day.getMonth(), day.getDate() + days, SR_DUE_HOUR).getTime();
 }
 
 /**
