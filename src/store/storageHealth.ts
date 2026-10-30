@@ -1,4 +1,5 @@
 import { DIAG_BASE_KEY, listDiagKeys } from '../diag/diagStore';
+import { diag } from '../diag/diagnosticLog';
 
 /**
  * WHEN A SAVE DOES NOT LAND, SAY SO (backlog F24).
@@ -25,10 +26,23 @@ type Listener = (failure: StorageFailure) => void;
 
 const listeners = new Set<Listener>();
 let lastFailure: StorageFailure | null = null;
+/** Keys already logged this page load (B23): once full, every answer fails the same write. */
+const logged = new Set<string>();
 
 /** Called by persist.ts when a write failed even after making room. */
 export function reportStorageFailure(key: string, now = Date.now()): void {
   lastFailure = { key, at: now };
+  // B23: in the log too, once per key per page load -- a later exported log
+  // showed nothing, and logging every failed answer would flood the buffer.
+  // diag() only appends in memory; its flush never comes back through here.
+  if (!logged.has(key)) {
+    logged.add(key);
+    try {
+      diag('err', 'storage-full', { key });
+    } catch {
+      /* a log must never turn a failed save into a crash */
+    }
+  }
   for (const fn of [...listeners]) {
     try {
       fn(lastFailure);
@@ -164,5 +178,6 @@ export async function requestPersistentStorage(
 /** Tests only. */
 export function _resetStorageHealthForTest(): void {
   listeners.clear();
+  logged.clear();
   lastFailure = null;
 }

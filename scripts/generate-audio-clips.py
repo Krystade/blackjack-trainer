@@ -306,7 +306,8 @@ def streak_number_word(n: int) -> str:
 
 def moment_sentences() -> list[str]:
     """Mirror of allMomentSentences() in src/habits/moment.ts."""
-    out = ["Daily goal done.", "A new streak starts today.", "Over one hundred days in a row."]
+    out = ["Daily goal done.", "A new streak starts today.", "Over one hundred days in a row.",
+           "Not saved. The phone storage is full."]
     for n in range(2, 101):
         out.append(f"{capitalize(streak_number_word(n))} days in a row.")
     return out

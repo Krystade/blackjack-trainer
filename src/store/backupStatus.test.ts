@@ -87,3 +87,17 @@ describe('the persistent-storage answer is kept and logged (B25)', () => {
     expect(persistenceText(undefined)).toBe('Checking…');
   });
 });
+
+describe('a failed save is logged once per key (B23)', () => {
+  it('writes storage-full the first time each key fails', async () => {
+    const { reportStorageFailure, _resetStorageHealthForTest } = await import('./storageHealth');
+    _resetStorageHealthForTest();
+    const spy = vi.spyOn(diagLog, 'diag');
+    reportStorageFailure('bjtrainer.stats.v1');
+    reportStorageFailure('bjtrainer.stats.v1');
+    reportStorageFailure('bjtrainer.settings.v1');
+    const lines = spy.mock.calls.filter((c) => c[1] === 'storage-full').map((c) => c[2]);
+    expect(lines).toEqual([{ key: 'bjtrainer.stats.v1' }, { key: 'bjtrainer.settings.v1' }]);
+    _resetStorageHealthForTest();
+  });
+});

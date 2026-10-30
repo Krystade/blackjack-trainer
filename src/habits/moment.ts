@@ -23,6 +23,11 @@ export const STREAK_CLIP_MAX = 100;
 export const MOMENT_GOAL_LINE = 'Daily goal done.';
 export const MOMENT_FIRST_DAY_LINE = 'A new streak starts today.';
 export const MOMENT_OVER_MAX_LINE = 'Over one hundred days in a row.';
+/**
+ * B23: a save that failed, said eyes-free at the next pause -- the only
+ * other sign is a toast nobody can read from the driver's seat.
+ */
+export const STORAGE_FULL_LINE = 'Not saved. The phone storage is full.';
 
 /** "twelve" .. "one hundred": numberWord covers 0-20; the rest is spelled here. */
 const TENS = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
@@ -48,7 +53,7 @@ export function momentLine(streak: number): string {
 
 /** Every sentence the moment can say, for the clip generator and coverage test. */
 export function allMomentSentences(): string[] {
-  const out = [MOMENT_GOAL_LINE, MOMENT_FIRST_DAY_LINE, MOMENT_OVER_MAX_LINE];
+  const out = [MOMENT_GOAL_LINE, MOMENT_FIRST_DAY_LINE, MOMENT_OVER_MAX_LINE, STORAGE_FULL_LINE];
   for (let n = 2; n <= STREAK_CLIP_MAX; n++) out.push(streakSentence(n));
   return out;
 }

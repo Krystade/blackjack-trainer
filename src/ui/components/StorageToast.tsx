@@ -1,6 +1,11 @@
 import { useEffect, useState } from 'react';
 import { onStorageFailure, lastStorageFailure } from '../../store/storageHealth';
+import { isEyesFreeOn } from '../eyesFreeSession';
+import { queueMoment, STORAGE_FULL_LINE } from '../../habits/moment';
 import './storageToast.css';
+
+/** B23: keys whose failure was already queued to be said eyes-free this page load. */
+const spoken = new Set<string>();
 
 /**
  * Keys whose failure the operator has already dismissed this page load. Once
@@ -34,6 +39,11 @@ export function StorageToast() {
     () =>
       onStorageFailure((f) => {
         if (shown(f.key)) setFailedKey(f.key);
+        // B23: eyes-free, the toast is invisible -- say it at the drill's next pause, once per key.
+        if (isEyesFreeOn() && !spoken.has(f.key)) {
+          spoken.add(f.key);
+          queueMoment(STORAGE_FULL_LINE);
+        }
       }),
     [],
   );
