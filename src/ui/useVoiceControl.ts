@@ -21,7 +21,7 @@ import { markMicSessionOpened, setVoiceCaptureActive } from '../audio/micSession
 import { markInputDeviceChanged } from '../diag/deviceChurn';
 import { monoNow } from '../audio/monoClock';
 import { audioSessionSupported, readAudioSessionType } from '../audio/audioSession';
-import { beginCaptureRoute, endCaptureRoute, forcedAutoPlan, logRouteSnapshot } from '../audio/audioRoute';
+import { beginCaptureRoute, endCaptureRoute, forcedAutoPlan, logRouteSnapshot, scheduleRouteReplan } from '../audio/audioRoute';
 import { logAudioInputs, logHardwareRate, logMicPermission } from '../diag/environment';
 import {
   micHasWorked,
@@ -593,6 +593,8 @@ export function useVoiceControl({
     const onDeviceChange = () => {
       markInputDeviceChanged(monoNow());
       void logAudioInputs('devicechange-voice');
+      // A10: the car connecting or dropping changes what the setting should hold.
+      scheduleRouteReplan('devicechange');
       wake('devicechange')();
     };
     document.addEventListener('visibilitychange', onVisible);

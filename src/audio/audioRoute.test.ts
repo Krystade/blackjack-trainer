@@ -15,7 +15,9 @@ import {
   logRouteSnapshot,
   pickSpeakerOutput,
   planRoute,
+  replanOnDeviceChange,
   routeSinkId,
+  scheduleRouteReplan,
   setRoutePreferences,
   type DeviceLike,
 } from './audioRoute';
@@ -470,5 +472,138 @@ describe('a phone-mic hold with no Bluetooth', () => {
     // The fresh read finds no Bluetooth, so the plan holds nothing, and says so.
     expect(readDiagnosticLog().find((e) => e.event === 'route-plan-revised')?.detail).toMatchObject({ from: 'phone', hold: 'none' });
     expect(activeRoutePlan()?.hold).toBe('none');
+  });
+});
+
+describe('A10: a device change mid-drill re-plans the hold', () => {
+  const realNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  let devices: DeviceLike[];
+  let opened: Array<{ id: string; track: { readyState: string } }>;
+  let stopped: string[];
+
+  function install(initial: DeviceLike[]): void {
+    devices = [...initial];
+    opened = [];
+    stopped = [];
+    const getUserMedia = vi.fn(async (c: { audio: { deviceId: { exact: string } } | true }) => {
+      const id = c.audio === true ? 'any' : c.audio.deviceId.exact;
+      const label = devices.find((d) => d.deviceId === id)?.label ?? '';
+      const track = {
+        label,
+        readyState: 'live',
+        muted: false,
+        stop: () => stopped.push(id),
+        getSettings: () => ({ sampleRate: 48000, deviceId: id }),
+      };
+      opened.push({ id, track });
+      return { getTracks: () => [track], getAudioTracks: () => [track] };
+    });
+    Object.defineProperty(globalThis, 'navigator', {
+      value: {
+        audioSession: { type: 'auto' },
+        mediaDevices: { enumerateDevices: async () => devices, getUserMedia },
+      },
+      configurable: true,
+      writable: true,
+    });
+  }
+
+  beforeEach(() => {
+    clearDiagnosticLog();
+    _resetAudioSessionForTest();
+    _resetAudioRouteForTest();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    endCaptureRoute('test-end');
+    if (realNavigator) Object.defineProperty(globalThis, 'navigator', realNavigator);
+    else delete (globalThis as { navigator?: unknown }).navigator;
+  });
+
+  it('Phone speaker: the car connecting after voice-on opens the phone-mic hold', async () => {
+    install([PHONE]);
+    setRoutePreferences('phone', 'auto');
+    await detectRoute();
+    beginCaptureRoute('voice-on');
+    await captureRouteSettled();
+    expect(opened).toEqual([]);
+
+    devices.push(CAR);
+    await replanOnDeviceChange('devicechange');
+    expect(opened.map((o) => o.id)).toEqual(['mic-phone']);
+    expect(activeRoutePlan()?.hold).toBe('phone');
+    expect(holdStatus().state).toBe('held');
+    const revised = readDiagnosticLog().filter((e) => e.event === 'route-plan-revised').pop();
+    expect(revised?.detail).toMatchObject({ reason: 'devicechange', from: 'none', hold: 'phone', route: 'bluetooth' });
+  });
+
+  it('Bluetooth: the car dropping releases the hold, and coming back holds it again', async () => {
+    install([CAR, PHONE]);
+    setRoutePreferences('bluetooth', 'auto');
+    await detectRoute();
+    beginCaptureRoute('voice-on');
+    await captureRouteSettled();
+    expect(opened.map((o) => o.id)).toEqual(['mic-car']);
+
+    opened[0]!.track.readyState = 'ended';
+    devices = [PHONE];
+    await replanOnDeviceChange('devicechange');
+    expect(activeRoutePlan()?.hold).toBe('none');
+
+    devices = [CAR, PHONE];
+    await replanOnDeviceChange('devicechange');
+    expect(opened.map((o) => o.id)).toEqual(['mic-car', 'mic-car']);
+    expect(holdStatus().state).toBe('held');
+  });
+
+  it('the same hold, still live, is left alone', async () => {
+    install([CAR, PHONE]);
+    setRoutePreferences('bluetooth', 'auto');
+    await detectRoute();
+    beginCaptureRoute('voice-on');
+    await captureRouteSettled();
+    await replanOnDeviceChange('devicechange');
+    expect(opened).toHaveLength(1);
+    expect(stopped).toEqual([]);
+  });
+
+  it('Auto and a forced plan are never re-planned', async () => {
+    install([PHONE]);
+    await detectRoute();
+    beginCaptureRoute('voice-on');
+    devices.push(CAR);
+    await replanOnDeviceChange('devicechange');
+    expect(opened).toEqual([]);
+
+    setRoutePreferences('phone', 'auto');
+    beginCaptureRoute('kit', planRoute('auto', 'auto', classifyInputs([PHONE])));
+    await replanOnDeviceChange('devicechange');
+    expect(opened).toEqual([]);
+  });
+
+  it('a burst of changes re-plans once, after the route goes quiet, and not after voice-off', async () => {
+    vi.useFakeTimers();
+    install([PHONE]);
+    setRoutePreferences('phone', 'auto');
+    await detectRoute();
+    beginCaptureRoute('voice-on');
+    await captureRouteSettled();
+    devices.push(CAR);
+    scheduleRouteReplan('devicechange');
+    await vi.advanceTimersByTimeAsync(1000);
+    scheduleRouteReplan('devicechange');
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(opened).toEqual([]);
+    await vi.advanceTimersByTimeAsync(600);
+    await captureRouteSettled();
+    expect(opened.map((o) => o.id)).toEqual(['mic-phone']);
+
+    endCaptureRoute('voice-off');
+    beginCaptureRoute('voice-on');
+    scheduleRouteReplan('devicechange');
+    endCaptureRoute('voice-off');
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(opened).toHaveLength(1);
   });
 });

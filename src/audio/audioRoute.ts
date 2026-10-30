@@ -203,6 +203,12 @@ let held: MediaStream | null = null;
 let declared = false;
 let captureGen = 0;
 let holdSettled: Promise<void> = Promise.resolve();
+/** The plan was handed in (test kit, forced Auto): a device change does not re-plan it. */
+let planForced = false;
+/** Drops a re-plan overtaken by a newer one. */
+let replanSeq = 0;
+let replanTimer: ReturnType<typeof setTimeout> | null = null;
+let replanFirstAt = 0;
 
 /**
  * What became of the plan's hold. Anything but `held` means the step ran
@@ -362,6 +368,7 @@ export function beginCaptureRoute(reason: string, planOverride?: RoutePlan): Rou
     requestAudioSessionType('auto');
   }
   activePlan = plan;
+  planForced = planOverride !== undefined;
   holdState = plan.hold !== 'none' ? 'pending' : 'none';
   const gen = ++captureGen;
   if (plan.strategy === 'play-and-record') {
@@ -519,8 +526,71 @@ function stopHeld(): void {
   held = null;
 }
 
+/**
+ * The route changed under a running plan: decide the hold again (audit A10).
+ *
+ * The plan was made once, at voice-on. With 'Phone speaker' set and the car's
+ * hands-free unit connecting ten seconds after Drive was tapped, the plan had
+ * seen the phone and held nothing, and the phone-mic hold the setting exists
+ * for never opened for the rest of the drill. With 'Bluetooth', a held track
+ * ended when the car dropped and nothing held again when it came back.
+ *
+ * The strategy and any declaration stay as begun: they had to be in force
+ * before the recogniser started. Idempotent: the same hold, still live, is
+ * left alone. Not for Auto or a forced plan, which hold nothing by design.
+ */
+export async function replanOnDeviceChange(reason: string): Promise<void> {
+  if (activePlan === null || planForced || prefs.pref === 'auto') return;
+  const gen = captureGen;
+  const seq = ++replanSeq;
+  const route = await detectRoute();
+  const current = activePlan;
+  if (gen !== captureGen || seq !== replanSeq || current === null) return;
+  const fresh = planRoute(prefs.pref, prefs.strategy, route);
+  const live = heldTrack !== null && heldTrack.readyState !== 'ended';
+  if (fresh.hold === current.hold && (fresh.hold === 'none' || live)) return;
+  stopHeld();
+  activePlan = { ...current, hold: fresh.hold, evidence: fresh.evidence, why: fresh.why };
+  diag('route', 'route-plan-revised', {
+    reason,
+    from: current.hold,
+    hold: fresh.hold,
+    evidence: fresh.evidence,
+    route: route.kind,
+    why: fresh.why,
+  });
+  holdState = fresh.hold !== 'none' ? 'pending' : 'none';
+  if (fresh.hold !== 'none') await holdInput(fresh.hold, gen, route);
+}
+
+/** Device changes come in bursts while a route settles. */
+export const REPLAN_QUIET_MS = 1500;
+/** ...but a route that never goes quiet is re-planned anyway after this. */
+export const REPLAN_CAP_MS = 4000;
+
+/**
+ * Re-plan once the devices have been quiet for REPLAN_QUIET_MS, or
+ * REPLAN_CAP_MS after the first change of a burst -- the rule the Route kits
+ * use (waitForRouteQuiet). Cancelled when the plan ends.
+ */
+export function scheduleRouteReplan(reason: string): void {
+  if (activePlan === null) return;
+  const now = Date.now();
+  if (replanTimer === null) replanFirstAt = now;
+  else clearTimeout(replanTimer);
+  const gen = captureGen;
+  const wait = Math.max(0, Math.min(REPLAN_QUIET_MS, replanFirstAt + REPLAN_CAP_MS - now));
+  replanTimer = setTimeout(() => {
+    replanTimer = null;
+    if (gen !== captureGen) return;
+    holdSettled = replanOnDeviceChange(reason);
+  }, wait);
+}
+
 /** Undo whatever `beginCaptureRoute` did. Idempotent. */
 export function endCaptureRoute(reason: string): void {
+  if (replanTimer !== null) clearTimeout(replanTimer);
+  replanTimer = null;
   captureGen += 1;
   const had = activePlan;
   activePlan = null;
@@ -593,4 +663,8 @@ export function _resetAudioRouteForTest(): void {
   declared = false;
   captureGen = 0;
   holdSettled = Promise.resolve();
+  planForced = false;
+  replanSeq = 0;
+  if (replanTimer !== null) clearTimeout(replanTimer);
+  replanTimer = null;
 }
