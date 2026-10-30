@@ -20,7 +20,7 @@ import {
   type HabitEvent,
 } from '../habits/progressStore';
 import type { PlannedSegment } from './plan';
-import { addTally, begin, finishSegment, newSession } from './session';
+import { addTally, begin, finishSegment, newSession, pause, resume } from './session';
 import { GUIDED_KEY, loadGuided, normalizeGuidedStore, readSession, recordFinished, saveActive } from './store';
 import { tallyDelta, tallySignature } from './tally';
 
@@ -59,7 +59,8 @@ afterEach(() => {
 
 describe('guided store', () => {
   it('keeps the session in progress, and reads it back field for field', () => {
-    const s = addTally(begin(newSession(15, true, PLAN, now, '2026-10-22')), { answers: 2, right: 1 });
+    const s = begin(resume(pause(addTally(begin(newSession(15, true, PLAN, now, '2026-10-22')), { answers: 2, right: 1 }))));
+    expect(s.progress[0]).toMatchObject({ windowAnswers: 2, windowMs: 0 });
     saveActive(s);
     expect(loadGuided().active).toEqual(s);
     saveActive(null);

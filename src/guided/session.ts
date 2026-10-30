@@ -15,6 +15,15 @@ export interface SegmentProgress {
   skipped?: true;
   /** Finished (target, cap or skip). */
   done?: true;
+  /**
+   * Where the cap and idle clocks start: `activeMs` and `answers` as they
+   * stood at the last resume (absent = the segment's start). A resume is a
+   * fresh window -- judged from the segment's start, a segment that idled
+   * past its cap was past it again the moment it came back, and paused itself
+   * on the next tick, every time.
+   */
+  windowMs?: number;
+  windowAnswers?: number;
 }
 
 /**
@@ -78,13 +87,14 @@ export function endsOnAnswer(seg: PlannedSegment, prog: SegmentProgress, activeM
 }
 
 /**
- * On the clock: 'end' past the cap with something answered; 'idle' past the
- * cap with nothing answered at all (nobody is there: pause rather than talk
- * to an empty car); else 'continue'.
+ * On the clock, within the window since the last resume (or the segment's
+ * start): 'end' past the cap with something answered in it; 'idle' past the
+ * cap with nothing answered in it (nobody is there: pause rather than talk to
+ * an empty car); else 'continue'.
  */
 export function verdictOnTick(seg: PlannedSegment, prog: SegmentProgress, activeMs: number): 'continue' | 'end' | 'idle' {
-  if (activeMs < capMs(seg)) return 'continue';
-  return prog.answers > 0 ? 'end' : 'idle';
+  if (activeMs - (prog.windowMs ?? 0) < capMs(seg)) return 'continue';
+  return prog.answers - (prog.windowAnswers ?? 0) > 0 ? 'end' : 'idle';
 }
 
 /** Credit a save's answers to the running segment. */
@@ -114,9 +124,14 @@ export function pause(s: GuidedSession): GuidedSession {
   return s.phase === 'running' || s.phase === 'intro' ? { ...s, phase: 'paused' } : s;
 }
 
-/** Back from a pause into the segment's transition (it is said again in Drive). */
+/**
+ * Back from a pause into the segment's transition (it is said again in Drive),
+ * with fresh cap and idle clocks for the segment.
+ */
 export function resume(s: GuidedSession): GuidedSession {
-  return s.phase === 'paused' ? { ...s, phase: 'intro' } : s;
+  if (s.phase !== 'paused') return s;
+  const progress = s.progress.map((p, i) => (i === s.index ? { ...p, windowMs: p.activeMs, windowAnswers: p.answers } : p));
+  return { ...s, progress, phase: 'intro' };
 }
 
 export function begin(s: GuidedSession): GuidedSession {

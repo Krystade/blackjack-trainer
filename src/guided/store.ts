@@ -84,6 +84,8 @@ export function readSession(raw: unknown): GuidedSession | null {
         activeMs: num(q.activeMs),
         ...(q.skipped === true ? { skipped: true as const } : {}),
         ...(q.done === true ? { done: true as const } : {}),
+        ...(typeof q.windowMs === 'number' ? { windowMs: num(q.windowMs) } : {}),
+        ...(typeof q.windowAnswers === 'number' ? { windowAnswers: num(q.windowAnswers) } : {}),
       };
     }),
     phase,

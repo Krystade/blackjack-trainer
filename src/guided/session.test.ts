@@ -92,6 +92,31 @@ describe('advancement', () => {
     expect(resume(running())).toMatchObject({ phase: 'running' });
   });
 
+  it('a resume restarts the cap and idle clocks: an idled segment runs again, not re-pauses', () => {
+    const seg = timeSeg(3);
+    const s0 = begin(newSession(15, false, [seg], 1000, '2026-10-22'));
+    // Idled: past the cap with nothing answered.
+    const idled = withActiveMs(s0, capMs(seg) + 500);
+    expect(verdictOnTick(seg, idled.progress[0]!, capMs(seg) + 500)).toBe('idle');
+    const back = begin(resume(pause(idled)));
+    const p = back.progress[0]!;
+    // The tick straight after the resume, and most of a cap later: still running.
+    expect(verdictOnTick(seg, p, capMs(seg) + 1500)).toBe('continue');
+    expect(verdictOnTick(seg, p, 2 * capMs(seg))).toBe('continue');
+    // A whole fresh cap with nothing answered: idle again.
+    expect(verdictOnTick(seg, p, 2 * capMs(seg) + 500)).toBe('idle');
+    // Answered since the resume: the cap ends it.
+    const answered = addTally(back, { answers: 1, right: 1 }).progress[0]!;
+    expect(verdictOnTick(seg, answered, 2 * capMs(seg) + 500)).toBe('end');
+  });
+
+  it('answers from before the resume do not count in the new window', () => {
+    const seg = answersSeg(10, 2);
+    let s = addTally(running(), { answers: 4, right: 4 });
+    s = begin(resume(pause(withActiveMs(s, 60_000))));
+    expect(verdictOnTick(seg, s.progress[0]!, 60_000 + capMs(seg))).toBe('idle');
+  });
+
   it('ending early is a summary with outcome ended, which earns no guided credit', () => {
     const s = endEarly(addTally(running(), { answers: 5, right: 5 }));
     expect(s).toMatchObject({ phase: 'done', outcome: 'ended' });
