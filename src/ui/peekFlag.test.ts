@@ -65,3 +65,15 @@ describe('peekReadout (#41)', () => {
     expect(signedFixed(-50, 0)).toBe('−50');
   });
 });
+
+// C-extra follow-up: while the bots' turns are still being paced onto the
+// felt, the peek counts only the cards already shown.
+describe('peekOnFelt', () => {
+  it('takes the unseen cards back out of the count and puts them back in the shoe', async () => {
+    const { peekOnFelt } = await import('./peekFlag');
+    const c = (rank: string) => ({ rank, suit: 's' }) as never;
+    // RC +3 with two low bot cards still to be shown: +1 on the felt, 52 more cards left.
+    expect(peekOnFelt(3, 2, [c('2'), c('5'), c('K')])).toEqual({ runningCount: 3 - 2 + 1, decksLeft: 2 + 3 / 52 });
+    expect(peekOnFelt(3, 2, [])).toEqual({ runningCount: 3, decksLeft: 2 });
+  });
+});

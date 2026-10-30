@@ -1,4 +1,6 @@
 import { MINUS } from '../drills/signed';
+import type { Card } from '../engine/cards';
+import { hiLoTag } from '../engine/count';
 
 /**
  * R7 (docs/BACKLOG.md, count-peek accountability): format the "this session's
@@ -46,4 +48,16 @@ export function peekReadout(runningCount: number, decksLeft: number): PeekReadou
   const counts = `RC ${signedFixed(runningCount, 0)} · TC ${signedFixed(tc, 1)}`;
   const depth = `${Math.max(0, decksLeft).toFixed(2)} decks left`;
   return { counts, depth, text: `${counts} · ${depth}` };
+}
+
+/**
+ * Wave L C-extra follow-up: the count and depth as the FELT shows them. Bots
+ * resolve inside act(), so while their turns are still being paced onto the
+ * table the engine's running count already includes cards not drawn on
+ * screen. Those come back out of the count and back into the shoe.
+ */
+export function peekOnFelt(runningCount: number, decksLeft: number, unseen: readonly Card[]): { runningCount: number; decksLeft: number } {
+  let rc = runningCount;
+  for (const c of unseen) rc -= hiLoTag(c.rank);
+  return { runningCount: rc, decksLeft: decksLeft + unseen.length / 52 };
 }

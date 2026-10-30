@@ -108,3 +108,54 @@ test('a settled round shows every bot card, pacing or not', async ({ page }) => 
     ).not.toHaveCount(0);
   }
 });
+
+/**
+ * Wave L C-extra follow-up: the peek during the bots' paced turns counts the
+ * felt, not the engine. Bots resolve inside act(), so the engine's running
+ * count already has every bot card; the peek takes back the ones not shown.
+ */
+test('a peek while bot turns are still being paced counts only the cards on the felt', async ({ page }) => {
+  test.setTimeout(300_000);
+  await withSettings(page, { dealSpeedMs: 1200, countCheckEvery: 0 });
+  await withProfile(page, { name: 'Paced Peek', seats: { playerHands: 1, bots: BOTS, botMistakePct: 0, playerPosition: 0 } });
+  const tag = (card: string) => (/^[2-6]/.test(card) ? 1 : /^(10|[JQKA])/.test(card) ? -1 : 0);
+  const botCards = () => page.locator('.bot-seat .bot-hand-cards [data-card]').evaluateAll((els) => els.map((e) => e.getAttribute('data-card')!));
+  const rcHeld = async () => {
+    const box = await page.locator('.tc-peek-btn').boundingBox();
+    if (!box) throw new Error('peek button not laid out');
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    const text = (await page.locator('.peek-counts').textContent())!;
+    await page.mouse.up();
+    const m = /RC ([+−-]?)(\d+)/.exec(text)!;
+    return (m[1] === '−' || m[1] === '-' ? -1 : 1) * Number(m[2]);
+  };
+  let checked = false;
+  for (let seed = 1; seed <= 25 && !checked; seed++) {
+    await page.goto(`/?seed=${seed}&e2e=1`);
+    await page.getByRole('button', { name: 'Play', exact: true }).click();
+    await page.getByRole('button', { name: 'Deal', exact: true }).click();
+    await resolveInsurance(page, false);
+    const ff = page.locator('.fast-forward-btn');
+    // Let the opening deal reach the felt first (no peek while it goes down).
+    await expect(ff).toHaveCount(0, { timeout: 30_000 });
+    const stand = page.getByRole('button', { name: 'Stand', exact: true });
+    while (await stand.isVisible().catch(() => false)) await stand.click();
+    if (!(await ff.isVisible().catch(() => false))) continue;
+    if ((await page.locator('.tc-peek-btn').count()) === 0) continue;
+    const before = await botCards();
+    const rcDuring = await rcHeld();
+    if ((await botCards()).length !== before.length) continue; // a card landed mid-read
+    await page.locator('.message-strip').click();
+    await expect(ff).toHaveCount(0);
+    const after = await botCards();
+    const late = after.slice();
+    for (const c of before) late.splice(late.indexOf(c), 1);
+    const lateSum = late.reduce((n, c) => n + tag(c), 0);
+    if (lateSum === 0) continue; // nothing to tell the two counts apart
+    const rcAfter = await rcHeld();
+    expect(rcDuring, `seed ${seed}: late cards ${late.join(' ')}`).toBe(rcAfter - lateSum);
+    checked = true;
+  }
+  expect(checked, 'expected a seed in 1..25 with unseen bot cards that move the count').toBe(true);
+});

@@ -51,7 +51,7 @@ import { playMissReason } from './playMissReason';
 import { NumPad } from '../components/NumPad';
 import { VoiceStatusBar } from '../components/VoiceStatusBar';
 import { VOICE_WORDS } from '../voiceLabels';
-import { assistedFlag, peekReadout } from '../peekFlag';
+import { assistedFlag, peekOnFelt, peekReadout } from '../peekFlag';
 import { useVoiceToggle, usePushToTalk, startPushToTalk } from '../voiceSession';
 import { CATEGORY_LABELS } from './categoryLabels';
 import { LosingShoeBadge } from '../components/LosingShoeBadge';
@@ -1277,8 +1277,6 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange, k
   }
 
   const multiHand = game.hands.length > 1;
-  // #41: built every render, but only drawn while the peek is held.
-  const peek = peekReadout(game.runningCount, game.exactDecksRemaining);
   /*
    * Wave O (review B1/S1): the bet and side-bet miss lines, said as a round
    * opens and kept with it. They sit in the message strip, which a short
@@ -1394,6 +1392,18 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange, k
     const shown = 2 + (revealedBotDraws.get(`${seatIndex}:${handIndex}`) ?? 0);
     return hand.cards.slice(0, Math.min(hand.cards.length, shown));
   };
+  // #41: built every render, but only drawn while the peek is held.
+  // C-extra follow-up: counted from the felt -- a bot card still waiting for
+  // its turn to be shown is neither in the count nor out of the shoe yet.
+  const unseenBotCards: Card[] = [];
+  if (pacingPending) {
+    game.seats.forEach((seat, seatIndex) => {
+      if (seat.kind !== 'bot') return;
+      seat.hands.forEach((hand, handIndex) => unseenBotCards.push(...hand.cards.slice(visibleBotCards(hand, seatIndex, handIndex).length)));
+    });
+  }
+  const onFelt = peekOnFelt(game.runningCount, game.exactDecksRemaining, unseenBotCards);
+  const peek = peekReadout(onFelt.runningCount, onFelt.decksLeft);
   // Skips BOTH pacing mechanisms together: a tap/click must never leave one
   // mechanism caught up while the other is still pending, which would keep
   // the fast-forward button rendered after being clicked (see
