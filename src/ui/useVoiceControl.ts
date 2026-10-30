@@ -8,6 +8,8 @@ import {
   type VoiceController,
 } from '../audio/voiceControl';
 import { chime, isAppSpeaking, isE2eAudioMode, setSpeechActivityListener, speak } from '../audio/speech';
+import { speechOptsFrom } from '../audio/speechOpts';
+import { loadSettings } from '../store/persist';
 import { canRestartByTap, createMicDeadWatch, isMicDead, micDeadLine } from '../audio/micDeadCue';
 import { recordHeard } from '../audio/voiceHistory';
 import { looksLikeAnAttempt, type VoiceAction } from '../audio/voiceRecognition';
@@ -284,7 +286,8 @@ export function useVoiceControl({
       announce: (state, why) => {
         diag('mic', 'dead-cue', { state, why, context: contextRef.current });
         chime('blocked');
-        speak(micDeadLine(state), { tag: 'mic-dead' });
+        // At the chosen rate and volume, like every other line (review of A5).
+        speak(micDeadLine(state), { ...speechOptsFrom(loadSettings().audio), tag: 'mic-dead' });
         if (canRestartByTap(state)) armTapRestart();
       },
     });

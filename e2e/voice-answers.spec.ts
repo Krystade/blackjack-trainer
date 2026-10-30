@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { sayOnceListening, waitForMic } from './helpers';
+import { sayOnceListening, waitForMic, withSettings } from './helpers';
 
 /**
  * Answering flashcards out loud.
@@ -489,4 +489,24 @@ test('"yes" and "no" answer an insurance item', async ({ page }) => {
   await expect(page.locator('.quiz-insurance-prompt')).toBeVisible();
   await say(page, 'no');
   await expect(page.locator('.message-strip .result-correct, .message-strip .mistake-card').first()).toBeVisible();
+});
+
+/** Review of A5 (cosmetic): the dead-mic line follows the voice settings like every other line. */
+test('the dead-mic line is said at the chosen rate and volume', async ({ page }) => {
+  await withSettings(page, { audio: { enabled: true, rate: 1.4, volume: 0.6 } });
+  await openFlashcardsWithVoice(page);
+  await page.evaluate(() => {
+    const rec = (window as unknown as { __rec?: { onerror?: (e: { error: string }) => void; onend?: () => void } }).__rec;
+    rec?.onerror?.({ error: 'not-allowed' });
+    rec?.onend?.();
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        ((window as unknown as { __speechOptsLog?: Array<{ text: string; rate?: number; volume?: number }> }).__speechOptsLog ?? []).find((o) =>
+          o.text.startsWith('The microphone has stopped listening.'),
+        ),
+      ),
+    )
+    .toMatchObject({ rate: 1.4 });
 });
