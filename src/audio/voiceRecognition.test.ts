@@ -460,6 +460,29 @@ describe('a meta-word only answers when the transcript is short', () => {
  * `heard=` is the engine's output, never what was said. So these come from
  * the person who spoke.
  */
+describe('A11: a refused action is not an answer', () => {
+  it.each([
+    ["don't double", null],
+    ['no, don’t hit', null],
+    ['not split', null],
+    ['do not surrender', null],
+    ["you shouldn't stand", null],
+    ["don't hit, stand", 'stand'],
+    ["stand, don't hit", 'stand'],
+    ['hit, not stand', 'hit'],
+    // Unchanged: a correction with a retraction word, and a plain answer.
+    ['hit no stand', 'stand'],
+    ['double', 'double'],
+  ])('%j -> %s', (said, want) => {
+    expect(matchVoiceAction(said)).toBe(want);
+  });
+
+  it('no runner-up or near-miss turns a refusal back into the action', () => {
+    expect(resolveSpoken(["don't double", 'double'])).toBeNull();
+    expect(resolveSpoken(['not split', 'split'])).toBeNull();
+  });
+});
+
 describe('aliases the operator added', () => {
   afterEach(() => {
     setUserVoiceAliases({});

@@ -272,7 +272,7 @@ const META_MAX_TOKENS = 3;
  */
 export function matchVoiceAction(transcript: string): VoiceAction | null {
   const r = classify(transcript);
-  return r === 'conflict' ? null : r;
+  return r === 'conflict' || r === 'refused' ? null : r;
 }
 
 /**
@@ -299,7 +299,21 @@ const RETRACTIONS: ReadonlySet<string> = new Set([
  * 'conflict' is distinct from null so resolveSpoken can refuse to rescue
  * such a transcript from a runner-up as well.
  */
-function classify(transcript: string): VoiceAction | 'conflict' | null {
+/**
+ * Words that refuse the action right after them (audit A11): "don't double",
+ * "no, don't hit", "not split". Thinking aloud past a card used to grade the
+ * refused action, and at the table "no don't hit" hit. Contractions arrive
+ * without their apostrophe (see `normalise`).
+ */
+const NEGATORS: ReadonlySet<string> = new Set([
+  'not', 'never', 'dont', 'doesnt', 'didnt', 'cant', 'cannot', 'wont', 'wouldnt', 'shouldnt', 'couldnt', 'isnt',
+]);
+
+/*
+ * 'refused': the only action named was negated. Not an answer, and -- like a
+ * conflict -- not something a runner-up or an approximation may turn into one.
+ */
+function classify(transcript: string): VoiceAction | 'conflict' | 'refused' | null {
   const cleaned = normalise(transcript);
   if (!cleaned) return null;
 
@@ -313,10 +327,17 @@ function classify(transcript: string): VoiceAction | 'conflict' | null {
   let lastMeta: VoiceAction | null = null;
   let lastAt = -1;
   let found: VoiceAction | null = null;
+  let refused = false;
   for (let i = tokens.length - 1; i >= 0; i--) {
     const hit = lookupAlias(tokens[i]!);
     if (!hit) continue;
     if (ACTIONS.has(hit)) {
+      // A refused action is skipped, not a conflict: "stand, don't hit" and
+      // "don't hit, stand" are both a stand.
+      if (i > 0 && NEGATORS.has(tokens[i - 1]!)) {
+        refused = true;
+        continue;
+      }
       if (found === null) {
         found = hit;
         lastAt = i;
@@ -329,7 +350,10 @@ function classify(transcript: string): VoiceAction | 'conflict' | null {
     }
     if (metaAllowed) lastMeta ??= hit;
   }
-  return found ?? lastMeta;
+  if (found) return found;
+  // "no, don't hit" is not the meta-word "no" either: the sentence was about
+  // the action it refused.
+  return refused ? 'refused' : lastMeta;
 }
 
 /**
@@ -599,7 +623,7 @@ export function resolveSpoken(transcripts: readonly string[]): SpokenMatch | nul
   const topRead = classify(top);
   // Several different commands with no retraction: not evidence for any of
   // them, and no runner-up may be allowed to pick one.
-  if (topRead === 'conflict') return null;
+  if (topRead === 'conflict' || topRead === 'refused') return null;
   if (topRead) return { action: topRead, via: 'direct' };
 
   const cleanedTop = normalise(top);
