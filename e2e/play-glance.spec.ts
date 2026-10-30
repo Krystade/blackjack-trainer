@@ -291,6 +291,32 @@ test('B5/W6: one header line, gold Continue below y=650, chart as a link', async
   await expect(sheet).toHaveCount(0);
 });
 
+/**
+ * D9: AT 320 THE CLASS CHIP STAYS INSIDE THE CARD. The table card forced the
+ * head onto one line, so "BASIC STRATEGY ERROR" ran past the card's right
+ * edge and was clipped by the screen. It wraps below the verdict instead.
+ */
+test('D9: at 320 the wrong-play class chip stays inside the card', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 568 });
+  await withSettings(page, { feedbackMode: 'training', countCheckEvery: 0, dealSpeedMs: 0 });
+  await withProfile(page, { seats: SOLO, gradeDeviations: false });
+  await dealPlayerTurn(page);
+  await makeWrongPlay(page);
+  const sheet = page.locator('.wrong-play-sheet');
+  await expect(sheet.locator('.mistake-class')).toBeVisible();
+  // The TEXT, not the box: the nowrap label painted past a box that fit.
+  const { inkRight, cardRight } = await page.evaluate(() => {
+    const chip = document.querySelector('.wrong-play-sheet .mistake-class')!;
+    const range = document.createRange();
+    range.selectNodeContents(chip);
+    const card = document.querySelector('.wrong-play-sheet .mistake-card')!.getBoundingClientRect();
+    return { inkRight: range.getBoundingClientRect().right, cardRight: card.right };
+  });
+  expect(inkRight, 'the class chip runs past the card').toBeLessThanOrEqual(cardRight);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
+  await page.screenshot({ path: 'e2e/screenshots/d9-wrong-play-320.png' });
+});
+
 for (const theme of THEMES) {
   test(`B5/W6: ${theme}: the wrong-play card passes AA`, async ({ page }) => {
     await withSettings(page, { theme, feedbackMode: 'training', countCheckEvery: 0, dealSpeedMs: 0 });

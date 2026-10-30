@@ -46,9 +46,11 @@
 .wrong-play-backdrop { align-items: flex-end; padding: 0; }
 .wrong-play-sheet { width: 100%; max-width: 480px; background: var(--surface); border-radius: 14px 14px 0 0; padding: 0.75rem var(--space-4) calc(var(--space-3) + var(--safe-bottom, 0px)); max-height: 85svh; overflow-y: auto; }
 .wrong-play-sheet .overlay-continue-btn { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); min-height: 52px; font-size: var(--fs-md); margin-top: 0.75rem; }
-.mistake-card-table .mistake-head { flex-wrap: nowrap; justify-content: flex-start; align-items: center; }
+/* D9: the head WRAPS, so at 320 the class chip drops below the verdict
+   instead of running past the card's edge; at 375 it still fits beside it.
+   The chip itself wraps as app.css's base rule describes. */
+.mistake-card-table .mistake-head { flex-wrap: wrap; justify-content: flex-start; align-items: center; }
 .mistake-card-table .mistake-verdict { font-size: var(--fs-md); white-space: nowrap; }
-.mistake-card-table .mistake-class { white-space: nowrap; }
 .mistake-table-link { border: none; background: none; text-decoration: underline; min-height: 44px; }
 /* Midnight Felt's --bad (#eb5757) is 3.58:1 on the sheet's --surface; inside
    the table card it is lifted to a lighter red (~5.2:1) so the verdict and
