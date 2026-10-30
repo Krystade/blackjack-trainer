@@ -1,0 +1,9 @@
+/* A18: the armed Clear (one more tap deletes the whole diagnostic log) must
+   look armed, not just read differently: the bad colour, a bad outline and
+   bold text, in both themes (bad on bad-surface holds contrast in each). */
+.settings-mini-btn[data-armed] {
+  background: var(--bad-surface);
+  color: var(--bad);
+  border: 2px solid var(--bad);
+  font-weight: 700;
+}

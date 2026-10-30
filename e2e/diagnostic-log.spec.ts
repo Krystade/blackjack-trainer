@@ -152,6 +152,13 @@ test('Clear empties it, because it is a recording of an open microphone', async 
   await section.getByRole('button', { name: 'Clear' }).click();
   await expect(section.getByTestId('diag-clear-armed')).toContainText('Not copied yet');
   await expect(section.getByText(/^[0-9]+ entries$/)).toBeVisible();
+  // It LOOKS armed: not the colours of its neighbour Copy.
+  const look = (name: string) =>
+    section.getByRole('button', { name }).evaluate((b) => {
+      const c = getComputedStyle(b);
+      return `${c.backgroundColor}|${c.color}|${c.borderTopColor}`;
+    });
+  expect(await look('Delete?')).not.toBe(await look('Copy'));
   await section.getByRole('button', { name: 'Delete?' }).click();
   await expect(section.getByText('nothing yet')).toBeVisible();
 
