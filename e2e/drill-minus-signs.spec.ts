@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings } from './helpers';
+import { withSettings, pastCountLeadIn } from './helpers';
 
 /**
  * Wave A: one minus sign throughout the drills. The index labels use U+2212
@@ -42,6 +42,7 @@ test('distraction prompts use real minus signs', async ({ page }) => {
   });
   await openDrill(page, 'Count drill');
   await page.getByRole('button', { name: 'Start', exact: true }).click();
+  await pastCountLeadIn(page);
   let sawMinus = false;
   for (let i = 0; i < 120 && !sawMinus; i++) {
     if (await page.locator('.distraction-area').isVisible()) {

@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings, withProfile, resolveInsurance, playRoundByAdvice, shot, openCountOptions } from './helpers';
+import { withSettings, withProfile, resolveInsurance, playRoundByAdvice, shot, openCountOptions, pastCountLeadIn } from './helpers';
 
 test.use({ viewport: { width: 375, height: 812 } });
 const THEMES = ['midnight-felt', 'bone-ink', 'amoled-night', 'slate-copper'] as const;
@@ -148,6 +148,7 @@ for (const [group, min] of [[1, 96], [3, 70]] as const) {
     await page.getByRole('button', { name: 'Count drill', exact: true }).click();
     await openCountOptions(page);
     await page.getByRole('button', { name: 'Start', exact: true }).click();
+    await pastCountLeadIn(page);
     const cards = await boxes(page, '.manual-tap-zone .count-flash-cards .card');
     expect(cards).toHaveLength(group);
     for (const c of cards) { expect(c.w).toBeGreaterThanOrEqual(min); expect(c.right).toBeLessThanOrEqual(375); }

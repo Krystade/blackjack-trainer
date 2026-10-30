@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings, withStats, openCountOptions, submitZero } from './helpers';
+import { withSettings, withStats, openCountOptions, submitZero, pastCountLeadIn } from './helpers';
 
 /**
  * G1 (L-1): the count drill's beginner aid. "Show Hi-Lo values" (off by
@@ -65,6 +65,7 @@ test('option off (the default): no values under the cards, and the run listing s
   await openCountOptions(page);
   await expect(page.getByLabel(/Show Hi-Lo values/)).not.toBeChecked();
   await page.getByRole('button', { name: 'Start', exact: true }).click();
+  await pastCountLeadIn(page);
   const seen = await stepThrough(page, 13);
   expect(seen.flat()).toHaveLength(13);
   for (const c of seen.flat()) expect(c.value).toBeNull();
@@ -81,6 +82,7 @@ test('option on: each card carries its own Hi-Lo value; the result lists the cou
   await openCountOptions(page);
   await page.getByLabel(/Show Hi-Lo values/).check();
   await page.getByRole('button', { name: 'Start', exact: true }).click();
+  await pastCountLeadIn(page);
   await expect(page.locator('.hilo-value')).toHaveCount(1);
   if (SHOTS) {
     await page.addStyleTag({ content: NOTCH });
@@ -118,6 +120,7 @@ test('option on with groups of three and messy cards: one value per card, level 
   await withStats(page, ONE_RUN);
   await openCountSetup(page);
   await page.getByRole('button', { name: 'Start', exact: true }).click();
+  await pastCountLeadIn(page);
   const first = await cardsWithValues(page);
   expect(first).toHaveLength(3);
   for (const c of first) expect(c.value, c.card).toBe(tagOf(c.card));
@@ -139,6 +142,7 @@ test('option on in Table mode: every card of the round carries its value', async
   await withStats(page, ONE_RUN);
   await openCountSetup(page);
   await page.getByRole('button', { name: 'Start', exact: true }).click();
+  await pastCountLeadIn(page);
   const table = page.getByTestId('count-table');
   await expect(table).toBeVisible();
   const cards = await table.locator('.card').evaluateAll((els) =>

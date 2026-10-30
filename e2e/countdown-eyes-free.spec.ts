@@ -109,9 +109,11 @@ test('the voice reads the whole deck without a single tap, then asks for the tag
 
   const log = await spoken(page);
   const prompt = log.indexOf(TAG_PROMPT);
+  // Wave X (item 7): the run opens on its one lead-in chime -- no words.
+  expect(log[0]).toBe('chime:attention');
   // Every card before the prompt, and there are fifty-one of them. A
   // tap-driven mode would have stopped dead on the first one.
-  expect(prompt).toBe(51);
+  expect(prompt).toBe(52);
 });
 
 test('a spoken tag is read back and only graded once confirmed', async ({ page }) => {

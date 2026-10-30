@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings, shot, openCountOptions, submitZero } from './helpers';
+import { withSettings, shot, openCountOptions, submitZero, pastCountLeadIn } from './helpers';
 
 /**
  * RT#12 (docs/BACKLOG.md): the count drill graded ONE number at the end, so a
@@ -23,6 +23,7 @@ async function openCountDrill(page: Page) {
   await page.getByRole('button', { name: 'Count drill', exact: true }).click();
   await openCountOptions(page);
   await page.getByRole('button', { name: 'Start', exact: true }).click();
+  await pastCountLeadIn(page);
 }
 
 /** Tap the manual-advance zone until `until` holds, or the taps run out. */

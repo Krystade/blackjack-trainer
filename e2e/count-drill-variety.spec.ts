@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings, submitZero } from './helpers';
+import { withSettings, submitZero, pastCountLeadIn } from './helpers';
 
 /**
  * Wave A (s04 medium): two things a regular would learn to game.
@@ -35,8 +35,10 @@ test('auto mode: every card is a freshly dealt element, so a repeated card still
   });
   await openCountDrill(page);
   await page.getByRole('button', { name: 'Start', exact: true }).click();
+  await pastCountLeadIn(page);
 
-  await expect(page.locator('.count-flash-progress')).toContainText('1 / 8');
+  // Wave X: any card of the run (the first one's 400ms can pass while the lead-in's end is seen).
+  await expect(page.locator('.count-flash-progress')).toContainText('/ 8');
   // In the page, frame by frame: remember the card element on screen, wait for
   // the progress to move on, and compare the element now on screen.
   const reused = await page.evaluate(
@@ -80,7 +82,10 @@ test('Wave A review: a card arrives in a quarter of its time on screen, not a fi
   });
   await openCountDrill(page);
   await page.getByRole('button', { name: 'Start', exact: true }).click();
-  await expect(page.locator('.count-flash-progress')).toContainText('1 / 8');
+  await pastCountLeadIn(page);
+  // Wave X: the first card's 400ms window can be gone by the time the lead-in
+  // is seen to end; any card on screen is a stable label to watch change.
+  await expect(page.locator('.count-flash-progress')).toContainText('/ 8');
   const frame = await nextCardFirstFrame(page);
   expect(frame.name).toBe('card-deal-in');
   expect(frame.duration).toBe('0.1s');
@@ -94,7 +99,10 @@ test('Wave A review: under reduced motion a new card still visibly arrives (a bl
   });
   await openCountDrill(page);
   await page.getByRole('button', { name: 'Start', exact: true }).click();
-  await expect(page.locator('.count-flash-progress')).toContainText('1 / 8');
+  await pastCountLeadIn(page);
+  // Wave X: the first card's 400ms window can be gone by the time the lead-in
+  // is seen to end; any card on screen is a stable label to watch change.
+  await expect(page.locator('.count-flash-progress')).toContainText('/ 8');
   const frame = await nextCardFirstFrame(page);
   expect(frame.name).toBe('count-card-blank');
   // Blank on its first frame, so the same card twice still flickers.
@@ -129,9 +137,11 @@ test('distractions stop on different cards in a second run', async ({ page }) =>
   });
   await openCountDrill(page);
   await page.getByRole('button', { name: 'Start', exact: true }).click();
+  await pastCountLeadIn(page);
   const first = await distractionStops(page, 28);
   await submitZero(page);
   await page.getByRole('button', { name: 'New run', exact: true }).click();
+  await pastCountLeadIn(page);
   const second = await distractionStops(page, 28);
 
   // One stop per 7-card window: 4 windows in 28 cards.

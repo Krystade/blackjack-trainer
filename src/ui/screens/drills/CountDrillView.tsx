@@ -79,6 +79,7 @@ import { makeCountTable, tableRounds, TABLE_ROUND_CHOICES } from '../../../drill
 import type { TableRound } from '../../../drills/countTable';
 import './countTable.css';
 import './countPause.css';
+import './countLeadIn.css';
 import { COUNT_PAUSED_LINE } from '../../../drills/countPause';
 import { EASY_FIRST_RUN, hiLoLabel, hiLoShown, offersEasyFirstRun } from '../../../drills/hiLoAid';
 import './hiLoAid.css';
@@ -127,8 +128,18 @@ const TIER_LABEL: Record<SpeedTier, string> = {
 // answered the stream resumes exactly where it paused. Standard count-drill
 // flashing only (auto/eyes-free/manual); never entered for countdownMode or
 // timedChallenge (see isDistractionPoint call sites below).
+/** Wave X (item 7): the lead-in counts down from this, one beat per numeral. */
+const LEAD_IN_FROM = 3;
+const LEAD_IN_STEP_MS = 600;
+
 type CountPhase =
   | 'setup'
+  /**
+   * Wave X (item 7): "a short countdown at the start before it begins flipping
+   * through them". 3-2-1 on screen; eyes-free, one neutral chime and a beat.
+   * Nothing advances here -- every advance mechanism is gated on 'flashing'.
+   */
+  | 'leadin'
   | 'flashing'
   | 'answering'
   | 'selfcheck'
@@ -239,6 +250,8 @@ export function CountDrillView({
     setPhaseState(next);
     onMidRunRef.current?.(next !== 'setup' && next !== 'result');
   };
+  // Wave X (item 7): the lead-in's numeral (3, 2, 1), or 0 for the eyes-free chime.
+  const [leadInStep, setLeadInStep] = useState(LEAD_IN_FROM);
   const [drillRound, setDrillRound] = useState<CountDrillRound | null>(null);
   const [countdownRound, setCountdownRound] = useState<CountdownRound | null>(null);
   // #47: the run's table layout when it was dealt in Table mode, else null.
@@ -1095,14 +1108,45 @@ export function CountDrillView({
       attemptedTierRef.current = null;
     }
 
-    // Read the clock here (a live UI concern), never inside drills/countSpeed.ts
-    // -- that module stays pure and deterministic for unit testing.
-    timedStartRef.current = timedChallenge && !countdownMode ? performance.now() : null;
-    setPhase('flashing');
+    timedStartRef.current = null;
+    // Wave X (item 7): the lead-in first; the first card goes up when it ends.
+    setLeadInStep(eyesFree ? 0 : LEAD_IN_FROM);
+    setPhase('leadin');
     if (eyesFree) {
       void requestWakeLock();
     }
   };
+
+  /** The lead-in is over: the first card goes up now. */
+  const beginFlashing = () => {
+    // Read the clock here (a live UI concern), never inside drills/countSpeed.ts
+    // -- that module stays pure and deterministic for unit testing. Read when
+    // the first card shows, not at Start: the lead-in is not the run's time.
+    timedStartRef.current = timedChallenge && !countdownMode ? performance.now() : null;
+    lastCardAtRef.current = runManualRef.current ? performance.now() : null;
+    setPhase('flashing');
+  };
+
+  /**
+   * Wave X (item 7): run the lead-in. On screen it counts 3, 2, 1, a beat
+   * each. Eyes-free there is nothing to look at, so it is one neutral chime
+   * and the same beat -- no words, so the car hears nothing it did not
+   * before but a ding.
+   */
+  useEffect(() => {
+    if (phase !== 'leadin') return undefined;
+    if (leadInStep === 0) {
+      audio.ding('attention');
+      const t = setTimeout(beginFlashing, LEAD_IN_STEP_MS);
+      return () => clearTimeout(t);
+    }
+    const t = setTimeout(() => {
+      if (leadInStep > 1) setLeadInStep(leadInStep - 1);
+      else beginFlashing();
+    }, LEAD_IN_STEP_MS);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, leadInStep]);
 
   /** G1: one deck, slow, values shown -- then go. */
   const startEasyFirstRun = () => {
@@ -2311,6 +2355,20 @@ export function CountDrillView({
               ? { secondaryLabel: 'Easy first run', onSecondary: startEasyFirstRun }
               : {})}
           />
+        </div>
+      )}
+
+      {phase === 'leadin' && (
+        <div className="count-flash-area count-leadin" data-testid="count-leadin">
+          {leadInStep > 0 ? (
+            <div className="count-leadin-num" key={leadInStep} aria-live="polite">
+              {leadInStep}
+            </div>
+          ) : (
+            <div className="count-leadin-ready" aria-live="polite">
+              Ready&hellip;
+            </div>
+          )}
         </div>
       )}
 

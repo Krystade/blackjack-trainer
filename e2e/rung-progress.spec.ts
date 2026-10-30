@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { readStats, withProfile, withSettings, withStats } from './helpers';
+import { readStats, withProfile, withSettings, withStats, pastCountLeadIn } from './helpers';
 import { EMPTY_STATS } from '../src/store/types';
 import type { Profile, Stats } from '../src/store/types';
 import { ladder, type RungId } from '../src/ui/screens/nextStep';
@@ -60,6 +60,7 @@ test('Count drill: the result shows the running-count rung', async ({ page }) =>
     drill: { countManual: true, countLengthCards: 13, countGroup: 1, countIntervalMs: 300 },
   });
   await page.getByRole('button', { name: 'Start', exact: true }).click();
+  await pastCountLeadIn(page);
   for (let guard = 0; guard < 20; guard++) {
     if (!(await page.locator('.manual-tap-zone').isVisible().catch(() => false))) break;
     await page.locator('.manual-tap-zone').click();

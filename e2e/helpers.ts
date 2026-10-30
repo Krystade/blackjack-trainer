@@ -516,3 +516,12 @@ export async function shownHandRightPlay(page: Page, rules: RuleSet = DEFAULT_RU
   if (ranks.length !== 2 || !up) throw new Error(`unexpected hand on screen: ${ranks.join(',')} v ${up}`);
   return ACTION_LABEL[basicPlay(ranks.map((rank) => ({ rank, suit: 's' as const })), up, FULL_CTX, rules).action];
 }
+
+/**
+ * Wave X (item 7): the count drill counts 3-2-1 (eyes-free: one chime and a
+ * beat) before its first card. A spec that reads the first card straight
+ * after Start waits for the lead-in to end first.
+ */
+export async function pastCountLeadIn(page: Page): Promise<void> {
+  await expect(page.getByTestId('count-leadin')).toHaveCount(0);
+}
