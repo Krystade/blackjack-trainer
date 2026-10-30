@@ -70,10 +70,12 @@ describe('Wave L S3: a variant game honours its logged rules', () => {
     const a = variantEdgeFor({ payout: '3:2' }, 'freebet');
     const b = variantEdgeFor({ payout: '6:5' }, 'freebet');
     expect(b.payout).toBe('6:5');
-    expect(b.edge - a.edge).toBeGreaterThan(1.2);
-    expect(b.edge - a.edge).toBeLessThan(1.5);
-    // Spanish 21 has no 6:5 figure: the preset's 3:2 edge, said as 3:2.
-    expect(variantEdgeFor({ payout: '6:5' }, 's21-h17').payout).toBe('3:2');
+    expect(b.edge! - a.edge!).toBeGreaterThan(1.2);
+    expect(b.edge! - a.edge!).toBeLessThan(1.5);
+    // C22 follow-up: Spanish 21 logged 6:5 is worked out at 6:5 (no committed figure, so the worker's), said as 6:5.
+    const s21 = variantEdgeFor({ payout: '6:5' }, 's21-h17');
+    expect(s21.payout).toBe('6:5');
+    expect(s21.edge).toBeNull();
   });
 
   it('names logged rules that differ from the preset', async () => {
@@ -89,7 +91,7 @@ describe('Wave L S3: a variant game honours its logged rules', () => {
 describe('merge with Wave M: a variant game and the new rules', () => {
   it('a commission is added to the flat edge; a card room that logged none is assumed $1 per $100', async () => {
     const { variantCostFor, variantEdgeFor } = await import('./casinoVariant');
-    const chart = variantEdgeFor({ payout: '3:2' }, 'freebet').edge;
+    const chart = variantEdgeFor({ payout: '3:2' }, 'freebet').edge!;
     const room = variantCostFor({ payout: '3:2' }, 'freebet', 'cardroom');
     expect(room).toMatchObject({ commissionPer100: 1, commissionAssumed: true });
     expect(room.total).toBeCloseTo(chart + 1, 9);

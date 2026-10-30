@@ -6,7 +6,8 @@ import { narrateActionNotAsked } from '../src/audio/narrate';
 import { sayOnceListening, waitForMic } from './helpers';
 import { evTable, switchChoice } from '../src/engine/variants/ev';
 import { chartRules } from '../src/engine/variants/chartGen';
-import type { PresetId } from '../src/engine/variants/rules';
+import { PRESETS, type PresetId } from '../src/engine/variants/rules';
+import { houseEdgePct } from '../src/engine/variants/houseEdge';
 import { variantSectionRows } from '../src/ui/screens/variantChartView';
 
 /**
@@ -231,7 +232,13 @@ test('a variant game at a card room: commission added, assumed only for that; lo
   await page.getByRole('button', { name: /Back$/ }).click();
 
   await rows.filter({ hasText: 'Rio' }).click();
-  await expect(card.getByTestId('gs-edge')).toHaveText(`${presetData('freebet').houseEdge.toFixed(2)}%`);
+  // C22 follow-up: the edge is worked out (in a worker) for the logged split-to-2 rule, not the preset's.
+  const loggedEdge = houseEdgePct({ ...PRESETS.freebet, maxHands: 2 });
+  expect(loggedEdge.toFixed(2)).not.toBe(presetData('freebet').houseEdge.toFixed(2));
+  await expect(card.getByTestId('gs-edge')).toHaveText(`${loggedEdge.toFixed(2)}%`);
+  await expect(card.getByTestId('gs-edge')).toHaveAttribute('data-edge-state', 'done');
+  await expect(card.getByTestId('gs-variant-rules')).toContainText('split to 2 hands');
+  await expect(card.getByTestId('gs-variant-rules')).toContainText('The logged rules');
   await expect(card.getByTestId('gs-assumed-rules')).toHaveCount(0);
   await expect(card.getByTestId('gs-commission')).toHaveCount(0);
   await expect(card.getByTestId('gs-variant-mismatch-badge')).toHaveText('Rules differ');

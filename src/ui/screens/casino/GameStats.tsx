@@ -1,6 +1,8 @@
 import { casinoById, isHouseGame, type Casino, type CasinoGame, type CasinoLog } from '../../../store/casinoLog';
-import { PRESETS, PRESET_LABEL, presetSummary } from '../../../engine/variants/rules';
-import { variantCostFor, variantMismatches } from '../../casinoVariant';
+import { useEffect } from 'react';
+import { PRESETS, PRESET_LABEL } from '../../../engine/variants/rules';
+import { variantCostFor, variantMismatches, variantRulesSummary } from '../../casinoVariant';
+import { requestVariantEdge, useVariantEdges, variantEdgeState } from './variantEdgeRunner';
 import { simRules, type GameResult } from '../../../store/casinoGameStats';
 import { describeMethod, methodBadge } from '../../../engine/betMethods';
 import { bankrollNow, gameSummary, kindBadge, labelledSummary, money, shortDate, warnBadges } from '../../casinoFigures';
@@ -403,7 +405,18 @@ function HouseGameStats({ casino, game, editRules }: { casino: Casino; game: Cas
 
 function VariantGameStats({ casino, game, editRules }: { casino: Casino; game: CasinoGame; editRules: () => void }) {
   const preset = game.variant!;
-  const { edge, payout, commissionPer100, commissionAssumed, total } = variantCostFor(game, preset, casino.kind);
+  useVariantEdges();
+  // C22 follow-up: the edge for the logged rules -- a committed figure, else the worker's.
+  const lookup = (r: Parameters<typeof variantEdgeState>[0]) => {
+    const st = variantEdgeState(r);
+    return st.state === 'done' ? st.edge : null;
+  };
+  const { edge, payout, commissionPer100, commissionAssumed, total, rules, fromLogged } = variantCostFor(game, preset, casino.kind, lookup);
+  const edgeState = edge !== null ? { state: 'done' as const } : variantEdgeState(rules);
+  // `rules` is rebuilt each render; asking again for the same rules is a no-op (variantEdgeRunner.ts).
+  useEffect(() => {
+    if (edge === null) requestVariantEdge(rules);
+  }, [edge, rules]);
   const mismatches = variantMismatches(game, preset);
   return (
     <div className="cas-gs" data-testid="game-stats" data-state="variant" data-variant={preset}>
@@ -456,26 +469,36 @@ function VariantGameStats({ casino, game, editRules }: { casino: Casino; game: C
         </div>
         <div className="cas-stat cas-stat-right">
           <span className="cas-stat-label">House edge</span>
-          <span className="cas-stat-value" data-testid="gs-edge">
-            {total.toFixed(2)}%
+          <span className="cas-stat-value" data-testid="gs-edge" data-edge-state={edgeState.state}>
+            {total !== null ? `${total.toFixed(2)}%` : edgeState.state === 'failed' ? 'Not worked out' : 'Working out…'}
           </span>
           <span className="cas-gs-sub">
-            flat bet, its own chart, blackjack {payout}
-            {commissionPer100 > 0 ? ', with commission' : ''}
+            {edgeState.state === 'failed'
+              ? edgeState.message
+              : `flat bet, ${fromLogged ? 'the logged rules' : 'its own chart'}, blackjack ${payout}${commissionPer100 > 0 ? ', with commission' : ''}`}
           </span>
         </div>
       </section>
       <section className="cas-section">
         <div className="cas-pad-x cas-gs-notes">
           <p data-testid="gs-variant-rules">
-            <strong>Rules used:</strong> {presetSummary(PRESETS[preset])}. Computed in the app for an infinite deck, playing the{' '}
-            {PRESET_LABEL[preset]} chart on the Charts tab perfectly
-            {payout === '6:5' && PRESETS[preset].bjPays !== 1.2 ? ', with blackjack paying 6:5 as logged' : ''}.
+            <strong>Rules used:</strong> {variantRulesSummary(rules)}.{' '}
+            {fromLogged ? (
+              <>
+                The logged rules, the {PRESET_LABEL[preset]} preset&rsquo;s where none is logged. The edge is computed in the app for an infinite
+                deck, playing perfectly for these rules; the Charts tab shows the preset&rsquo;s chart, which can differ in a cell or two.
+              </>
+            ) : (
+              <>
+                Computed in the app for an infinite deck, playing the {PRESET_LABEL[preset]} chart on the Charts tab perfectly
+                {payout === '6:5' && PRESETS[preset].bjPays !== 1.2 ? ', with blackjack paying 6:5 as logged' : ''}.
+              </>
+            )}
           </p>
-          {commissionPer100 > 0 && (
+          {commissionPer100 > 0 && edge !== null && total !== null && (
             <p data-testid="gs-commission">
               <strong>Commission:</strong> {money(commissionPer100)} per $100 wagered, taken from every hand dealt to you, win or lose
-              {commissionAssumed ? ' (assumed: a card room that logged none)' : ''}. The chart&rsquo;s {edge.toFixed(2)}% plus{' '}
+              {commissionAssumed ? ' (assumed: a card room that logged none)' : ''}. The game&rsquo;s {edge.toFixed(2)}% plus{' '}
               {commissionPer100.toFixed(2)}% of each bet makes the {total.toFixed(2)}% above.
             </p>
           )}
