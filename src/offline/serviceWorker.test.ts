@@ -68,8 +68,8 @@ function loadWorker(fetchImpl: FetchFn) {
     clearTimeout,
   );
 
-  const fetchEvent = async (url: string, init: { navigate?: boolean } = {}) => {
-    const request = new Request(url);
+  const fetchEvent = async (url: string, init: { navigate?: boolean; headers?: Record<string, string> } = {}) => {
+    const request = new Request(url, init.headers ? { headers: init.headers } : undefined);
     // `mode` is read-only on a real Request; the worker only reads it.
     const req = init.navigate
       ? new Proxy(request, {
@@ -189,7 +189,7 @@ describe('navigation', () => {
     await cache.put(BASE, text('<html>cached shell</html>', 'text/html'));
 
     const started = Date.now();
-    const res = await w.fetchEvent(`${BASE}?v=abc`, { navigate: true });
+    const res = await w.fetchEvent(`${BASE}?t=abc`, { navigate: true });
     const body = await res!.text();
     const waited = (Date.now() - started) * TIME_SCALE;
     expect(body).toBe('<html>cached shell</html>');
@@ -355,5 +355,74 @@ describe('navigation', () => {
     await w.fetchEvent(BASE, { navigate: true });
     await w.settle();
     expect(cache.store.has(`${BASE}assets/index-A.js`)).toBe(true);
+  });
+});
+
+describe('an update reload waits for the new build (B8)', () => {
+  const slowDoc = (ms: number, body: string) =>
+    loadWorker(
+      (req) =>
+        new URL(req.url).pathname === '/bj/'
+          ? new Promise<Response>((r) => setTimeout(() => r(text(body, 'text/html')), ms / TIME_SCALE))
+          : Promise.resolve(text('x', 'text/javascript')),
+    );
+
+  it('a ?v= navigation gets a 5s document, where a plain launch is given the cached one', async () => {
+    const w = slowDoc(5000, '<html>NEW</html>');
+    const cache = await w.cacheStorage.open(OFFLINE_CACHE);
+    await cache.put(BASE, text('<html>OLD</html>', 'text/html'));
+    expect(await (await w.fetchEvent(BASE, { navigate: true }))!.text()).toBe('<html>OLD</html>');
+    expect(await (await w.fetchEvent(`${BASE}?v=B2`, { navigate: true }))!.text()).toBe('<html>NEW</html>');
+  });
+
+  it('still falls back to the cached document when the network never answers or fails', async () => {
+    const stalled = loadWorker(() => new Promise<Response>(() => undefined));
+    const c1 = await stalled.cacheStorage.open(OFFLINE_CACHE);
+    await c1.put(BASE, text('<html>OLD</html>', 'text/html'));
+    const started = Date.now();
+    expect(await (await stalled.fetchEvent(`${BASE}?v=B2`, { navigate: true }))!.text()).toBe('<html>OLD</html>');
+    const waited = (Date.now() - started) * TIME_SCALE;
+    expect(waited).toBeGreaterThanOrEqual(10_000);
+    expect(waited).toBeLessThan(30_000);
+
+    const failing = loadWorker(async () => {
+      throw new TypeError('offline');
+    });
+    const c2 = await failing.cacheStorage.open(OFFLINE_CACHE);
+    await c2.put(BASE, text('<html>OLD</html>', 'text/html'));
+    expect(await (await failing.fetchEvent(`${BASE}?v=B2`, { navigate: true }))!.text()).toBe('<html>OLD</html>');
+  });
+});
+
+describe('a clip first heard through <audio> is cached whole (B27)', () => {
+  const CLIP = `${BASE}clips/af_bella/hit.mp3`;
+  const BYTES = 'ABCDEFGHIJ';
+
+  it('answers the range from a whole download, and stores the whole file for offline', async () => {
+    const asked: (string | null)[] = [];
+    const w = loadWorker(async (req) => {
+      asked.push(req.headers.get('range'));
+      return req.headers.get('range')
+        ? new Response(BYTES.slice(0, 4), { status: 206 })
+        : new Response(BYTES, { status: 200, headers: { 'content-type': 'audio/mpeg' } });
+    });
+    const res = await w.fetchEvent(CLIP, { headers: { range: 'bytes=0-3' } });
+    expect(res!.status).toBe(206);
+    expect(await res!.text()).toBe('ABCD');
+    expect(asked).toEqual([null]);
+    const cache = await w.cacheStorage.open(OFFLINE_CACHE);
+    expect(await (await cache.match(CLIP))!.text()).toBe(BYTES);
+
+    // Offline later: the next range is sliced from the cache.
+    const offline = await w.fetchEvent(CLIP, { headers: { range: 'bytes=2-5' } });
+    expect(await offline!.text()).toBe('CDEF');
+    expect(asked).toEqual([null]);
+  });
+
+  it('a range for anything else is still passed through, never stored', async () => {
+    const w = loadWorker(async () => new Response('part', { status: 206 }));
+    await w.fetchEvent(`${BASE}assets/video.mp4`, { headers: { range: 'bytes=0-3' } });
+    const cache = await w.cacheStorage.open(OFFLINE_CACHE);
+    expect(cache.store.size).toBe(0);
   });
 });

@@ -46,6 +46,12 @@ const CACHE = 'bjtrainer-offline-v2';
 const CACHE_PREFIX = 'bjtrainer-offline-';
 // How long a request for a cached, changeable file waits on the network.
 const NAV_TIMEOUT_MS = 2500;
+// B8: how long an UPDATE RELOAD (a navigation carrying ?v=<build>, made by
+// updateCheck once version.json named a newer build) waits for the new
+// document. The 2.5s race above served the cached OLD document on weak
+// signal, and the once-per-session guard then kept the phone on it. The
+// reload is already held off while a run is live, so waiting is cheap here.
+const UPDATE_NAV_TIMEOUT_MS = 15000;
 const VERSION_FILE = 'version.json';
 
 self.addEventListener('install', () => {
@@ -269,7 +275,7 @@ async function storeDocument(cache, key, fresh, served, prune) {
  * once a whole 200 arrives, in time or not; `served` is null when the page was
  * given this very response, or a copy of the cached one when the timeout won.
  */
-async function networkFirst(event, cache, key, store) {
+async function networkFirst(event, cache, key, store, timeoutMs = NAV_TIMEOUT_MS) {
   // Copied the moment it arrives, before the page can start reading the body.
   const network = fetch(event.request).then((fresh) => ({
     fresh,
@@ -304,7 +310,7 @@ async function networkFirst(event, cache, key, store) {
 
   let timer;
   const timeout = new Promise((resolve) => {
-    timer = setTimeout(() => resolve(null), NAV_TIMEOUT_MS);
+    timer = setTimeout(() => resolve(null), timeoutMs);
   });
   let winner = null;
   try {
@@ -330,9 +336,14 @@ async function respond(event, url) {
 
   if (request.mode === 'navigate') {
     const key = documentKey(url);
+    const wait = url.searchParams.has('v') ? UPDATE_NAV_TIMEOUT_MS : NAV_TIMEOUT_MS;
     try {
-      return await networkFirst(event, cache, key, (fresh, served) =>
-        storeDocument(cache, key, fresh, served, true),
+      return await networkFirst(
+        event,
+        cache,
+        key,
+        (fresh, served) => storeDocument(cache, key, fresh, served, true),
+        wait,
       );
     } catch {
       throw new Error('offline and no cached document');
@@ -359,7 +370,21 @@ async function respond(event, url) {
     return partial ?? hit;
   }
 
-  // A range is a fragment: answered, never stored (see fetchAndStore).
+  // B27: a RANGE for a clip that is not cached yet. A media element (the
+  // <audio> path, before any microphone has opened) only ever asks in ranges,
+  // and a fragment is never stored -- so clips heard for weeks online were
+  // still missing offline. Fetch the WHOLE file once, store it, and answer
+  // the range from it. Clips average ~15KB, so the whole file costs nothing.
+  if (range && /\/clips\/.*\.mp3$/.test(url.pathname)) {
+    try {
+      const whole = await fetchAndStore(cache, url.toString(), new Request(url.toString(), { credentials: request.credentials }));
+      if (whole && whole.status === 200) return (await sliceToRange(whole.clone(), range)) ?? whole;
+    } catch {
+      /* fall through to the plain range fetch */
+    }
+    return fetch(request);
+  }
+  // Any other range is a fragment: answered, never stored (see fetchAndStore).
   if (range) return fetch(request);
   return fetchAndStore(cache, url.toString(), request);
 }
