@@ -122,3 +122,38 @@ test('a run paused for over ten minutes is still paused', async ({ page }) => {
   await press(page, 'forward');
   await expect(progress(page)).toHaveText(new RegExp(`^${held + 1} / 12`));
 });
+
+/**
+ * A12: a run that loses the page (a call, Siri, a screen lock) pauses
+ * instead of dealing on into nothing, and says so again on return.
+ */
+test('a hidden page pauses a flashing run, and "Paused." is said on return', async ({ page }) => {
+  await withSettings(page, {
+    audio: { enabled: true, verbosity: 'full' },
+    drill: { wheelMode: 'answer', countLengthCards: 12, countIntervalMs: 800, countGroup: 1 },
+  });
+  await openCountDrill(page);
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+  await expect(progress(page)).toHaveText(/^2 \/ 12/);
+
+  const setVisibility = (state: 'hidden' | 'visible') =>
+    page.evaluate((s) => {
+      Object.defineProperty(document, 'visibilityState', { get: () => s, configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+    }, state);
+
+  await setVisibility('hidden');
+  await expect(page.getByRole('status').filter({ hasText: 'Paused' })).toBeVisible();
+  const held = await cardNumber(page);
+  await page.waitForTimeout(2400);
+  expect(await cardNumber(page), 'a card was dealt while the page was hidden').toBe(held);
+
+  const before = await page.evaluate(() => (window.__speechLog ?? []).filter((t) => t === 'Paused.').length);
+  await setVisibility('visible');
+  await expect
+    .poll(() => page.evaluate(() => (window.__speechLog ?? []).filter((t) => t === 'Paused.').length))
+    .toBe(before + 1);
+  // Still held: coming back does not resume by itself.
+  await expect(page.getByRole('status').filter({ hasText: 'Paused' })).toBeVisible();
+  expect(await cardNumber(page)).toBe(held);
+});

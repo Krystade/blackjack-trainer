@@ -1,3 +1,4 @@
+import { diag } from '../../../diag/diagnosticLog';
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { sayMomentAtPause } from '../../../habits/moment';
 import type { Settings } from '../../../store/types';
@@ -1081,6 +1082,48 @@ export function CountDrillView({
     else audio.sayFull(COUNT_PAUSED_LINE);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paused]);
+
+  /*
+   * A12: a run that loses the page is paused, not dealt on into nothing. A
+   * call, a Siri or Maps prompt or a screen lock took the audio while the
+   * loop kept dealing -- speakAsync resolves on its watchdog either way -- so
+   * cards Jack never heard were counted and graded. Runs hold a wake lock, so
+   * a hidden page mid-run is never how a run is meant to be practised. On
+   * return "Paused." is said again, because the one said at the pause went
+   * out while the page was hidden.
+   */
+  const hideHandlersRef = useRef({ pauseRun, sayPaused: () => {} });
+  hideHandlersRef.current = {
+    pauseRun,
+    sayPaused: () => {
+      if (eyesFree || voiceOn) speak(COUNT_PAUSED_LINE, speechOptsFrom(settings.audio, { interrupt: true }));
+      else audio.sayFull(COUNT_PAUSED_LINE);
+    },
+  };
+  useEffect(() => {
+    let pausedByHide = false;
+    const onHide = () => {
+      if (phaseRef.current !== 'flashing' || pausedAtRef.current !== null) return;
+      pausedByHide = true;
+      diag('life', 'count-paused-on-hide', {});
+      hideHandlersRef.current.pauseRun();
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        onHide();
+        return;
+      }
+      if (!pausedByHide) return;
+      pausedByHide = false;
+      if (pausedAtRef.current !== null) hideHandlersRef.current.sayPaused();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pagehide', onHide);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pagehide', onHide);
+    };
+  }, []);
 
   // Desktop keyboard input (operator request): Space/Enter/ArrowRight
   // advance the manual-tap flash exactly like tapping the drill area --
