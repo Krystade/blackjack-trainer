@@ -148,7 +148,11 @@ test('Clear empties it, because it is a recording of an open microphone', async 
   const section = panel(page);
   await expect(section.getByText(/\d+ entries/)).toBeVisible();
 
+  // A18: one tap only arms it -- a slip from Copy must not delete a drive.
   await section.getByRole('button', { name: 'Clear' }).click();
+  await expect(section.getByTestId('diag-clear-armed')).toContainText('Not copied yet');
+  await expect(section.getByText(/^[0-9]+ entries$/)).toBeVisible();
+  await section.getByRole('button', { name: 'Delete?' }).click();
   await expect(section.getByText('nothing yet')).toBeVisible();
 
   // And it really is gone, not merely hidden behind a collapsed panel.
@@ -240,4 +244,18 @@ test('Show reads the log again rather than trusting what it read on mount', asyn
     section.locator('pre.car-log'),
     'the panel is showing a log older than the one Copy would send',
   ).toContainText('written-by-the-other-tab');
+});
+
+test('A18: an armed Clear disarms by itself, and the log is kept', async ({ page }) => {
+  await page.clock.install();
+  await page.goto('/?e2e=1');
+  await openSettings(page);
+  const section = panel(page);
+  await section.getByRole('button', { name: 'Mark' }).click();
+  await section.getByRole('button', { name: 'Clear' }).click();
+  await expect(section.getByTestId('diag-clear-armed')).toBeVisible();
+  await page.clock.runFor(5_500);
+  await expect(section.getByTestId('diag-clear-armed')).toHaveCount(0);
+  await expect(section.getByRole('button', { name: 'Clear' })).toBeVisible();
+  await expect(section.getByText('nothing yet')).toHaveCount(0);
 });

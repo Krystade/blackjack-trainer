@@ -726,6 +726,14 @@ function DiagnosticLogPanel() {
   const [entries, setEntries] = useState<DiagEntry[]>(() => readDiagnosticLog());
   const [shown, setShown] = useState(false);
   const [copied, setCopied] = useState<'idle' | 'ok' | 'failed'>('idle');
+  // A18: Clear takes two taps. One slip from Copy onto Clear deleted a drive's
+  // only record before it was exported. Disarms by itself after 5s.
+  const [armClear, setArmClear] = useState(false);
+  useEffect(() => {
+    if (!armClear) return;
+    const t = window.setTimeout(() => setArmClear(false), 5000);
+    return () => window.clearTimeout(t);
+  }, [armClear]);
 
   // Live, because the operator will be watching this while toggling voice on
   // the screen behind it, and a panel that needed a manual refresh to show
@@ -844,7 +852,13 @@ function DiagnosticLogPanel() {
         <button
           type="button"
           className="settings-mini-btn"
+          data-armed={armClear || undefined}
           onClick={() => {
+            if (!armClear) {
+              setArmClear(true);
+              return;
+            }
+            setArmClear(false);
             clearDiagnosticLog();
             setEntries([]);
             setShown(false);
@@ -852,9 +866,16 @@ function DiagnosticLogPanel() {
           }}
           disabled={summary.total === 0}
         >
-          Clear
+          {armClear ? 'Delete?' : 'Clear'}
         </button>
       </div>
+
+      {armClear && (
+        <div className="settings-note-row u-note" role="status" data-testid="diag-clear-armed">
+          Tap <strong>Delete?</strong> again to delete all {summary.total} entries.
+          {copied === 'ok' ? '' : ' Not copied yet.'}
+        </div>
+      )}
 
       {copied === 'failed' && (
         <div className="settings-note-row u-note">
