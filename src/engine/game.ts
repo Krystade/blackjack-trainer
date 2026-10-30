@@ -253,6 +253,10 @@ export class Game {
    * reshuffling -- that would destroy the very sequence the test stacked. */
   private shoeIsRigged = false;
   runningCount = 0;
+  /** Wave X (item 2): every card counted since the shoe began or the running
+   * count was last answered right, in the order it was counted -- what a
+   * Rewind replays after a wrong check. */
+  private trail: Card[] = [];
   dealerCards: Card[] = [];
   holeRevealed = false;
   /** Casino seat order, index 0 = first base. Rebuilt each startRound() from
@@ -540,6 +544,25 @@ export class Game {
   private see(c: Card): void {
     this.runningCount += hiLoTag(c.rank);
     this.sideCounter.see(c);
+    this.trail.push(c);
+  }
+
+  /** Wave X (item 2): the cards counted since the count was last known right (the shoe's start or a right check). */
+  get countTrail(): readonly Card[] {
+    return this.trail;
+  }
+
+  /**
+   * Wave X (item 2): a Rewind's recount came out right, so the count is known
+   * again as of `cards` -- the trail as it stood at the check. Only what was
+   * counted after it is still unconfirmed. A trail a shuffle has reset since
+   * is left alone. Grades nothing: the check itself was graded when answered.
+   */
+  confirmCountAt(cards: readonly Card[]): void {
+    const n = cards.length;
+    if (n === 0 || this.trail.length < n) return;
+    if (this.trail[0] !== cards[0] || this.trail[n - 1] !== cards[n - 1]) return;
+    this.trail = this.trail.slice(n);
   }
 
   /** Wave L: the side-bet decision for a round dealt in, graded before the cards come. */
@@ -774,6 +797,7 @@ export class Game {
     if (this.shuffleDue) {
       this.shoe.shuffle();
       this.runningCount = 0;
+      this.trail = [];
       this.sideCounter.reset();
       this.shuffledLastRound = true;
     } else {
@@ -1213,6 +1237,8 @@ export class Game {
     let rcCorrect: boolean | undefined;
     if (this.askRc) {
       rcCorrect = rc === actualRc;
+      // Wave X (item 2): a right running count is the new checkpoint a Rewind starts from.
+      if (rcCorrect) this.trail = [];
       this.events.push({
         source: 'table',
         kind: 'countCheck',

@@ -1,0 +1,70 @@
+/*
+ * Wave X (item 2): Rewind after a wrong count. The offer sits under the
+ * verdict it answers; the replay deals one card at a time in a sheet docked
+ * where the count check is asked, so the felt stays in view above it.
+ */
+.count-rewind-offer {
+  display: flex;
+  justify-content: center;
+  margin-top: 0.35rem;
+}
+
+.count-rewind-btn {
+  min-width: 8rem;
+}
+
+.rewind-replay {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.rewind-replay .rewind-card {
+  --card-w: 84px;
+  display: flex;
+  justify-content: center;
+  min-height: calc(84px * 1.4167);
+}
+
+.rewind-replay .rewind-card .card:not(.card-compact) {
+  width: var(--card-w);
+  height: calc(var(--card-w) * 1.4167);
+}
+
+.rewind-replay .rewind-card .card-rank {
+  font-size: calc(var(--card-w) * 0.34);
+}
+
+.rewind-replay .rewind-card .card-suit {
+  font-size: calc(var(--card-w) * 0.38);
+}
+
+.rewind-progress {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.8;
+}
+
+.rewind-verdict {
+  margin: 0 0 0.5rem;
+  text-align: center;
+  font-weight: 700;
+}
+
+.rewind-actions {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4) calc(var(--space-3) + var(--safe-bottom, 0px));
+}
+
+.rewind-actions .u-btn {
+  min-width: 8rem;
+}
+
+@media (max-height: 600px) {
+  .rewind-replay .rewind-card {
+    --card-w: 60px;
+    min-height: calc(60px * 1.4167);
+  }
+}

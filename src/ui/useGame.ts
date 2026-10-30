@@ -92,6 +92,9 @@ export interface CountCheckVerdict {
   /** The round dealt right after the answer: the verdict shows until a later
    * round is dealt. */
   round: number;
+  /** Wave X (item 2): after a wrong running count, the cards counted since the
+   * count was last known right, in counting order -- what a Rewind replays. */
+  rewind?: Card[];
 }
 
 export interface SessionReport {
@@ -852,6 +855,8 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
    * left a muted player never knowing what the count was. */
   const submitCount = useCallback(
     (rc: number | null, tcGuess?: number): { endNow: boolean; check: CountCheckVerdict } => {
+      // Wave X (item 2): the cards behind this count, before a right answer clears them.
+      const trail = [...game.countTrail];
       const result = game.submitCountCheck(rc, tcGuess);
       const roundAtCheck = game.roundNo;
       if (result.rcCorrect !== undefined) {
@@ -887,7 +892,8 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
         else if (pending?.kind === 'sitOut') runSitOut();
       }
       bump();
-      return { endNow: pending?.kind === 'end', check: { ...result, rcGuess: rc, tcGuess, round: roundAtCheck + 1 } };
+      const rewind = result.rcCorrect === false && trail.length > 0 ? { rewind: trail } : {};
+      return { endNow: pending?.kind === 'end', check: { ...result, rcGuess: rc, tcGuess, round: roundAtCheck + 1, ...rewind } };
     },
     [game, bump, audio, runDeal, runSitOut, persistSession],
   );
