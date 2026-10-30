@@ -248,6 +248,26 @@ test('a variant game at a card room: commission added, assumed only for that; lo
   await expect(card.getByTestId('gs-variant-applied')).toContainText('Used for the edge, unlike the Free Bet preset: split to 2 hands.');
 });
 
+test('R6: a variant edge whose worker fails says so and can be tried again', async ({ page }) => {
+  const AT = '2026-10-01T00:00:00.000Z';
+  const g = { id: 'g1', decks: 6, s17: true, das: null, surrender: null, payout: '3:2', cutDecksLeft: null, minBet: 25, maxBet: null, midShoeEntry: 'unknown', csm: false, variant: 'freebet' };
+  const log = { version: 2, casinos: [{ id: 'c1', name: 'Rio', notes: '', status: 'ok', createdAt: AT, updatedAt: AT, games: [g] }], sessions: [], settings: { startingBankroll: 10000, updatedAt: AT }, lastExportAt: AT };
+  await page.addInitScript((l) => localStorage.setItem('bjtrainer.casinoLog.v3', l), JSON.stringify(log));
+  await page.route(/variantEdge\.worker/, (r) => r.abort());
+  await page.goto('/?e2e=1');
+  await tab(page, 'Casino');
+  await page.getByTestId('casino-seg-ranked').click();
+  await page.getByTestId('games-ranked').getByTestId('rank-row').first().click();
+  const card = page.getByTestId('game-stats');
+  await expect(card.getByTestId('gs-edge')).toHaveAttribute('data-edge-state', 'failed');
+  await expect(card.getByTestId('gs-edge')).toHaveText('Not worked out');
+  await page.unroute(/variantEdge\.worker/);
+  await card.getByTestId('gs-edge-retry').click();
+  await expect(card.getByTestId('gs-edge')).toHaveAttribute('data-edge-state', 'done');
+  await expect(card.getByTestId('gs-edge')).toHaveText(`${houseEdgePct({ ...PRESETS.freebet, s17: true }).toFixed(2)}%`);
+  await expect(card.getByTestId('gs-edge-retry')).toHaveCount(0);
+});
+
 /** A scriptable recogniser in place of the real one (as e2e/voice-answers.spec.ts). */
 async function withFakeEngine(page: Page): Promise<void> {
   await page.addInitScript(() => {

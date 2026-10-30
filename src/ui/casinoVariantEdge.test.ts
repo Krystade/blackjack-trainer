@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { PRESETS, PRESET_IDS, type VariantRules } from '../engine/variants/rules';
 import { presetData } from '../engine/variants/strategy';
 import { houseEdgePct } from '../engine/variants/houseEdge';
@@ -6,7 +6,9 @@ import { knownVariantEdge, loggedVariantRules, variantCostFor, variantEdgeFor, v
 import {
   _resetVariantEdges,
   _setVariantEdgeWorkerFactory,
+  VARIANT_EDGE_TIMEOUT_MS,
   requestVariantEdge,
+  retryVariantEdge,
   variantEdgeState,
 } from './screens/casino/variantEdgeRunner';
 
@@ -134,5 +136,120 @@ describe('variantEdgeRunner', () => {
     expect(variantEdgeState(rules)).toEqual({ state: 'failed', message: 'boom' });
     requestVariantEdge(rules);
     expect(counter.made).toBe(1);
+  });
+});
+
+/** R6: a worker that never answers until told to; records terminate(). */
+function stuckWorkers(): { made: { terminated: boolean; answer: (edge: number) => void; error: (m: string) => void }[] } {
+  const made: { terminated: boolean; answer: (edge: number) => void; error: (m: string) => void }[] = [];
+  _setVariantEdgeWorkerFactory(() => {
+    const w = {
+      onmessage: null as ((e: MessageEvent) => void) | null,
+      onerror: null as ((e: ErrorEvent) => void) | null,
+      terminate() {
+        rec.terminated = true;
+      },
+      postMessage() {},
+    };
+    const rec = {
+      terminated: false,
+      answer: (edge: number) => w.onmessage?.({ data: { type: 'done', edge } } as MessageEvent),
+      error: (m: string) => w.onerror?.({ message: m } as ErrorEvent),
+    };
+    made.push(rec);
+    return w as unknown as Worker;
+  });
+  return { made };
+}
+
+describe('variantEdgeRunner watchdog and retry (R6)', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    _setVariantEdgeWorkerFactory(null);
+    _resetVariantEdges();
+  });
+
+  it('a worker that never answers is stopped and the job failed, and the queue moves on', () => {
+    vi.useFakeTimers();
+    const { made } = stuckWorkers();
+    const a = { ...PRESETS.freebet, s17: true };
+    const b = { ...PRESETS.freebet, rsa: false };
+    requestVariantEdge(a);
+    requestVariantEdge(b);
+    vi.advanceTimersByTime(VARIANT_EDGE_TIMEOUT_MS - 1);
+    expect(variantEdgeState(a)).toEqual({ state: 'running' });
+    vi.advanceTimersByTime(1);
+    expect(variantEdgeState(a).state).toBe('failed');
+    expect(made[0].terminated).toBe(true);
+    expect(variantEdgeState(b)).toEqual({ state: 'running' });
+    // A late answer from the stopped worker changes nothing.
+    made[0].answer(1);
+    expect(variantEdgeState(a).state).toBe('failed');
+  });
+
+  it('Switch gets longer before the watchdog fires', () => {
+    vi.useFakeTimers();
+    stuckWorkers();
+    const sw = { ...PRESETS.switch, s17: true };
+    requestVariantEdge(sw);
+    vi.advanceTimersByTime(VARIANT_EDGE_TIMEOUT_MS);
+    expect(variantEdgeState(sw)).toEqual({ state: 'running' });
+    vi.advanceTimersByTime(VARIANT_EDGE_TIMEOUT_MS * 3);
+    expect(variantEdgeState(sw).state).toBe('failed');
+  });
+
+  it('an answer in time clears the watchdog', () => {
+    vi.useFakeTimers();
+    const { made } = stuckWorkers();
+    const a = { ...PRESETS.freebet, s17: true };
+    requestVariantEdge(a);
+    made[0].answer(0.5);
+    vi.advanceTimersByTime(VARIANT_EDGE_TIMEOUT_MS * 5);
+    expect(variantEdgeState(a)).toEqual({ state: 'done', edge: 0.5 });
+  });
+
+  it('after a timeout, an onerror or a factory throw, retry works it out again', () => {
+    vi.useFakeTimers();
+    const { made } = stuckWorkers();
+    const a = { ...PRESETS.freebet, s17: true };
+    requestVariantEdge(a);
+    vi.advanceTimersByTime(VARIANT_EDGE_TIMEOUT_MS);
+    retryVariantEdge(a);
+    expect(variantEdgeState(a)).toEqual({ state: 'running' });
+    made[1].error('crash');
+    expect(variantEdgeState(a)).toEqual({ state: 'failed', message: 'crash' });
+    retryVariantEdge(a);
+    made[2].answer(0.7);
+    expect(variantEdgeState(a)).toEqual({ state: 'done', edge: 0.7 });
+
+    const b = { ...PRESETS.freebet, rsa: false };
+    _setVariantEdgeWorkerFactory(() => {
+      throw new Error('no workers');
+    });
+    requestVariantEdge(b);
+    expect(variantEdgeState(b)).toEqual({ state: 'failed', message: 'no workers' });
+    stuckWorkers().made;
+    retryVariantEdge(b);
+    expect(variantEdgeState(b)).toEqual({ state: 'running' });
+    // Retry on a job that has not failed does nothing.
+    retryVariantEdge(a);
+    expect(variantEdgeState(a)).toEqual({ state: 'done', edge: 0.7 });
+  });
+
+  it('reset stops the worker in flight, and its late answer is not kept', () => {
+    vi.useFakeTimers();
+    const { made } = stuckWorkers();
+    const a = { ...PRESETS.freebet, s17: true };
+    requestVariantEdge(a);
+    _resetVariantEdges();
+    expect(made[0].terminated).toBe(true);
+    made[0].answer(9);
+    expect(variantEdgeState(a)).toEqual({ state: 'idle' });
+    // The next job is not blocked by the old one, nor failed by its watchdog.
+    const b = { ...PRESETS.freebet, rsa: false };
+    requestVariantEdge(b);
+    expect(variantEdgeState(b)).toEqual({ state: 'running' });
+    vi.advanceTimersByTime(VARIANT_EDGE_TIMEOUT_MS - 1);
+    expect(variantEdgeState(b)).toEqual({ state: 'running' });
   });
 });

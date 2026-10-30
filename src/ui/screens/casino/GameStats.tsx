@@ -2,7 +2,7 @@ import { casinoById, isHouseGame, type Casino, type CasinoGame, type CasinoLog }
 import { useEffect } from 'react';
 import { PRESETS, PRESET_LABEL } from '../../../engine/variants/rules';
 import { variantCostFor, variantRuleNotes, variantRulesSummary } from '../../casinoVariant';
-import { requestVariantEdge, useVariantEdges, variantEdgeState } from './variantEdgeRunner';
+import { requestVariantEdge, retryVariantEdge, useVariantEdges, variantEdgeState } from './variantEdgeRunner';
 import { simRules, type GameResult } from '../../../store/casinoGameStats';
 import { describeMethod, methodBadge } from '../../../engine/betMethods';
 import { bankrollNow, gameSummary, kindBadge, labelledSummary, money, shortDate, warnBadges } from '../../casinoFigures';
@@ -482,6 +482,11 @@ function VariantGameStats({ casino, game, editRules }: { casino: Casino; game: C
               ? edgeState.message
               : `flat bet, ${fromLogged ? 'the logged rules' : 'its own chart'}, blackjack ${payout}${commissionPer100 > 0 ? ', with commission' : ''}`}
           </span>
+          {edgeState.state === 'failed' && (
+            <button type="button" className="cas-link" onClick={() => retryVariantEdge(rules)} data-testid="gs-edge-retry">
+              Try again
+            </button>
+          )}
         </div>
       </section>
       <section className="cas-section">
