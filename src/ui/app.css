@@ -2390,8 +2390,11 @@ button {
   justify-content: flex-start;
 }
 
+/* The same ground as the other live zones (audit D2): var(--bg) is the
+   DISABLED ground, so a live Split painted with it read as unavailable on
+   exactly the hands -- pairs -- where it is the answer. */
 .zone-pad-quad-split {
-  background: var(--bg);
+  background: var(--surface);
   align-items: flex-end;
   justify-content: flex-end;
 }

@@ -358,6 +358,44 @@ test('ZonePad: illegal plays are disabled, and Surrender is gone without it', as
   await expect(page.locator('.zone-pad-circle')).toHaveCount(0);
 });
 
+/**
+ * D2: A LIVE SPLIT MUST NOT WEAR THE DISABLED GROUND. Split was painted
+ * var(--bg) always, which is exactly what `.zone-pad-quad-disabled` paints,
+ * so on the one hand where Split mattered (a pair) a glance read it as off.
+ * Only the class may decide the ground: live = the other live zones' ground,
+ * disabled = the disabled ground.
+ */
+test('ZonePad: a live Split is drawn like the live zones, a dead one like a disabled zone', async ({ page }) => {
+  const grounds = async () =>
+    page.evaluate(() => {
+      const bg = (sel: string) => getComputedStyle(document.querySelector(sel)!).backgroundColor;
+      return { split: bg('.zone-pad-quad-split'), hit: bg('.zone-pad-quad-hit') };
+    });
+  const open = async () => {
+    await page.setViewportSize(PHONE);
+    await page.goto('/?e2e=1');
+    await page.getByRole('button', { name: 'Drills', exact: true }).click();
+    await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
+    await page.getByLabel('Eyes-free audio').check();
+    await expect(page.locator('.zone-pad-quadrants')).toBeVisible();
+  };
+
+  // A pair: Split is live.
+  await withSettings(page, { drill: { scopes: ['pairs'], flashCategory: 'pairs' } });
+  await open();
+  await expect(page.locator('.zone-pad-quad-split')).not.toHaveClass(/zone-pad-quad-disabled/);
+  const live = await grounds();
+  expect(live.split, 'a live Split has a different ground from Hit').toBe(live.hit);
+
+  // A hard hand: Split is dead, and only now does it take the disabled ground.
+  await withSettings(page, { drill: { scopes: ['hard'], flashCategory: 'hard' } });
+  await open();
+  await expect(page.locator('.zone-pad-quad-split')).toHaveClass(/zone-pad-quad-disabled/);
+  const dead = await grounds();
+  expect(dead.split, 'a disabled Split looks the same as a live one').not.toBe(dead.hit);
+  expect(live.split, 'a live Split wears the disabled ground').not.toBe(dead.split);
+});
+
 /* ---------------------------------------------------------------------- */
 /* Screen-level layout at 375x812: the primary action is on screen, always. */
 /* ---------------------------------------------------------------------- */
