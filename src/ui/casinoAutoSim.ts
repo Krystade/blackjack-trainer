@@ -54,6 +54,12 @@ export interface AutoCandidate {
   /** Rounds one exit costs at this game, for the stopping rule (casinoRun.ts). */
   exitRounds: number;
   profileName: string;
+  /**
+   * C21 (audit 2026-10-29): an earlier rule version's game. It gets a first
+   * estimate when its key has no result (the profile, the methods or
+   * SIM_VERSION moved it), never the full run.
+   */
+  estimateOnly?: true;
 }
 
 export interface AutoJob {
@@ -101,6 +107,7 @@ export function pickJob(
     if (skip.has(cand.input.key)) continue;
     const prior = lookup(cand);
     const work = workFor(prior);
+    if (work === 'refine' && cand.estimateOnly) continue;
     if (work === 'refine' && !refines && cand.gameId !== visible) continue;
     if (work) jobs.push({ cand, work, prior: work === 'refine' ? prior : undefined });
   }
@@ -155,6 +162,19 @@ export function orderCandidates(rows: readonly RankRow[], editedAt: ReadonlyMap<
 }
 
 /**
+ * C21 (audit 2026-10-29): the earlier rule versions' candidates, after every
+ * current game, estimate only. `rows` is the ranking of the log's earlier
+ * versions (casinoVersions `earlierVersionLog`): burned casinos and variant
+ * games are already left out.
+ */
+export function earlierCandidates(rows: readonly RankRow[], current: readonly AutoCandidate[], profileName: string): AutoCandidate[] {
+  const keys = new Set(current.map((c) => c.input.key));
+  return orderCandidates(rows, new Map(), profileName)
+    .filter((c) => !keys.has(c.input.key))
+    .map((c) => ({ ...c, estimateOnly: true as const }));
+}
+
+/**
  * Which games' inputs just changed, for the order above: a game whose key
  * differs from the one last seen, or a game that appears after the first
  * look (added, imported). The first look itself marks nothing.
@@ -202,6 +222,7 @@ export function workCounts(
     if (skip.has(c.input.key) || seen.has(c.input.key)) continue;
     seen.add(c.input.key);
     const w = workFor(lookup(c));
+    if (w === 'refine' && c.estimateOnly) continue;
     if (w === 'first') first += 1;
     else if (w === 'refine') refine += 1;
   }

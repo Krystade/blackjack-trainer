@@ -1,12 +1,12 @@
 import { useEffect, useMemo } from 'react';
 import type { CasinoLog } from '../../../store/casinoLog';
 import { buildRanking } from '../../casinoRanking';
-import { newEditTracker, noteKeys, orderCandidates, sessionHolds } from '../../casinoAutoSim';
+import { earlierCandidates, newEditTracker, noteKeys, orderCandidates, sessionHolds } from '../../casinoAutoSim';
 import { attachAuto, setAutoPlan } from './simRunner';
 import { attachSide, requestSideRow, setSideHold } from './sideRunner';
 import { sideRowFor, sideRowSpec } from '../../../store/casinoSideRows';
 import { pinGameKeys } from '../../../store/casinoGameStats';
-import { earlierVersionKeys } from '../../casinoVersions';
+import { earlierVersionKeys, earlierVersionLog } from '../../casinoVersions';
 import { useActiveProfile, useGameCache } from './useGameStats';
 
 /**
@@ -32,6 +32,8 @@ export function AutoSim({ log, openGame }: { log: CasinoLog; openGame: string | 
   // (or has gone 12 h with nothing logged to it: re-review R4).
   const sessionRunning = sessionHolds(log, Date.now());
   const rows = useMemo(() => buildRanking(log, profile, results, Date.now(), null, 'ev', archive), [log, profile, results, archive]);
+  // C21: earlier rule versions, estimated after every current game when their key has no figures.
+  const pastRows = useMemo(() => buildRanking(earlierVersionLog(log), profile, results, Date.now(), null, 'ev', archive), [log, profile, results, archive]);
 
   // The plan first, so attaching never starts a run from a previous visit's plan.
   useEffect(() => {
@@ -39,8 +41,9 @@ export function AutoSim({ log, openGame }: { log: CasinoLog; openGame: string | 
       tracker,
       rows.map((r) => ({ id: r.game.id, key: r.input.key })),
     );
-    setAutoPlan(orderCandidates(rows, tracker.editedAt, profile.name), openGame, { sessionRunning });
-  }, [rows, openGame, profile.name, sessionRunning]);
+    const current = orderCandidates(rows, tracker.editedAt, profile.name);
+    setAutoPlan([...current, ...earlierCandidates(pastRows, current, profile.name)], openGame, { sessionRunning });
+  }, [rows, pastRows, openGame, profile.name, sessionRunning]);
   useEffect(() => attachAuto(), []);
   // D22: the side-bet runner too -- the hold first, so attaching never starts
   // a row a running session should have held.

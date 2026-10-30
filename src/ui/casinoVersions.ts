@@ -86,6 +86,23 @@ export function versionSpan(game: CasinoGame, v: GameVersion): { from: string; u
 }
 
 /**
+ * C21 (audit 2026-10-29): the log with each casino's games replaced by their
+ * earlier rule versions (gameAtVersion; variant and house games left out), so
+ * the ranking can price them and AutoSim can work out any whose key has no
+ * result -- after a profile or ramp edit, or a SIM_VERSION bump, nothing did,
+ * and the earlier version's card lost its figures.
+ */
+export function earlierVersionLog(log: CasinoLog): CasinoLog {
+  return {
+    ...log,
+    casinos: log.casinos.map((c) => ({
+      ...c,
+      games: c.games.filter((g) => g.variant === undefined && !isHouseGame(g)).flatMap((g) => earlierVersions(g).map((v) => gameAtVersion(g, v))),
+    })),
+  };
+}
+
+/**
  * The simulator keys of every earlier version in the log for this profile:
  * kept in the figures cache however many newer results push it
  * (casinoGameStats `pinGameKeys`), so an earlier version keeps its figures.

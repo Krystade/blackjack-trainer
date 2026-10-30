@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   AUTO_CAP_MS,
+  earlierCandidates,
   newEditTracker,
   noteKeys,
   orderCandidates,
@@ -13,6 +14,7 @@ import {
   type AutoCandidate,
 } from './casinoAutoSim';
 import { buildRanking } from './casinoRanking';
+import { earlierVersionLog } from './casinoVersions';
 import { simInputFor, type GameResult } from '../store/casinoGameStats';
 import { blankGame, emptyCasinoLog, type Casino, type CasinoGame } from '../store/casinoLog';
 import { makeDefaultProfile } from '../store/profiles';
@@ -197,5 +199,41 @@ describe('re-review R4: sessionHolds', () => {
 
   it('unreadable times are taken as live: holding is the safe side', () => {
     expect(sessionHolds({ sessions: [session({ start: 'x', createdAt: 'x', updatedAt: 'x' })] }, NOW)).toBe(true);
+  });
+});
+
+// C21 (audit 2026-10-29): an earlier rule version whose key lost its figures
+// (a profile or ramp edit, a SIM_VERSION bump) is estimated again, after every
+// current game, and never refined.
+describe('earlier versions are estimated again (C21)', () => {
+  const v = (versionId: string, createdAt: string, payout: '3:2' | '6:5') => ({
+    versionId,
+    createdAt,
+    updatedAt: createdAt,
+    rules: { decks: 6 as const, s17: false, das: true, surrender: true, payout, cutDecksLeft: 1, minBet: 25 },
+  });
+  const game: CasinoGame = {
+    ...blankGame('g1'),
+    decks: 6, s17: false, das: true, surrender: true, payout: '6:5', cutDecksLeft: 1, minBet: 25,
+    versionId: 'g1-v2',
+    versions: [v('g1-v1', '2026-01-01T00:00:00Z', '3:2'), v('g1-v2', '2026-06-01T00:00:00Z', '6:5')],
+  } as CasinoGame;
+  const casino = (id: string, status: Casino['status']): Casino =>
+    ({ id, name: id, games: [{ ...game, id: `${id}-g` }], status, notes: '', createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' }) as Casino;
+  const log = { ...emptyCasinoLog(), casinos: [casino('c1', 'ok'), casino('cb', 'burned')] };
+  const now = Date.parse('2026-10-20T12:00:00');
+
+  it('plans the earlier version after the current games, estimate only, burned casinos left out', () => {
+    const current = orderCandidates(buildRanking(log, profile, {}, now, null, 'ev'), new Map(), 'p');
+    const past = earlierCandidates(buildRanking(earlierVersionLog(log), profile, {}, now, null, 'ev'), current, 'p');
+    expect(past.map((c) => c.gameId)).toEqual(['g1-v1']);
+    expect(past[0]!.estimateOnly).toBe(true);
+    expect(past[0]!.input.key).not.toBe(current[0]!.input.key);
+    // No result for its key: a first estimate.
+    expect(pickJob(past, () => undefined, null)?.work).toBe('first');
+    // An unfinished estimate is left as it is, and not counted as work.
+    const est = result({ status: 'partial', ms: 100 });
+    expect(pickJob(past, () => est, null)).toBeNull();
+    expect(workCounts(past, () => est)).toEqual({ first: 0, refine: 0 });
   });
 });
