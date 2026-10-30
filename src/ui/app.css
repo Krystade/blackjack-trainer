@@ -870,7 +870,9 @@ button {
    there. 0.75rem matches `.drill-topbar`'s horizontal padding, so the prompt
    aligns with the Back button and heading above it instead of picking an
    arbitrary inset. */
-.drill-screen > .settings-note-row {
+/* D12: Bet sizing's bare Eyes-free row sat at x=0 against the bezel. */
+.drill-screen > .settings-note-row,
+.drill-screen > .bet-eyes-free-row {
   padding-left: 0.75rem;
   padding-right: 0.75rem;
 }

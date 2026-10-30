@@ -735,3 +735,26 @@ for (const width of [375, 320] as const) {
     expect(got.filter((g) => g.spill).map((g) => g.text), 'a label is cut').toEqual([]);
   });
 }
+
+/**
+ * D12: BET SIZING'S EYES-FREE CHECKBOX HAS A GUTTER. It sat at x=0, touching
+ * the bezel, in a bare .settings-row; it now lines up with the intro above.
+ */
+test('D12: Bet sizing\'s Eyes-free checkbox lines up with its intro, off the edge', async ({ page }) => {
+  await page.setViewportSize(PHONE);
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Bet sizing', exact: true }).click();
+  const box = page.getByLabel('Eyes-free audio');
+  await expect(box).toBeVisible();
+  const x = await page.evaluate(() => {
+    const row = document.querySelector('.drill-screen > .bet-eyes-free-row')!;
+    const first = row.querySelector('input, label')!.getBoundingClientRect().left;
+    const intro = document.querySelector('.drill-screen > .settings-note-row')!;
+    const range = document.createRange();
+    range.selectNodeContents(intro);
+    return { first, intro: range.getBoundingClientRect().left };
+  });
+  expect(x.first, 'the checkbox touches the screen edge').toBeGreaterThanOrEqual(12);
+  expect(Math.abs(x.first - x.intro)).toBeLessThanOrEqual(2);
+});
