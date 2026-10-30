@@ -492,20 +492,44 @@ describe('the app must not hear itself after the window has closed', () => {
     expect(h.logs.filter((l) => l.event === 'suppressed-echo')).toHaveLength(1);
   });
 
-  it('A1: a short echo of a statement is dropped before a claim too', () => {
-    const claimed: string[] = [];
-    const h = harness({
-      onTranscript: (heard) => {
-        claimed.push(heard);
-        return 'count';
-      },
-    });
-    h.controller.start();
-    h.controller.suppressFor(1500, 'Running count minus 3.');
-    h.advance(1500 + SPEECH_TAIL_MS + 800);
-    h.current().say('minus 3');
+  /*
+   * Review finding 1: only the LATE (3+ word) check runs before the claim. A
+   * one- or two-word answer that happens to be a word of a statement prompt
+   * is the operator's, and the count screens must grade it: a running count
+   * of zero, a true count equal to the deck count, a count equal to the one
+   * just read out. Dropped as echo, it got no say-again cue at all.
+   */
+  for (const [prompt, answer] of [
+    ['Running count zero. Two decks remaining.', 'zero'],
+    ['Two decks remaining. Produce the true count.', 'two'],
+    ['Running count plus four. One deck remaining.', 'plus four'],
+  ] as const) {
+    it(`A1: "${answer}" after "${prompt}" is the operator's answer, and graded`, () => {
+      const claimed: string[] = [];
+      const h = harness({
+        onTranscript: (heard) => {
+          claimed.push(heard);
+          return 'count';
+        },
+      });
+      h.controller.start();
+      h.controller.suppressFor(1500, prompt);
+      h.advance(1500 + SPEECH_TAIL_MS + 800);
+      h.current().say(answer);
 
-    expect(claimed).toEqual([]);
+      expect(claimed).toEqual([answer]);
+      expect(h.heard).toEqual([[answer, 'count']]);
+    });
+  }
+
+  it('A1: a short echo the claim passes on is still dropped after it', () => {
+    const h = harness({ onTranscript: () => null });
+    h.controller.start();
+    h.controller.suppressFor(1500, 'Correct play was hit.');
+    h.advance(1500 + SPEECH_TAIL_MS + 800);
+    h.current().say('hit');
+
+    expect(h.actions).toEqual([]);
     expect(h.why).toEqual(['echo']);
   });
 

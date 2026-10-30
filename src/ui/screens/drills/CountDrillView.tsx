@@ -1609,6 +1609,9 @@ export function CountDrillView({
       sayBack(narrateNotATag(next), true);
       return `not a tag: ${speakableCount(next)}`;
     }
+    // Review of A1: the standing value said again (or a fragment of its own
+    // readback heard back) is not proposed and read out a second time.
+    if (next === pendingCount) return `count ${speakableCount(next)} again`;
     setPendingCount(next);
     sayBack(narrateReadback(next), true);
     return `count ${speakableCount(next)}`;

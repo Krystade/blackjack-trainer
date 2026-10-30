@@ -214,6 +214,9 @@ export function IndexTestView({
     }
     if (!parsed) return null;
     const value = parsed.kind === 'value' ? parsed.value : (pending ?? 0) + parsed.delta;
+    // Review of A1: the standing value said again (or a fragment of its own
+    // readback heard back) is not proposed and read out a second time.
+    if (value === pending) return `index ${speakableCount(value)} again`;
     setPending(value);
     say(narrateReadback(value));
     return `index ${speakableCount(value)}`;

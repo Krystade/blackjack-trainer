@@ -326,6 +326,9 @@ export function SideCountDrillView({
     }
     if (!parsed) return null;
     const next = parsed.kind === 'value' ? parsed.value : (pending ?? 0) + parsed.delta;
+    // Review of A1: the standing value said again (or a fragment of its own
+    // readback heard back) is not proposed and read out a second time.
+    if (next === pending) return `count ${speakableCount(next)} again`;
     setPending(next);
     sayBack(narrateReadback(next), true);
     return `count ${speakableCount(next)}`;

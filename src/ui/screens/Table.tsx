@@ -777,6 +777,9 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
     if (parsed) {
       const next =
         parsed.kind === 'value' ? parsed.value : (pendingCount ?? 0) + parsed.delta;
+      // Review of A1: the standing value said again (or a fragment of its own
+      // readback heard back) is not proposed and read out a second time.
+      if (next === pendingCount) return `count ${speakableCount(next)} again`;
       setPendingCount(next);
       audio.say(narrateReadback(next));
       return `count ${speakableCount(next)}`;

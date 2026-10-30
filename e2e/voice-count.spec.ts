@@ -234,3 +234,16 @@ test('"yes, minus three" confirms a standing minus three', async ({ page }) => {
   await expect(page.locator('.count-voice')).toHaveCount(0);
   await expect(page.locator('.topbar-stat', { hasText: /^Round / })).toHaveText('Round 2');
 });
+
+/** Review of A1: the standing count said again is not read back again. */
+test('saying the standing count again does not read it back again', async ({ page }) => {
+  await openCountCheck(page);
+  await sayWhenListening(page, 'minus three');
+  await expect(page.locator('.count-voice-value')).toHaveText('−3');
+  const readbacks = () =>
+    page.evaluate(() => ((window as unknown as { __speechLog?: string[] }).__speechLog ?? []).filter((t) => t.includes('Correct?')).length);
+  await expect.poll(readbacks).toBe(1);
+  await sayWhenListening(page, 'minus three');
+  await page.waitForTimeout(500);
+  expect(await readbacks(), 'the standing count was read back twice').toBe(1);
+});

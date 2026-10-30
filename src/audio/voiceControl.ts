@@ -933,19 +933,24 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
        * LAST line and only within SHORT_ECHO_WINDOW_MS of that line ending.
        * See looksLikeShortSelfEcho.
        *
-       * BEFORE THE CLAIM, unless the screen opted in (`claimsEchoes`). A count
-       * check's own readback, "minus 3. Correct?", came back through the
-       * microphone, parsed as -3 and was proposed again, so the readback
-       * looped and the driver's "yes" landed on the repeat (audit A1). Only
-       * the field test claims echoes: it compares against the lines of the
-       * step it is on and records `heard-own-voice` as evidence, and that
-       * evidence is what the 2026-10 ordering was protecting.
+       * THE LATE CHECK GOES BEFORE THE CLAIM, unless the screen opted in
+       * (`claimsEchoes`). A count check's own readback, "minus 3. Correct?",
+       * came back through the microphone whole, parsed as -3 and was proposed
+       * again, so the readback looped (audit A1). Only the field test claims
+       * echoes: it records `heard-own-voice` as evidence.
+       *
+       * THE SHORT CHECK STAYS AFTER IT. One or two words that are also a word
+       * of a statement prompt are, on the count screens, very often the
+       * answer: "zero" after "Running count zero. Two decks remaining.", "two"
+       * for a true count after "Two decks remaining." Ahead of the claim they
+       * were dropped as echo with no say-again cue (review of A1). A short
+       * fragment of a readback is instead harmless: the screens ignore a
+       * proposal equal to the one already pending.
        */
       const sinceClosed = deps.now() - suppressedUntil;
       const sinceSaidEnded = promptEndAt === null ? Number.POSITIVE_INFINITY : deps.now() - promptEndAt;
       const lateEcho = looksLikeLateSelfEcho(heard, lastSaid, sinceClosed);
-      const shortEcho = !lateEcho && looksLikeShortSelfEcho(heard, lastSaid, sinceSaidEnded);
-      const dropEcho = (): void => {
+      const dropEcho = (shortEcho: boolean): void => {
         log(
           'suppressed-echo',
           shortEcho
@@ -955,8 +960,8 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
         timing('suppressed');
         deps.onHeard?.(heard, 'suppressed', 'echo');
       };
-      if ((lateEcho || shortEcho) && !deps.claimsEchoes) {
-        dropEcho();
+      if (lateEcho && !deps.claimsEchoes) {
+        dropEcho(false);
         return;
       }
 
@@ -968,9 +973,14 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
         return;
       }
 
-      // The backstop for an echo the opted-in screen chose not to claim.
-      if (lateEcho || shortEcho) {
-        dropEcho();
+      // The backstop: a late echo the opted-in screen chose not to claim, and
+      // any short echo nothing claimed.
+      if (lateEcho) {
+        dropEcho(false);
+        return;
+      }
+      if (looksLikeShortSelfEcho(heard, lastSaid, sinceSaidEnded)) {
+        dropEcho(true);
         return;
       }
 

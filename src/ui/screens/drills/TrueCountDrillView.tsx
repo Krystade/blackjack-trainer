@@ -485,6 +485,9 @@ export function TrueCountDrillView({
     if (!parsed) return null;
 
     const next = parsed.kind === 'value' ? parsed.value : (pendingTc ?? 0) + parsed.delta;
+    // Review of A1: the standing value said again (or a fragment of its own
+    // readback heard back) is not proposed and read out a second time.
+    if (next === pendingTc) return `true count ${speakableCount(next)} again`;
     setPendingTc(next);
     sayBack(narrateReadback(next), true);
     return `true count ${speakableCount(next)}`;

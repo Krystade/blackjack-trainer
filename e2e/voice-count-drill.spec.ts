@@ -380,3 +380,22 @@ test('"yes, it\'s minus three" confirms a standing minus three', async ({ page }
   await expect(page.locator('.drill-result')).toBeVisible();
   await expect(page.locator('.drill-result .result-detail')).toContainText('You entered −3');
 });
+
+/**
+ * Review of A1: the same number said again (or a short fragment of the
+ * readback coming back) is not proposed and read out a second time.
+ */
+test('saying the standing count again does not read it back again', async ({ page }) => {
+  await openCountDrill(page, { eyesFree: false });
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+  await expect(page.locator('.count-voice')).toBeVisible({ timeout: 15_000 });
+
+  await sayWhenListening(page, 'minus three');
+  await expect(page.locator('.count-voice-value')).toHaveText('−3');
+  const readbacks = async () => (await spoken(page)).split('Correct?').length - 1;
+  await expect.poll(readbacks).toBe(1);
+  await sayWhenListening(page, 'minus three');
+  await page.waitForTimeout(500);
+  expect(await readbacks(), 'the standing count was read back twice').toBe(1);
+  await expect(page.locator('.count-voice-value')).toHaveText('−3');
+});
