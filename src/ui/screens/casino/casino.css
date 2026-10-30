@@ -382,6 +382,10 @@ body[data-screen='casino'] {
   text-align: right;
 }
 
+.cas-stat-right .cas-link {
+  align-self: flex-end;
+}
+
 .cas-stat-label {
   font-size: var(--fs-xs);
   font-weight: 650;
