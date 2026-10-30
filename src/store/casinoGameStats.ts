@@ -53,7 +53,7 @@ export const GAME_STATS_KEY = 'bjtrainer.casinoGameStats.v1';
  *    double-on at any two cards (were 2 hands and 10-11).
  * 6: audit lane C -- a single-deck cut down to a quarter deck is dealt as
  *    logged (C4), and the zero-count index cells read the running count's
- *    sign under truncate/round (C11).
+ *    sign under truncate/round (C11), and no Fab 4 below four decks (C1).
  */
 export const SIM_VERSION = 6;
 
