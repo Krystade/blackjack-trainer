@@ -202,8 +202,27 @@ describe('nextStep (#28)', () => {
     expect(nextStep(stateAt(5), ctxFor(5))).toMatchObject({ kind: 'quiz' });
     const n = nextStep(withIndices(stateAt(5), 2, 1), ctxFor(5));
     expect(n.kind).toBe('quiz');
-    expect(n.why).toMatch(/at 66%/);
+    expect(n.why).toMatch(/^17 of 17 indices below 90% on their last answers: .* 2 of 3/);
     expect(nextStep(withIndices(stateAt(5), 9, 1), ctxFor(5)).kind).toBe('betsizing');
+  });
+
+  it('C14: each index is judged on its own last answers, not a pooled figure', () => {
+    // Fifteen indices at 30 of 30 and two at 1 of 3 pool to about 97%.
+    const s = withIndices(stateAt(5), 30, 0);
+    s.perIndex['ins'] = { right: 1, wrong: 2 };
+    s.perIndex['16v10'] = { right: 1, wrong: 2 };
+    const n = nextStep(s, ctxFor(5));
+    expect(n.kind).toBe('quiz');
+    expect(n.why).toMatch(/^2 of 17 indices below 90%.*: Insurance 1 of 3, 16 v 10 1 of 3\.$/);
+    // The recent store wins over the lifetime tally: old misses age out ...
+    const healed = withIndices(stateAt(5), 30, 0);
+    healed.perIndex['ins'] = { right: 10, wrong: 20 };
+    healed.indexRecent = { ins: { recent: '0'.repeat(20) + '1'.repeat(10), days: Array(30).fill('') } };
+    expect(nextStep(healed, ctxFor(5)).kind).toBe('betsizing');
+    // ... and a recent slump shows even under a good lifetime tally.
+    const slump = withIndices(stateAt(5), 30, 0);
+    slump.indexRecent = { ins: { recent: '1'.repeat(25) + '00011', days: Array(30).fill('') } };
+    expect(nextStep(slump, ctxFor(5)).why).toMatch(/Insurance 7 of 10/);
   });
 
   it('F11: the deviations step counts the index set of the profile', () => {

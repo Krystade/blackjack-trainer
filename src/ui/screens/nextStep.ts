@@ -1,5 +1,6 @@
 import type { Stats } from '../../store/types';
 import { agoText, daysBetween, localDateKey } from '../casinoFigures';
+import type { DeviationId } from '../../engine/deviations';
 import { hydrateMasteryRun, isMasteryRunComplete } from '../../drills/masteryChallenge';
 import type { MasteryRun, PersistedMasteryRun } from '../../drills/masteryChallenge';
 import { generateAllCells } from '../../drills/flashcards';
@@ -234,7 +235,30 @@ function repairCard(weak: readonly WeakCell[], sweepDone: boolean): Card | null 
   return null;
 }
 
-/** Rung 5: deviations (the Wave A rule, unchanged). */
+/** C14: an index is judged on at most its last this many answers. */
+export const INDEX_WINDOW = 10;
+
+/**
+ * C14 (audit 2026-10-29): one index's figure for rung 5 -- its last
+ * INDEX_WINDOW answers from `indexRecent`, or its lifetime tally when it has
+ * no recent store (answers saved before Wave T).
+ */
+export function indexJudged(stats: Stats, id: DeviationId): { right: number; judged: number } {
+  const recent = stats.indexRecent?.[id]?.recent;
+  if (typeof recent === 'string' && recent.length > 0) {
+    const w = recent.slice(-INDEX_WINDOW);
+    return { right: [...w].filter((b) => b === '1').length, judged: w.length };
+  }
+  const t = stats.perIndex?.[id];
+  const right = t?.right ?? 0;
+  return { right, judged: right + (t?.wrong ?? 0) };
+}
+
+/**
+ * Rung 5: deviations. Every active index needs MIN_INDEX_ANSWERS answers,
+ * then (C14) each index on its own recent answers must be at INDEX_TARGET:
+ * a pooled figure let two indices at 1 of 3 hide behind fifteen at 30 of 30.
+ */
 function deviationsCard(stats: Stats, rules?: IndexRules): Card | null {
   const active = activeIndices(rules);
   const unpractised = active.filter((d) => !indexPractised(stats, d.id));
@@ -245,18 +269,19 @@ function deviationsCard(stats: Stats, rules?: IndexRules): Card | null {
       why: `${unpractised.length} of ${active.length} indices have fewer than ${MIN_INDEX_ANSWERS} answers.`,
     };
   }
-  let ir = 0;
-  let iw = 0;
-  for (const d of active) {
-    ir += stats.perIndex[d.id]?.right ?? 0;
-    iw += stats.perIndex[d.id]?.wrong ?? 0;
-  }
-  const ipct = ir + iw > 0 ? ir / (ir + iw) : 1;
-  if (ipct < INDEX_TARGET) {
+  const short = active
+    .map((d) => ({ d, ...indexJudged(stats, d.id) }))
+    .filter((x) => x.judged > 0 && x.right / x.judged < INDEX_TARGET)
+    .sort((a, b) => a.right / a.judged - b.right / b.judged);
+  if (short.length > 0) {
+    const named = short
+      .slice(0, 3)
+      .map((x) => `${x.d.label.split(':')[0]} ${x.right} of ${x.judged}`)
+      .join(', ');
     return {
       kind: 'quiz',
       title: 'Learn the deviations',
-      why: `The deviation quiz is at ${goalPct(ipct)}; get it to ${pctDown(INDEX_TARGET)}%.`,
+      why: `${short.length} of ${active.length} indices below ${pctDown(INDEX_TARGET)}% on their last answers: ${named}.`,
     };
   }
   return null;
