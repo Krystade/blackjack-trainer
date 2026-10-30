@@ -2739,45 +2739,52 @@ export function CountDrillView({
       {/* The spoken proposal, shown as well as said. A passenger should be
           able to correct it by tapping instead of talking, and the keypad
           stays for a refused microphone or a browser that cannot listen. */}
-      {phase === 'answering' && !countdownMode && voiceOn && (
-        <div className="count-voice" data-pending={pendingCount !== null}>
-          {pendingCount === null ? (
-            <span className="count-voice-hint">
-              Say the count &mdash; &ldquo;minus three&rdquo;. Then &ldquo;plus&rdquo; or
-              &ldquo;minus&rdquo; to nudge it by one, &ldquo;yes&rdquo; to submit.
-            </span>
-          ) : (
-            <>
-              <span className="count-voice-value">
-                {signed(pendingCount, { plusZero: true })}
-              </span>
-              <span className="count-voice-hint">
-                &ldquo;yes&rdquo; to submit &middot; &ldquo;no&rdquo; to start over &middot;
-                &ldquo;plus&rdquo;/&ldquo;minus&rdquo; to nudge
-              </span>
-            </>
+      {/* D11: the hint and the keypad in one dock at the FOOT of the screen,
+          under the thumb, as True count, Produce TC and Play's count check
+          have it. It sat at the top with the lower half of the screen empty. */}
+      {phase === 'answering' && (
+        <div className="count-answer-dock" data-testid="count-answer-dock">
+          {!countdownMode && voiceOn && (
+            <div className="count-voice" data-pending={pendingCount !== null}>
+              {pendingCount === null ? (
+                <span className="count-voice-hint">
+                  Say the count &mdash; &ldquo;minus three&rdquo;. Then &ldquo;plus&rdquo; or
+                  &ldquo;minus&rdquo; to nudge it by one, &ldquo;yes&rdquo; to submit.
+                </span>
+              ) : (
+                <>
+                  <span className="count-voice-value">
+                    {signed(pendingCount, { plusZero: true })}
+                  </span>
+                  <span className="count-voice-hint">
+                    &ldquo;yes&rdquo; to submit &middot; &ldquo;no&rdquo; to start over &middot;
+                    &ldquo;plus&rdquo;/&ldquo;minus&rdquo; to nudge
+                  </span>
+                </>
+              )}
+            </div>
           )}
-        </div>
-      )}
 
-      {phase === 'answering' && !countdownMode && (
-        <NumPad label="Enter the running count" onSubmit={handleRcSubmit} />
-      )}
+          {!countdownMode && (
+            <NumPad label="Enter the running count" onSubmit={handleRcSubmit} />
+          )}
 
-      {phase === 'answering' && countdownMode && (
-        <div className="tag-guess">
-          <div className="tag-guess-label">What&apos;s the hidden card&apos;s tag?</div>
-          <div className="tag-guess-row">
-            <button type="button" className="tag-guess-btn" onClick={() => handleTagGuess(1)}>
-              +1
-            </button>
-            <button type="button" className="tag-guess-btn" onClick={() => handleTagGuess(0)}>
-              0
-            </button>
-            <button type="button" className="tag-guess-btn" onClick={() => handleTagGuess(-1)}>
-              &minus;1
-            </button>
-          </div>
+          {countdownMode && (
+            <div className="tag-guess">
+              <div className="tag-guess-label">What&apos;s the hidden card&apos;s tag?</div>
+              <div className="tag-guess-row">
+                <button type="button" className="tag-guess-btn" onClick={() => handleTagGuess(1)}>
+                  +1
+                </button>
+                <button type="button" className="tag-guess-btn" onClick={() => handleTagGuess(0)}>
+                  0
+                </button>
+                <button type="button" className="tag-guess-btn" onClick={() => handleTagGuess(-1)}>
+                  &minus;1
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

@@ -85,3 +85,19 @@ test('the distraction keypad is the same full-width keypad as the final answer',
   expect(Math.abs(distraction.pad.x - answer.pad.x)).toBeLessThanOrEqual(1);
   expect(distraction.sideways).toBe(false);
 });
+
+/**
+ * D11: THE COUNT ANSWER IS UNDER THE THUMB. The keypad and OK sat at the top
+ * of the screen (y 196-465 of 812) with the lower half empty, while True
+ * count, Produce TC and Play's count check keep theirs at the bottom.
+ */
+test('D11: the count drill answer keypad sits at the foot of the screen', async ({ page }) => {
+  await withSettings(page, { drill: SHORT_RUN });
+  await openCountDrill(page);
+  expect(await advanceUntil(page, () => ok(page).isVisible(), 14)).toBe(true);
+  const { pad, key } = await measure(page);
+  expect(key.height).toBeGreaterThanOrEqual(44);
+  // The keypad's foot within a home indicator's reach of the bottom edge.
+  expect(812 - (pad.y + pad.height), 'the keypad floats above an empty lower screen').toBeLessThanOrEqual(48);
+  expect(pad.y + pad.height).toBeLessThanOrEqual(812);
+});

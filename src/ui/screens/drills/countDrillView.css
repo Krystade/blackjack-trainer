@@ -54,3 +54,12 @@
     opacity: 1;
   }
 }
+
+/* D11: the answering phase's hint and keypad, docked at the foot of the
+   drill screen (a flex column), under the thumb, like every other count
+   entry in the app. The voice hint stays directly above the keypad. */
+.count-answer-dock {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+}
