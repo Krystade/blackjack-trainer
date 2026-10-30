@@ -3,6 +3,13 @@
 export const COUNT_PAUSED_LINE = 'Paused.';
 
 /**
+ * Review R4: a pause caused by a hidden page (a call, Siri, a screen lock)
+ * never lifts by itself, so when the microphone can hear "go on" the pause
+ * says how to continue.
+ */
+export const COUNT_HIDE_PAUSED_LINE = "Paused. Say go on when you're ready.";
+
+/**
  * Review of A12: a run held on an unheard card tries this short line every
  * COUNT_RESUME_PROBE_MS. Once it is actually heard the audio is back, so the
  * hold lifts and the card is said again.

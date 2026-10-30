@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { sayOnceListening, withSettings, withProfile, openCountOptions } from './helpers';
+import { COUNT_HIDE_PAUSED_LINE } from '../src/drills/countPause';
 
 /**
  * The count drill, answered out loud.
@@ -75,12 +76,15 @@ async function spoken(page: Page): Promise<string> {
 }
 
 /** Reaches the count drill's setup screen with the microphone on. */
-async function openCountDrill(page: Page, opts: { eyesFree: boolean }): Promise<void> {
+async function openCountDrill(
+  page: Page,
+  opts: { eyesFree: boolean; drill?: Record<string, unknown> },
+): Promise<void> {
   await withFakeEngine(page);
   await withProfile(page);
   await withSettings(page, {
     audio: { enabled: true, verbosity: 'full', answerPauseMs: 0 },
-    drill: { countLengthCards: 4, countGroup: 1, countIntervalMs: 0, countManual: false },
+    drill: { countLengthCards: 4, countGroup: 1, countIntervalMs: 0, countManual: false, ...opts.drill },
   });
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
@@ -437,3 +441,26 @@ for (const word of ['go on', 'resume']) {
     await expect.poll(async () => (await spoken(page)).includes('Again: ')).toBe(true);
   });
 }
+
+/**
+ * Review R4: a pause caused by a hidden page never lifts by itself, so on
+ * return it says how to continue -- and the word it names does continue.
+ */
+test('a hidden-page pause says "Say go on", and "go on" resumes the run', async ({ page }) => {
+  await openCountDrill(page, { eyesFree: true, drill: { countLengthCards: 12, countIntervalMs: 800 } });
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+  await expect(page.locator('.count-flash-progress')).toHaveText(/^2 \/ 12/, { timeout: 15_000 });
+  const setVisibility = (state: 'hidden' | 'visible') =>
+    page.evaluate((st) => {
+      Object.defineProperty(document, 'visibilityState', { get: () => st, configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+    }, state);
+  await setVisibility('hidden');
+  await expect(page.getByRole('status').filter({ hasText: 'Paused' })).toBeVisible();
+  await setVisibility('visible');
+  await expect
+    .poll(() => page.evaluate((l) => (window.__speechLog ?? []).filter((t) => t === l).length, COUNT_HIDE_PAUSED_LINE))
+    .toBeGreaterThanOrEqual(1);
+  await sayWhenListening(page, 'go on');
+  await expect(page.getByRole('status').filter({ hasText: 'Paused' })).toBeHidden({ timeout: 2000 });
+});

@@ -85,7 +85,7 @@ import './countLeadIn.css';
 import './countTableDeal.css';
 import { tableDealOf, tableHoldMs, tableRoundPlan, tableView, type TableDeal } from '../../countTableDeal';
 import { DEALER_SEAT } from '../../dealSequence';
-import { COUNT_AGAIN_PREFIX, COUNT_PAUSED_LINE, COUNT_RESUME_PROBE_MS, COUNT_RESUMING_LINE, isCountResumeWord } from '../../../drills/countPause';
+import { COUNT_AGAIN_PREFIX, COUNT_HIDE_PAUSED_LINE, COUNT_PAUSED_LINE, COUNT_RESUME_PROBE_MS, COUNT_RESUMING_LINE, isCountResumeWord } from '../../../drills/countPause';
 import { EASY_FIRST_RUN, hiLoLabel, hiLoShown, offersEasyFirstRun } from '../../../drills/hiLoAid';
 import './hiLoAid.css';
 
@@ -1113,10 +1113,17 @@ export function CountDrillView({
 
   // "Paused", said once the pause has torn the narration down -- an effect,
   // so it runs AFTER the cleanup that cancels the card being spoken.
+  // Review R4: a pause the hidden page caused never lifts by itself, so with
+  // the microphone open it names the word that continues the run.
+  const pausedByHideRef = useRef(false);
+  const pausedLine = () => (pausedByHideRef.current && voiceOn ? COUNT_HIDE_PAUSED_LINE : COUNT_PAUSED_LINE);
   useEffect(() => {
-    if (!paused) return;
-    if (eyesFree || voiceOn) speak(COUNT_PAUSED_LINE, speechOptsFrom(settings.audio, { interrupt: true }));
-    else audio.sayFull(COUNT_PAUSED_LINE);
+    if (!paused) {
+      pausedByHideRef.current = false;
+      return;
+    }
+    if (eyesFree || voiceOn) speak(pausedLine(), speechOptsFrom(settings.audio, { interrupt: true }));
+    else audio.sayFull(pausedLine());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paused]);
 
@@ -1161,8 +1168,8 @@ export function CountDrillView({
   hideHandlersRef.current = {
     pauseRun,
     sayPaused: () => {
-      if (eyesFree || voiceOn) speak(COUNT_PAUSED_LINE, speechOptsFrom(settings.audio, { interrupt: true }));
-      else audio.sayFull(COUNT_PAUSED_LINE);
+      if (eyesFree || voiceOn) speak(pausedLine(), speechOptsFrom(settings.audio, { interrupt: true }));
+      else audio.sayFull(pausedLine());
     },
   };
   useEffect(() => {
@@ -1171,6 +1178,7 @@ export function CountDrillView({
       if (phaseRef.current !== 'flashing' || pausedAtRef.current !== null) return;
       pausedByHide = true;
       diag('life', 'count-paused-on-hide', {});
+      pausedByHideRef.current = true;
       hideHandlersRef.current.pauseRun();
     };
     const onVisibility = () => {
