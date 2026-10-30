@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { _setStorage, snapshotBackedUp } from '../../store/persist';
+import { _setStorage, BACKED_UP_KEYS, snapshotBackedUp } from '../../store/persist';
+import { CASINO_LOG_KEY, LEGACY_CASINO_LOG_KEY, PREV_CASINO_LOG_KEY } from '../../store/casinoLog';
 import { liveUndo, practiceMark, readUndo, storeUndo, UNDO_FOR_MS } from './backupText';
 
 /**
@@ -59,6 +60,24 @@ describe('import undo lapses (R1)', () => {
     imported();
     local.setItem('bjtrainer.flashsr.v1', JSON.stringify({ 'hard-16-v-10': { box: 1 } }));
     expect(liveUndo(AT + 60_000)).toBeNull();
+  });
+
+  it('lapses once ANY key the undo would put back changes, and on a casino log change too', () => {
+    const keys = [...BACKED_UP_KEYS, ...Object.keys(snapshotBackedUp()), CASINO_LOG_KEY, PREV_CASINO_LOG_KEY, LEGACY_CASINO_LOG_KEY];
+    for (const k of ['bjtrainer.settings.v1', 'bjtrainer.profiles.v1', 'bjtrainer.customLists.v1', 'bjtrainer.casinoLog.v3']) {
+      expect(keys, k).toContain(k);
+    }
+    for (const key of new Set(keys)) {
+      for (const before of [null, '{"a":1}']) {
+        if (before === null) local.removeItem(key);
+        else local.setItem(key, before);
+        imported();
+        expect(liveUndo(AT + 60_000), `${key} untouched`).not.toBeNull();
+        local.setItem(key, '{"a":2}');
+        expect(liveUndo(AT + 60_000), `${key} written`).toBeNull();
+        local.removeItem(key);
+      }
+    }
   });
 
   it('an undo saved without a mark (an older build) is not offered', () => {

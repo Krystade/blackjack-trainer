@@ -1,4 +1,5 @@
-import { getStorage, type BackupSnapshot, type BackupSummary } from '../../store/persist';
+import { getStorage, snapshotBackedUp, type BackupSnapshot, type BackupSummary } from '../../store/persist';
+import { CASINO_LOG_KEY, LEGACY_CASINO_LOG_KEY, PREV_CASINO_LOG_KEY } from '../../store/casinoLog';
 import { agoText, daysBetween, localDateKey } from '../casinoFigures';
 
 /**
@@ -72,8 +73,8 @@ export interface ImportUndo {
   snap: BackupSnapshot;
   /**
    * R1: practiceMark() as the import left the phone. An undo restores every
-   * backed-up key, so once an answer has been recorded on top of the import
-   * it would throw that practice (and the SR schedule) away with it.
+   * backed-up key, so once anything has been written on top of the import
+   * (an answer, a setting, a profile, a custom list) it would throw that away.
    */
   mark?: string;
 }
@@ -81,24 +82,40 @@ export interface ImportUndo {
 /** R1: how long an import can be undone, at most. */
 export const UNDO_FOR_MS = 24 * 60 * 60 * 1000;
 
-/** The keys every recorded answer writes: stats, and both review schedules. */
-const PRACTICE_KEYS = ['bjtrainer.stats.v1', 'bjtrainer.flashsr.v1', 'bjtrainer.quizsr.v1'] as const;
+/**
+ * The casino log is not in the snapshot (Undo never touches it), but a session
+ * logged after an import ends the undo window too: whatever Jack did after the
+ * import is never in question when he presses Undo.
+ */
+const ALSO_MARKED = [CASINO_LOG_KEY, PREV_CASINO_LOG_KEY, LEGACY_CASINO_LOG_KEY] as const;
 
-/** R1: a fingerprint of the practice keys' bytes; any recorded answer changes it. */
+function hash(v: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < v.length; i++) h = Math.imul(h ^ v.charCodeAt(i), 0x01000193);
+  return `${v.length}:${(h >>> 0).toString(36)}`;
+}
+
+/**
+ * R1: a fingerprint of every key an undo would put back (the snapshot's keys:
+ * settings, stats, profiles, both review schedules, custom lists, progress and
+ * the rest, with their set-aside slots) and of the casino log. Any write to
+ * any of them changes it.
+ */
 export function practiceMark(): string {
   const store = getStorage();
-  return PRACTICE_KEYS.map((k) => {
-    const v = store.getItem(k);
-    if (v === null) return '-';
-    let h = 0x811c9dc5;
-    for (let i = 0; i < v.length; i++) h = Math.imul(h ^ v.charCodeAt(i), 0x01000193);
-    return `${v.length}:${(h >>> 0).toString(36)}`;
-  }).join('|');
+  const snap = snapshotBackedUp();
+  const keys = [...Object.keys(snap).sort(), ...ALSO_MARKED];
+  return keys
+    .map((k) => {
+      const v = k in snap ? snap[k] : store.getItem(k);
+      return `${k}=${v === null || v === undefined ? '-' : hash(v)}`;
+    })
+    .join('|');
 }
 
 /**
  * R1: the undo, while it can still be used: under 24 hours old and nothing
- * practised since the import. A lapsed undo is dropped here, so its button
+ * changed since the import. A lapsed undo is dropped here, so its button
  * goes and its snapshot with it.
  */
 export function liveUndo(now: number = Date.now()): ImportUndo | null {

@@ -629,7 +629,7 @@ export function Stats({ activeProfile, settings, onSettingsChange, onNavigate }:
     const u = liveUndo();
     if (!u) {
       setUndo(null);
-      setMessage('The undo is no longer available: something was practised since the import, or it is over 24 hours old.');
+      setMessage('The undo is no longer available: something changed since the import (an answer, a setting, a profile, the casino log), or it is over 24 hours old.');
       return;
     }
     if (!window.confirm(`Put back what this phone held before the import of ${backupDateText(u.at)}?`)) return;

@@ -56,6 +56,7 @@ test('R1: practising after an import ends the undo, and nothing is lost', async 
   await page.getByRole('button', { name: 'Back', exact: true }).click();
 
   await openStatsScreen(page);
+  await expect(page.getByRole('button', { name: 'Export backup', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Undo import' })).toHaveCount(0);
   const stats = (await readStats(page)) as { sessions: { profileName?: string }[]; mistakes: Record<string, number> };
   expect(stats.sessions.map((s) => s.profileName)).toEqual(['File A']);
@@ -93,4 +94,40 @@ test('R2: a file refused as not a backup leaves the import undoable', async ({ p
   await expect(page.locator('.stats-message')).toContainText('Import failed');
   await expect(page.getByRole('button', { name: 'Undo import' })).toBeVisible();
   expect(await page.evaluate(() => sessionStorage.getItem('bjtrainer.importUndo.v1'))).not.toBeNull();
+});
+
+test('R1: logging a casino session after an import ends the undo, and the session is kept', async ({ page }) => {
+  await importFile(page, 'a.json', backup('File A', '2026-01-02T20:00:00.000Z'), true);
+  await expect(page.locator('.stats-message')).toHaveText('Backup imported.');
+
+  const casinoTab = page.locator('.tab-bar').getByRole('button', { name: 'Casino', exact: true });
+  // Only looking at the Casino tab changes nothing: the undo stays.
+  await casinoTab.click();
+  await expect(page.getByRole('button', { name: 'Add a casino' })).toBeVisible();
+  await openStatsScreen(page);
+  await expect(page.getByRole('button', { name: 'Undo import' })).toBeVisible();
+
+  // A casino and a session with a buy-in.
+  await casinoTab.click();
+  await page.getByRole('button', { name: 'Add a casino' }).click();
+  await page.locator('input[name="name"]').fill('Golden Nugget');
+  await page.getByRole('button', { name: 'Save casino' }).click();
+  await page.getByTestId('casino-seg-sessions').click();
+  await page.getByRole('button', { name: 'Start session' }).click();
+  await page.getByTestId('start-at').filter({ hasText: 'Golden Nugget' }).click();
+  const live = page.getByTestId('casino-live');
+  await live.locator('input[name="buyIn"]').fill('1000');
+  await live.getByRole('button', { name: 'Add', exact: true }).click();
+  await expect(live.getByTestId('casino-buyin-total')).toHaveText('$1,000 in');
+
+  await openStatsScreen(page);
+  // The screen is up (a lazy screen shows no button before it mounts either).
+  await expect(page.getByRole('button', { name: 'Export backup', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Undo import' })).toHaveCount(0);
+  expect(await page.evaluate(() => sessionStorage.getItem('bjtrainer.importUndo.v1'))).toBeNull();
+  const log = await page.evaluate(() => localStorage.getItem('bjtrainer.casinoLog.v3'));
+  expect(log).toContain('Golden Nugget');
+  expect(log).toContain('1000');
+  const stats = (await readStats(page)) as { sessions: { profileName?: string }[] };
+  expect(stats.sessions.map((s) => s.profileName)).toEqual(['File A']);
 });
