@@ -9,6 +9,7 @@ import {
   type ImportRuleChoice,
   type NameChoice,
 } from '../../../store/casinoLog';
+import { diag } from '../../../diag/diagnosticLog';
 
 /**
  * The casino log's file round trip, shared by the backup nudge and the
@@ -82,6 +83,34 @@ export function planImport(
   const r = mergeImport(log, text, names, rules, restore);
   if (!r.ok) return { ok: false, message: `Import failed: ${r.error}` };
   return { ok: true, plan: r };
+}
+
+/**
+ * Wave X (item 5): every import leaves a `casino import` line in the
+ * diagnostic log -- the counts when it saved, the reason when it did not -- so
+ * a failed import shows in an exported log. Never a casino's name or rules:
+ * the counts are numbers and the reasons are this file's own fixed messages.
+ */
+export function logCasinoImport(
+  from: 'file' | 'paste',
+  outcome: { ok: true; report: ImportPlan['report'] } | { ok: false; stage: 'read' | 'check' | 'save'; reason: string },
+): void {
+  if (outcome.ok) {
+    const p = outcome.report;
+    diag('set', 'casino import', {
+      ok: true,
+      from,
+      casinosAdded: p.casinosAdded,
+      casinosUpdated: p.casinosUpdated,
+      sessionsAdded: p.sessionsAdded,
+      sessionsUpdated: p.sessionsUpdated,
+      kept: p.kept,
+      skipped: p.skipped,
+      extraRunning: p.extraRunning,
+    });
+    return;
+  }
+  diag('set', 'casino import', { ok: false, from, stage: outcome.stage, reason: outcome.reason });
 }
 
 /** Save a planned import, once confirmed, and say what happened, in one line. */

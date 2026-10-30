@@ -1,7 +1,7 @@
 import { useRef, useState, type ChangeEvent } from 'react';
 import { serializeExport, type CasinoLog, type ImportRuleChoice, type NameChoice } from '../../../store/casinoLog';
 import { agoText, daysBetween, localDateKey } from '../../casinoFigures';
-import { applyImport, exportLog, planImport, type ImportPlan } from './casinoExport';
+import { applyImport, exportLog, logCasinoImport, planImport, type ImportPlan } from './casinoExport';
 import { ImportPreview } from './ImportPreview';
 
 /**
@@ -38,6 +38,7 @@ export function DirectoryFile({ log, commit }: { log: CasinoLog; commit: (next: 
   const preview = (text: string, from: 'file' | 'paste') => {
     const r = planImport(log, text);
     if (!r.ok) {
+      logCasinoImport(from, { ok: false, stage: 'check', reason: r.message });
       setPending(null);
       setMessage(r.message);
       return;
@@ -52,7 +53,11 @@ export function DirectoryFile({ log, commit }: { log: CasinoLog; commit: (next: 
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => preview(String(reader.result ?? ''), 'file');
-    reader.onerror = () => setMessage('Import failed: the file could not be read.');
+    reader.onerror = () => {
+      const reason = 'Import failed: the file could not be read.';
+      logCasinoImport('file', { ok: false, stage: 'read', reason });
+      setMessage(reason);
+    };
     reader.readAsText(file);
   };
 
@@ -67,11 +72,14 @@ export function DirectoryFile({ log, commit }: { log: CasinoLog; commit: (next: 
   const confirm = () => {
     if (!pending) return;
     if (!plan) {
-      setMessage(planned && !planned.ok ? planned.message : 'Import failed.');
+      const reason = planned && !planned.ok ? planned.message : 'Import failed.';
+      logCasinoImport(pending.from, { ok: false, stage: 'check', reason });
+      setMessage(reason);
       setPending(null);
       return;
     }
     const r = applyImport(plan, commit);
+    logCasinoImport(pending.from, r.ok ? { ok: true, report: plan.report } : { ok: false, stage: 'save', reason: r.message });
     setMessage(r.message);
     if (r.ok) {
       if (pending.from === 'paste') {
