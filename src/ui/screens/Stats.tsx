@@ -12,6 +12,7 @@ import { pct, pctOfPercent, clockGap, formatUnits, costHandLabel, trendLine, sig
 import './costOfMistakes.css';
 import type { RangeId, TimeRange } from '../../store/timeRange';
 import { loadStats, saveStats, loadSettings, exportAll, importAll } from '../../store/persist';
+import { backupFileName, saveTextFile, type SaveResult } from '../saveFile';
 import {
   summarize,
   bestSecondsPerDeck,
@@ -425,6 +426,13 @@ const SECTION_TAB: Record<string, StatsTab> = {
   'Fatigue': 'progress',
   'Table sessions': 'progress' };
 
+const EXPORT_MESSAGE: Record<SaveResult, string> = {
+  shared: 'Backup saved.',
+  downloaded: 'Backup downloaded. Check it is in Files before you delete the app.',
+  cancelled: 'Backup not saved: the share sheet was closed.',
+  failed: 'Backup failed: nothing was saved.',
+};
+
 export function Stats({ activeProfile, settings, onSettingsChange, onNavigate }: StatsProps) {
   const [stats, setStats] = useState<StatsData>(() => loadStats());
   const [message, setMessage] = useState<string | null>(null);
@@ -491,18 +499,14 @@ export function Stats({ activeProfile, settings, onSettingsChange, onNavigate }:
     audio.say(summary, { interrupt: true });
   };
 
+  // B1/B3/B10: through the shared share-or-download helper, and the message
+  // says what actually happened -- "exported" whatever happened was how a
+  // dismissed share sheet or an empty iOS preview read as a backup.
   const handleExport = () => {
-    const json = exportAll();
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'bjtrainer-export.json';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    setMessage('Backup exported.');
+    const at = new Date();
+    void saveTextFile(exportAll(), backupFileName(at)).then((r) => {
+      setMessage(EXPORT_MESSAGE[r]);
+    });
   };
 
   const handleImportClick = () => {

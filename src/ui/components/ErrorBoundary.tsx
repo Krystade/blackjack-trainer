@@ -1,6 +1,7 @@
 import { Component } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
 import { exportAll } from '../../store/persist';
+import { backupFileName, saveTextFile, type SaveResult } from '../saveFile';
 
 /**
  * Catches a render throw so it blanks one screen instead of the whole app.
@@ -32,12 +33,21 @@ interface Props {
 
 interface State {
   error: Error | null;
+  /** What the last "Save a backup" press actually did; null before the first. */
+  backup: SaveResult | null;
 }
 
-export class ErrorBoundary extends Component<Props, State> {
-  state: State = { error: null };
+const BACKUP_SAID: Record<SaveResult, string> = {
+  shared: 'Backup saved.',
+  downloaded: 'Backup downloaded. Check it is in Files before you reset anything.',
+  cancelled: 'Backup not saved: the share sheet was closed.',
+  failed: 'Backup failed: nothing was saved.',
+};
 
-  static getDerivedStateFromError(error: Error): State {
+export class ErrorBoundary extends Component<Props, State> {
+  state: State = { error: null, backup: null };
+
+  static getDerivedStateFromError(error: Error): Partial<State> {
     return { error };
   }
 
@@ -47,18 +57,20 @@ export class ErrorBoundary extends Component<Props, State> {
     console.error('Blackjack Trainer crashed:', error, info.componentStack);
   }
 
+  // B1/B3/B10: the shared share-or-download helper (the iOS share sheet first,
+  // a download whose blob URL outlives the click otherwise), and the result
+  // is shown -- this screen is reached exactly when something is corrupt, and
+  // "I have a backup" is what someone believes before they reset.
   private handleBackup = (): void => {
+    let text: string;
     try {
-      const blob = new Blob([exportAll()], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `blackjack-trainer-backup-${new Date().toISOString().slice(0, 10)}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
+      text = exportAll();
     } catch (e) {
       console.error('Backup failed:', e);
+      this.setState({ backup: 'failed' });
+      return;
     }
+    void saveTextFile(text, backupFileName(new Date())).then((backup) => this.setState({ backup }));
   };
 
   private handleReload = (): void => {
@@ -66,12 +78,12 @@ export class ErrorBoundary extends Component<Props, State> {
   };
 
   private handleReset = (): void => {
-    this.setState({ error: null });
+    this.setState({ error: null, backup: null });
     this.props.onReset?.();
   };
 
   render(): ReactNode {
-    const { error } = this.state;
+    const { error, backup } = this.state;
     if (!error) return this.props.children;
 
     // Inline styles on purpose: app.css may itself be implicated, and this
@@ -119,6 +131,11 @@ export class ErrorBoundary extends Component<Props, State> {
         <button type="button" style={primary} onClick={this.handleBackup}>
           Save a backup
         </button>
+        {backup !== null && (
+          <p role="status" data-testid="crash-backup-status" style={{ margin: 0, maxWidth: '32ch' }}>
+            {BACKUP_SAID[backup]}
+          </p>
+        )}
         <button type="button" style={button} onClick={this.handleReset}>
           Back to Home
         </button>

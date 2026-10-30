@@ -15,6 +15,7 @@ import { readAudioSessionType } from '../audio/audioSession';
 import type { PlayPath } from './testKit';
 import type { InputDevice } from './phoneMic';
 import { openMicStream } from '../audio/openMicStream';
+import { saveFiles } from '../ui/saveFile';
 import { markMicSessionOpened } from '../audio/micSessionCost';
 
 /** The line every route step plays. Long enough to place by ear. */
@@ -438,24 +439,13 @@ export async function exportRecordings(
       }),
     );
   }
-  const nav = navigator as Navigator & { canShare?: (d: { files: File[] }) => boolean };
-  if (nav.canShare?.({ files }) && nav.share) {
-    try {
-      await nav.share({ files, title: 'Blackjack trainer recordings' });
-      return 'shared';
-    } catch (e) {
-      if (e instanceof Error && e.name === 'AbortError') return 'cancelled';
-    }
-  }
-  for (const f of files) {
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(f);
-    a.download = f.name;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-  }
-  return 'downloaded';
+  // Through the shared helper: the download's blob URLs were never revoked
+  // here, and a failed hand-over now says so rather than claiming a download.
+  const r = await saveFiles(
+    files.map((f) => ({ name: f.name, data: f, type: f.type })),
+    'Blackjack trainer recordings',
+  );
+  return r === 'failed' ? 'cancelled' : r;
 }
 
 /* ------------------------------------------------------------------------ */

@@ -40,7 +40,7 @@ test('a short session shows up on the stats screen', async ({ page }) => {
   await shot(page, '24-stats-with-session');
 });
 
-test('export downloads bjtrainer-export.json', async ({ page }) => {
+test('export downloads a dated backup file and says it was a download', async ({ page }) => {
   await page.goto('/?e2e=1');
   await page.locator('.home-stats-link').click();
 
@@ -48,7 +48,47 @@ test('export downloads bjtrainer-export.json', async ({ page }) => {
     page.waitForEvent('download'),
     page.getByRole('button', { name: 'Export backup', exact: true }).click(),
   ]);
-  expect(download.suggestedFilename()).toBe('bjtrainer-export.json');
+  // B4: several backups in Files must be told apart by name.
+  expect(download.suggestedFilename()).toMatch(/^bjtrainer-backup-\d{4}-\d{2}-\d{2}-\d{4}\.json$/);
+  // B1: the file the browser saved has the backup in it (a synchronous revoke saved an empty one).
+  const body = JSON.parse(await (await download.createReadStream()).toArray().then((c) => Buffer.concat(c).toString('utf8')));
+  expect(body).toHaveProperty('settings');
+  expect(body).toHaveProperty('stats');
+  await expect(page.locator('.stats-message')).toContainText('Backup downloaded');
+});
+
+test('export uses the share sheet where it exists, and a dismissed sheet is not reported as a backup', async ({ page }) => {
+  // B1/B3: the iPhone app's route to Save to Files is the share sheet.
+  await page.addInitScript(() => {
+    const w = window as unknown as { __shared: { name: string; text: string }[]; __shareCalls: number };
+    w.__shared = [];
+    w.__shareCalls = 0;
+    Object.defineProperty(navigator, 'canShare', {
+      value: (d: { files?: File[] }) => Boolean(d.files?.length),
+      configurable: true,
+    });
+    Object.defineProperty(navigator, 'share', {
+      configurable: true,
+      value: async (d: { files: File[] }) => {
+        w.__shareCalls += 1;
+        if (w.__shareCalls === 1) throw new DOMException('dismissed', 'AbortError');
+        w.__shared.push({ name: d.files[0]!.name, text: await d.files[0]!.text() });
+      },
+    });
+  });
+  await page.goto('/?e2e=1');
+  await page.locator('.home-stats-link').click();
+  const exportBtn = page.getByRole('button', { name: 'Export backup', exact: true });
+
+  await exportBtn.click();
+  await expect(page.locator('.stats-message')).toHaveText('Backup not saved: the share sheet was closed.');
+
+  await exportBtn.click();
+  await expect(page.locator('.stats-message')).toHaveText('Backup saved.');
+  const shared = await page.evaluate(() => (window as unknown as { __shared: { name: string; text: string }[] }).__shared);
+  expect(shared).toHaveLength(1);
+  expect(shared[0]!.name).toMatch(/^bjtrainer-backup-\d{4}-\d{2}-\d{2}-\d{4}\.json$/);
+  expect(JSON.parse(shared[0]!.text)).toHaveProperty('stats');
 });
 
 test('importing garbage shows an error and leaves the app navigable', async ({ page }) => {

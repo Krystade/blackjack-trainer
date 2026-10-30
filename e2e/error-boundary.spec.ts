@@ -66,3 +66,36 @@ test('the tab bar survives a crashed screen and can navigate away', async ({ pag
   const drills = page.getByRole('button', { name: 'Drills', exact: true });
   await expect(drills).toBeVisible();
 });
+
+test("the crash screen's backup goes through the share sheet and says what happened", async ({ page }) => {
+  // B1/B10: no share path and a synchronous revoke, under a screen that never said whether anything was saved.
+  await page.addInitScript(() => {
+    const w = window as unknown as { __shared: string[] };
+    w.__shared = [];
+    Object.defineProperty(navigator, 'canShare', { value: () => true, configurable: true });
+    Object.defineProperty(navigator, 'share', {
+      configurable: true,
+      value: async (d: { files: File[] }) => {
+        w.__shared.push(await d.files[0]!.text());
+      },
+    });
+  });
+  await page.goto('/?e2e=1&crash=1');
+  await page.getByRole('button', { name: 'Save a backup' }).click();
+  await expect(page.getByTestId('crash-backup-status')).toHaveText('Backup saved.');
+  const shared = await page.evaluate(() => (window as unknown as { __shared: string[] }).__shared);
+  expect(shared).toHaveLength(1);
+  expect(JSON.parse(shared[0]!)).toHaveProperty('settings');
+});
+
+test("the crash screen's backup downloads a non-empty file where there is no share sheet", async ({ page }) => {
+  await page.goto('/?e2e=1&crash=1');
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByRole('button', { name: 'Save a backup' }).click(),
+  ]);
+  expect(download.suggestedFilename()).toMatch(/^bjtrainer-backup-\d{4}-\d{2}-\d{2}-\d{4}\.json$/);
+  const chunks = await (await download.createReadStream()).toArray();
+  expect(JSON.parse(Buffer.concat(chunks).toString('utf8'))).toHaveProperty('stats');
+  await expect(page.getByTestId('crash-backup-status')).toContainText('Backup downloaded');
+});
