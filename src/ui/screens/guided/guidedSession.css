@@ -118,9 +118,11 @@
 
 /* The session decides how you answer (tap, or Drive's eyes-free voice), for
    every segment; a drill's own Eyes-free / Voice switches would turn one
-   segment of a tapped session into a driven one. Gone, they also give back
-   the height the strip takes. */
-.guided-host .drill-mode-row {
+   segment of a tapped session into a driven one (Bet sizing's would also set
+   the page-wide eyes-free flag, kept into every drill opened afterwards).
+   Gone, they also give back the height the strip takes. */
+.guided-host .drill-mode-row,
+.guided-host .bet-eyes-free-row {
   display: none;
 }
 

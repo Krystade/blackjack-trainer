@@ -351,3 +351,33 @@ test('paused, then Home: Resume picks the segment up, not a second pause screen'
   await expect(running(page, 'warmup')).toBeVisible({ timeout: 8000 });
   await expect(strip(page)).toHaveText(`1/${warm}`);
 });
+
+test('no segment shows a drill switch for how to answer: the session decides', async ({ page }) => {
+  await base(page);
+  const ids = ['warmup', 'speed', 'count', 'truecount', 'deviations', 'bets'];
+  await seedGuided(page, {
+    preset: 15,
+    drive: false,
+    plan: ids.map((id) =>
+      id === 'count' || id === 'truecount'
+        ? { id, minutes: 1, target: { kind: 'time', ms: 60_000 }, weak: false }
+        : { id, minutes: 1, target: { kind: 'answers', n: 5 }, weak: false, ...(id === 'warmup' ? { cells: [] } : {}), ...(id === 'deviations' ? { indexes: [] } : {}) },
+    ),
+    index: 0,
+    progress: ids.map(() => ({ answers: 0, right: 0, activeMs: 0 })),
+    phase: 'intro',
+  });
+  await page.goto('/?e2e=1');
+  await page.locator('.guided-card').getByRole('button', { name: 'Resume', exact: true }).click();
+  for (const id of ids) {
+    await expect(page.locator(`[data-testid="guided-transition"][data-segment="${id}"]`)).toBeVisible();
+    await page.getByRole('button', { name: 'Start now' }).click();
+    await expect(running(page, id)).toBeVisible();
+    // The drill is up (its Back button), and offers no switch of its own.
+    await expect(page.locator('.guided-host').getByRole('button', { name: 'Back', exact: true })).toBeVisible();
+    await expect(page.getByText('Eyes-free audio', { exact: true }), id).toBeHidden();
+    await expect(page.getByText('Voice answers', { exact: true }), id).toBeHidden();
+    await page.locator('.guided-strip').getByRole('button', { name: 'Skip', exact: true }).click();
+  }
+  await expect(page.getByTestId('guided-summary')).toBeVisible();
+});
