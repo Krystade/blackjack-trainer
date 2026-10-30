@@ -7,6 +7,7 @@ import {
   backupIsDue,
   lastBackupAt,
   markBackedUp,
+  noteBackupHandedOver,
   noteStoragePersistence,
   onStoragePersistence,
   storagePersistence,
@@ -46,6 +47,25 @@ describe('backupIsDue (B7)', () => {
     expect(lastBackupAt()).toBe(new Date(NOW).toISOString());
     expect(backupIsDue(NOW + DAY, 500)).toBe(false);
     expect(LAST_BACKUP_KEY).toBe('bjtrainer.lastBackup.v1');
+  });
+});
+
+describe('a download only snoozes the reminder (R9)', () => {
+  it('a share is a backup; a download hides the reminder for 7 days and is not recorded as one', () => {
+    noteBackupHandedOver('downloaded', new Date(NOW));
+    expect(lastBackupAt()).toBeNull();
+    expect(backupIsDue(NOW + 7 * DAY - 1, 500)).toBe(false);
+    expect(backupIsDue(NOW + 7 * DAY, 500)).toBe(true);
+    noteBackupHandedOver('shared', new Date(NOW));
+    expect(lastBackupAt()).toBe(new Date(NOW).toISOString());
+    expect(backupIsDue(NOW + 29 * DAY, 500)).toBe(false);
+  });
+
+  it('a cancelled or failed save changes nothing', () => {
+    noteBackupHandedOver('cancelled', new Date(NOW));
+    noteBackupHandedOver('failed', new Date(NOW));
+    expect(lastBackupAt()).toBeNull();
+    expect(backupIsDue(NOW, 500)).toBe(true);
   });
 });
 

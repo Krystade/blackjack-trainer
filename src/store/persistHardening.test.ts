@@ -404,6 +404,8 @@ const NOT_BACKED_UP: Record<string, string> = {
   'bjtrainer.youView.v1': 'wave W: which half of the You tab (Progress or Stats) was open last, on this device -- one tap to choose again',
   'bjtrainer.lastBackup.v1':
     'B7: when THIS phone last handed a backup over -- a restore onto a wiped phone must not carry the date of the phone that made it and hide the reminder',
+  'bjtrainer.backupSnooze.v1':
+    'R9: until when THIS phone rests the backup reminder after a download -- per device like lastBackup, so a restore cannot hide the reminder',
   'bjtrainer.quarantineSeen.v1':
     'R4: which set-aside copies this phone has dismissed the notice for -- a device acknowledgement, the copies themselves are backed up',
   'bjtrainer.importUndo.v1':

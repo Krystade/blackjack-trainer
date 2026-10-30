@@ -38,7 +38,7 @@ import {
 } from './backupText';
 import { backupFileName, saveTextFile, type SaveResult } from '../../platform/saveFile';
 import { useTabSettings } from '../tabSettingsContext';
-import { lastBackupAt, markBackedUp } from '../../store/backupStatus';
+import { lastBackupAt, noteBackupHandedOver } from '../../store/backupStatus';
 import {
   summarize,
   bestSecondsPerDeck,
@@ -542,11 +542,10 @@ export function Stats({ activeProfile, settings, onSettingsChange, onNavigate }:
   const handleExport = () => {
     const at = new Date();
     void saveTextFile(exportAll(), backupFileName(at)).then((r) => {
-      // B7: remembered only once a file was really handed over.
-      if (r === 'shared' || r === 'downloaded') {
-        markBackedUp(at);
-        setLastBackup(at.toISOString());
-      }
+      // B7: remembered only once a file was really handed over; R9: a
+      // download only rests the reminder, it is not shown as a backup.
+      noteBackupHandedOver(r, at);
+      setLastBackup(lastBackupAt());
       setMessage(EXPORT_MESSAGE[r]);
     });
   };

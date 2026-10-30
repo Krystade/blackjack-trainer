@@ -8,7 +8,7 @@ import { withStats } from './helpers';
 
 const practised = { categories: { hard: { right: 60, wrong: 5 } } };
 
-test('Home reminds to back up once there is practice worth keeping, and a download clears it', async ({ page }) => {
+test('Home reminds to back up once there is practice worth keeping, and a download snoozes it', async ({ page }) => {
   await withStats(page, practised);
   await page.goto('/?e2e=1');
   const nudge = page.getByTestId('backup-nudge');
@@ -16,7 +16,10 @@ test('Home reminds to back up once there is practice worth keeping, and a downlo
   const [download] = await Promise.all([page.waitForEvent('download'), nudge.getByRole('button', { name: 'Export now' }).click()]);
   expect(download.suggestedFilename()).toMatch(/^bjtrainer-backup-/);
   await expect(nudge).toHaveCount(0);
-  expect(await page.evaluate(() => localStorage.getItem('bjtrainer.lastBackup.v1'))).not.toBeNull();
+  // R9: a download may be an iOS preview that saved nothing: not a backup,
+  // but the reminder rests for a week.
+  expect(await page.evaluate(() => localStorage.getItem('bjtrainer.lastBackup.v1'))).toBeNull();
+  expect(await page.evaluate(() => localStorage.getItem('bjtrainer.backupSnooze.v1'))).not.toBeNull();
   await page.reload();
   await expect(page.locator('.home-title')).toBeVisible();
   await expect(page.getByTestId('backup-nudge')).toHaveCount(0);
@@ -52,12 +55,20 @@ test('no reminder on a phone with nothing to lose, or one backed up recently', a
   await expect(page.getByTestId('backup-nudge')).toHaveCount(0);
 });
 
-test('a Stats export is remembered as the last backup', async ({ page }) => {
+test('a Stats export through the share sheet is remembered as the last backup; a download is not', async ({ page }) => {
   await withStats(page, practised);
   await page.goto('/?e2e=1');
   await page.locator('.home-stats-link').click();
   await expect(page.getByTestId('stats-last-backup')).toHaveText('Never backed up');
   await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Export backup', exact: true }).click()]);
+  await expect(page.locator('.stats-message')).toContainText('Check it is in Files');
+  await expect(page.getByTestId('stats-last-backup')).toHaveText('Never backed up');
+
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'canShare', { value: () => true, configurable: true });
+    Object.defineProperty(navigator, 'share', { value: async () => undefined, configurable: true });
+  });
+  await page.getByRole('button', { name: 'Export backup', exact: true }).click();
   await expect(page.getByTestId('stats-last-backup')).toHaveText('Last backup today');
 });
 

@@ -204,6 +204,7 @@ describe('OWNED_KEYS', () => {
     'bjtrainer.quarantineSeen.v1': 'per-device dismissal of the Stats set-aside notice; read when Stats renders',
     'bjtrainer.importUndo.v1': 'sessionStorage, not localStorage: the undo for an import in this tab only',
     'bjtrainer.lastBackup.v1': 'per-device date of the last backup handed over; read when Home or Stats renders',
+    'bjtrainer.backupSnooze.v1': 'per-device: the backup reminder rests until this time after a download (R9); read when Home renders',
     // Wave L (lane v): read-modify-written from storage at every segment and
     // on finishing (never cached whole), and one guided session runs in one tab.
     'bjtrainer.guided.v1': 'read fresh at each write; a guided session belongs to the tab running it',

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { exportAll } from '../../store/persist';
-import { answersOnPhone, backupIsDue, lastBackupAt, markBackedUp } from '../../store/backupStatus';
+import { answersOnPhone, backupIsDue, lastBackupAt, noteBackupHandedOver } from '../../store/backupStatus';
 import { backupFileName, saveTextFile, type SaveResult } from '../../platform/saveFile';
 import { lastBackupText } from '../screens/backupText';
 import './backupNudge.css';
@@ -8,7 +8,8 @@ import './backupNudge.css';
 /**
  * B7: the training data's backup reminder, the casino log's 30-day nudge
  * generalised. Shown on Home once there is something worth keeping and no
- * backup in 30 days; gone as soon as a file is actually handed over.
+ * backup in 30 days; gone as soon as a file is actually handed over (R9: a
+ * download rests it for a week rather than counting as the backup).
  */
 export function BackupNudge({ now = Date.now() }: { now?: number }) {
   const [due, setDue] = useState(() => backupIsDue(now, answersOnPhone()));
@@ -18,7 +19,7 @@ export function BackupNudge({ now = Date.now() }: { now?: number }) {
     const at = new Date();
     void saveTextFile(exportAll(), backupFileName(at)).then((r) => {
       if (r === 'shared' || r === 'downloaded') {
-        markBackedUp(at);
+        noteBackupHandedOver(r, at);
         setDue(false);
       } else setSaid(r);
     });

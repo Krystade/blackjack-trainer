@@ -2,7 +2,7 @@ import { Component } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
 import { exportAll } from '../../store/persist';
 import { backupFileName, saveTextFile, type SaveResult } from '../../platform/saveFile';
-import { markBackedUp } from '../../store/backupStatus';
+import { noteBackupHandedOver } from '../../store/backupStatus';
 import { casinoLogFileText, hasCasinoLog } from '../crashSalvage';
 import { exportFileName } from '../../store/casinoLog';
 
@@ -55,7 +55,7 @@ export class ErrorBoundary extends Component<Props, State> {
     }
     const at = new Date();
     void saveTextFile(text, backupFileName(at)).then((backup) => {
-      if (backup === 'shared' || backup === 'downloaded') markBackedUp(at);
+      noteBackupHandedOver(backup, at);
       this.setState({ backup });
     });
   };
