@@ -387,8 +387,12 @@ test('no segment shows a drill switch for how to answer: the session decides', a
     await expect(page.locator(`[data-testid="guided-transition"][data-segment="${id}"]`)).toBeVisible();
     await page.getByRole('button', { name: 'Start now' }).click();
     await expect(running(page, id)).toBeVisible();
-    // The drill is up (its Back button), and offers no switch of its own.
-    await expect(page.locator('.guided-host').getByRole('button', { name: 'Back', exact: true })).toBeVisible();
+    // The drill is up (its heading), and offers no switch of its own --
+    // nor a Back beside the strip's Pause (D14: both paused the session).
+    await expect(page.locator('.guided-host .drill-heading').first()).toBeVisible();
+    await expect(page.locator('.guided-host').getByRole('button', { name: 'Back', exact: true })).toBeHidden();
+    const pause = (await page.locator('.guided-strip').getByRole('button', { name: 'Pause', exact: true }).boundingBox())!;
+    expect(pause.height, 'the strip Pause is under 44px').toBeGreaterThanOrEqual(44);
     await expect(page.getByText('Eyes-free audio', { exact: true }), id).toBeHidden();
     await expect(page.getByText('Voice answers', { exact: true }), id).toBeHidden();
     await page.locator('.guided-strip').getByRole('button', { name: 'Skip', exact: true }).click();

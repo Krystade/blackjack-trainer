@@ -91,7 +91,8 @@
 
 .guided-strip-btn {
   flex: none;
-  min-height: 40px;
+  /* D14: a full 44px target, as everywhere else. */
+  min-height: 44px;
   min-width: 44px;
   padding: 0 0.6rem;
   border: 1px solid var(--accent-line);
@@ -126,14 +127,17 @@
   display: none;
 }
 
+/* D14: the drill's own Back is wired to the session's Pause, so the screen
+   showed two exits with different names doing the same thing -- and "Back"
+   read as leaving the session. The strip's Pause is the one way out. */
+.guided-host .drill-back-btn {
+  display: none;
+}
+
 /* Short phones (the same line the mute disc shrinks at): a slimmer strip. */
 @media (max-height: 699px) {
   :root {
-    --guided-h: 44px;
-  }
-
-  .guided-strip-btn {
-    min-height: 36px;
+    --guided-h: 48px;
   }
 }
 
