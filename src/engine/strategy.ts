@@ -385,7 +385,36 @@ export function correctPlay(
   rc?: number,
 ): Advice {
   const deviations = indexSetFor(rules);
-  return play(cards, dealerUp, tc, ctx, deviations, getChart(rules), rc);
+  const chart = getChart(rules);
+  const advice = play(cards, dealerUp, tc, ctx, deviations, chart, rc);
+  if (rc === undefined) return advice;
+  // R2 (review of C11): where the running count's sign decided a zero-count
+  // cell against the rounded true count, the TC label ("stand at TC >= 0")
+  // would contradict the TC 0 shown beside it. Say the rule as graded.
+  const byTc = play(cards, dealerUp, tc, ctx, deviations, chart, undefined);
+  if (byTc.action === advice.action) return advice;
+  const dev = deviations.find((d) => d.rcSign && (d.id === advice.deviationId || d.id === byTc.deviationId));
+  if (!dev) return advice;
+  const atZero = play(cards, dealerUp, tc, ctx, deviations, chart, 0).action;
+  const atNeg = play(cards, dealerUp, tc, ctx, deviations, chart, -1).action;
+  return { ...advice, reason: rcRuleText(dev, atZero, atNeg) };
+}
+
+/**
+ * R2: a zero-count cell's rule in running-count words, as Play grades it
+ * when the running count is known: "16 v 10: stand when the running count is
+ * 0 or more; hit at any negative running count" (the BJA chart's `0-`).
+ */
+export function rcRuleText(dev: Deviation, atZeroOrMore: Action, atNegative: Action): string {
+  const hand = dev.label.split(':')[0]!;
+  return `${hand}: ${atZeroOrMore} when the running count is 0 or more; ${atNegative}${RC_RULE_TAIL}`;
+}
+
+const RC_RULE_TAIL = ' at any negative running count';
+
+/** R2: is this reason a running-count rule (rcRuleText)? */
+export function isRcRuleText(reason: string): boolean {
+  return reason.endsWith(RC_RULE_TAIL);
 }
 
 /** Same algorithm with deviations OFF (used by the grader). */

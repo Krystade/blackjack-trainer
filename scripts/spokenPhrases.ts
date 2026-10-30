@@ -28,7 +28,6 @@ import { ROUTE_LINES } from '../src/diag/routeKit';
 import { DRIVE_LABELS } from '../src/ui/driveLaunch';
 import { correctPlay } from '../src/engine/strategy';
 import { DEFAULT_RULES } from '../src/engine/ruleset';
-import type { RuleSet } from '../src/engine/ruleset';
 import type { Card, Rank, Suit } from '../src/engine/cards';
 import { indexSetFor } from '../src/engine/deviations';
 import type { Action } from '../src/engine/deviations';
@@ -91,13 +90,17 @@ const TC_MIN = -20;
 const TC_MAX = 20;
 
 /** Ruleset variants that change what the engine says, not merely what it does. */
-function ruleVariants(): RuleSet[] {
+function ruleVariants(): StrategyRules[] {
   return [
     DEFAULT_RULES,
     { ...DEFAULT_RULES, s17: true },
     { ...DEFAULT_RULES, das: false },
     { ...DEFAULT_RULES, ls: false },
     { ...DEFAULT_RULES, decks: 2 },
+    // R2: the opt-in index sets (Fab 4 surrender, BJA H17 extras), so their
+    // labels and their running-count rules are recorded too.
+    { ...DEFAULT_RULES, surrenderIndices: true, bjaExtras: true },
+    { ...DEFAULT_RULES, s17: true, surrenderIndices: true },
   ];
 }
 
@@ -143,6 +146,18 @@ export function reachableReasons(): Set<string> {
             const advice = correctPlay(hand, up, tc, ctx, rules) as { reason: string } | undefined;
             if (advice) reasons.add(advice.reason);
           }
+        }
+      }
+    }
+
+    // R2: at the table the running count rides along, and a zero-count cell
+    // it decides against the rounded TC says its rule in running-count words.
+    // TC 0 with a negative running count is where the two readings differ.
+    for (const hand of hands) {
+      for (const up of UPS) {
+        for (const ctx of contexts) {
+          const advice = correctPlay(hand, up, 0, ctx, rules, -1) as { reason: string } | undefined;
+          if (advice) reasons.add(advice.reason);
         }
       }
     }

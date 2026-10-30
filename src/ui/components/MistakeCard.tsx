@@ -3,7 +3,7 @@ import { signed } from '../../drills/signed';
 import type { Action } from '../../engine/deviations';
 import type { MistakeClass } from '../../engine/grade';
 import { plainCellLabel } from '../../drills/cellLabel';
-import { CLASS_COPY } from '../mistakeCopy';
+import { classCopyFor } from '../mistakeCopy';
 import './mistakeCell.css';
 
 /**
@@ -97,7 +97,7 @@ export function MistakeCard({
   const isTable = variant === 'table';
   const expectedLetter = letterFor(expected);
   const copy =
-    classification && classification !== 'correct' ? CLASS_COPY[classification] : undefined;
+    classification && classification !== 'correct' ? classCopyFor(classification, reason) : undefined;
   const timedOut = classification === 'timeout';
 
   // The drills populate `hand`, `reason` and the cell-id footnote from the

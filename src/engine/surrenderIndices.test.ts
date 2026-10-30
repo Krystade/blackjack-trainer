@@ -320,3 +320,41 @@ describe('zero-count cells read the running count when it is known (C11)', () =>
     expect(ids).toEqual(['12v4', '16v10', 'A8v6', 'sur15v10']);
   });
 });
+
+// R2 (review of C11): when the running count's sign decides a zero-count
+// cell against what the rounded true count says, the reason says so -- in
+// running-count words -- instead of a TC rule that contradicts the TC shown.
+describe('a zero-count cell decided by the running count says so (R2)', () => {
+  const C = (rank: Rank): Card => ({ rank, suit: 's' });
+  const RC_16 = '16 v 10: stand when the running count is 0 or more; hit at any negative running count';
+  const RC_12 = '12 v 4: stand when the running count is 0 or more; hit at any negative running count';
+  const RC_15 = '15 v 10: surrender when the running count is 0 or more; hit at any negative running count';
+  const RC_A8 = 'A,8 v 6: double when the running count is 0 or more; stand at any negative running count';
+
+  it('16 v 10 at TC 0 with RC -3 is a hit, and the reason names the running count', () => {
+    const a = correctPlay(hard(16), '10', 0, CANNOT, H17_OFF, -3);
+    expect(a.action).toBe('hit');
+    expect(a.reason).toBe(RC_16);
+  });
+
+  it('12 v 4 at TC 0 with RC -3 is a hit under the index, said by the running count', () => {
+    const a = correctPlay([C('10'), C('2')], '4', 0, CANNOT, H17_OFF, -3);
+    expect(a).toMatchObject({ action: 'hit', deviationId: '12v4', reason: RC_12 });
+  });
+
+  it('15 v 10 surrender and A,8 v 6 double too', () => {
+    expect(correctPlay(hard(15), '10', 0, CAN, H17, -2)).toMatchObject({ action: 'hit', reason: RC_15 });
+    const soft19: Card[] = [C('A'), C('8')];
+    const a8 = correctPlay(soft19, '6', 0, { canDouble: true, canSplit: false, canSurrender: false }, { ...H17, bjaExtras: true }, -1);
+    expect(a8).toMatchObject({ action: 'stand', reason: RC_A8 });
+  });
+
+  it('where the running count agrees with the true count the reason is the index label, as before', () => {
+    // RC +2 at TC 0: both readings say stand.
+    expect(correctPlay(hard(16), '10', 0, CANNOT, H17_OFF, 2).reason).toBe('16 v 10: stand at TC ≥ 0');
+    // Floor: RC -3 floors to TC -1, which already reads as below.
+    expect(correctPlay([C('10'), C('2')], '4', -1, CANNOT, H17_OFF, -3).reason).toBe('12 v 4: stand at TC ≥ 0; hit below');
+    // No running count known (the drills): the TC rule.
+    expect(correctPlay(hard(16), '10', 0, CANNOT, H17_OFF).reason).toBe('16 v 10: stand at TC ≥ 0');
+  });
+});

@@ -27,7 +27,10 @@ test('the rounding control is on the profile editor, defaults to floor, and save
   // the field entirely.
   await expect(row.locator('.segmented-btn-active')).toHaveText('Floor');
 
+  // R2: floor says nothing more; truncate says Play reads the zero-count cells by the running count.
+  await expect(page.getByTestId('rc-sign-note')).toHaveCount(0);
   await row.getByRole('button', { name: 'Truncate', exact: true }).click();
+  await expect(page.getByTestId('rc-sign-note')).toContainText('stand on 16 v 10 and 12 v 4 when the running count is 0 or more');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.locator('.settings-heading')).toHaveText('Profiles');
 

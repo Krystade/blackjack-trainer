@@ -2490,6 +2490,18 @@ describe('Wave A engine fixes', () => {
     }
   });
 
+  // R2 (review of C11): the miss names the rule it was graded by.
+  it('R2: the 12 v 4 miss under truncate says the running count decided it', () => {
+    const game = Game.withRiggedShoe(cfg({ tcRounding: 'truncate' }), rig('10', '4', '2', '10', '5', '5', '5', '5'));
+    game.startRound();
+    if (game.phase === 'insurance') game.insuranceDecision(false);
+    game.runningCount = -3;
+    game.act('stand');
+    const ev = game.events.find((e) => e.kind === 'action')!;
+    expect(ev.tc).toBe(0);
+    expect(ev.reason).toBe('12 v 4: stand when the running count is 0 or more; hit at any negative running count');
+  });
+
   it('C11: floor grading of the zero cells is unchanged', () => {
     const game = Game.withRiggedShoe(cfg({ tcRounding: 'floor' }), rig('10', '4', '2', '10', '5', '5', '5', '5'));
     game.startRound();

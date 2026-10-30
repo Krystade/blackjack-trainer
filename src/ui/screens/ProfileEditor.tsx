@@ -549,6 +549,15 @@ function ProfileEditForm({
             &minus;1, which matters for indices like 12 v 4 and 13 v 2. Match your book, or the
             trainer will mark those deviations wrong.
           </p>
+          {/* R2 (review of C11): Play reads the zero-count cells by the running
+              count's sign; under floor that is the same rule, so it is said only here. */}
+          {(draft.tcRounding ?? 'floor') !== 'floor' && (
+            <p className="stats-detail" data-testid="rc-sign-note">
+              At the table, the zero-count indices go by the running count, not the rounded true count: stand on 16 v 10 and
+              12 v 4 when the running count is 0 or more, hit at any negative running count (the BJA chart&rsquo;s
+              &ldquo;0&minus;&rdquo;; 15 v 10 surrender and A,8 v 6 too, where on).
+            </p>
+          )}
 
           {/* RV3 (docs/BACKLOG.md). Sits beside true-count rounding because it is
               the same kind of setting: a property of the system you play, not of
