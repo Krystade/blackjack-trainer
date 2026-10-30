@@ -48,6 +48,8 @@ export const ALLOWED: readonly Allowed[] = [
   { file: 'ui/app.css', selector: '.zone-pad-half', value: 'clamp(1.8rem, 9vmin, 2.6rem)', reason: 'Fluid: eyes-free pad labels scale with the pad' },
   { file: 'ui/components/cardSize.css', selector: ':is(.table-screen .dealer-area, .table-screen .hands-row, .count-flash-cards, .pair-cancel-cards) .card:not(.card-compact) .card-rank', value: 'calc(var(--card-w) * 0.34)', reason: "A card's rank scales with the card" },
   { file: 'ui/components/cardSize.css', selector: ':is(.table-screen .dealer-area, .table-screen .hands-row, .count-flash-cards, .pair-cancel-cards) .card:not(.card-compact) .card-suit', value: 'calc(var(--card-w) * 0.38)', reason: "A card's suit scales with the card" },
+  { file: 'ui/screens/tableRewind.css', selector: '.rewind-replay .rewind-card .card-rank', value: 'calc(var(--card-w) * 0.34)', reason: "Wave X Rewind: the replayed card's rank scales with the card, as cardSize.css's do" },
+  { file: 'ui/screens/tableRewind.css', selector: '.rewind-replay .rewind-card .card-suit', value: 'calc(var(--card-w) * 0.38)', reason: "Wave X Rewind: the replayed card's suit scales with the card, as cardSize.css's do" },
 
   // A floor a spec asserts: the nearest step (--fs-xs, 11.8px) is under it.
   { file: 'ui/screens/tableTopbar.css', selector: '.table-screen > .topbar .topbar-profile-name', value: '0.75rem', reason: 'F28: at least 12px to read in sunlight (e2e/topbar-profile-name.spec.ts)' },
@@ -63,6 +65,7 @@ export const ALLOWED: readonly Allowed[] = [
   { file: 'ui/app.css', selector: '.count-voice-value', value: '2.2rem', reason: 'Display numeral (spoken count)' },
   { file: 'ui/app.css', selector: '.testkit-word', value: '3rem', reason: 'Display word (Test kit target)' },
   { file: 'ui/screens/drills/betSizing.css', selector: '.bet-rc', value: '40px', reason: 'Display numeral (bet sizing running count)' },
+  { file: 'ui/screens/drills/countLeadIn.css', selector: '.count-leadin-num', value: '5.5rem', reason: "Display numeral (the count drill's 3-2-1 lead-in, read at arm's length)" },
 ];
 
 export interface Decl {
