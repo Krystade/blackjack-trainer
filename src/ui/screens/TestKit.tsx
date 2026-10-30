@@ -154,6 +154,7 @@ export function TestKit({ onNavigate }: { onNavigate: (s: Screen) => void }) {
       deviceId: want,
       label: held.label,
       trackSampleRate: held.trackSampleRate,
+      contextState: held.contextState(),
       session: readAudioSessionType(),
     });
     return held;

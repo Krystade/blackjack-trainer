@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { openMic, settleElement, type HeldMic, type SettleableMedia } from './testKitIO';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { openMic, openChosenInput, settleElement, type HeldMic, type SettleableMedia } from './testKitIO';
 import { readDiagnosticLog, clearDiagnosticLog } from './diagnosticLog';
 
 /**
@@ -274,5 +274,46 @@ describe('settleElement (A20)', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('openChosenInput (A23)', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  function stub(startState: 'running' | 'suspended', resumeWorks: boolean) {
+    const stopped: string[] = [];
+    const track = { label: 'mic', stop: () => stopped.push('t'), getSettings: () => ({ sampleRate: 48000 }) };
+    const stream = { getTracks: () => [track], getAudioTracks: () => [track] };
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: async () => stream } });
+    class Ctx {
+      state: string = startState;
+      async resume() {
+        if (resumeWorks) this.state = 'running';
+      }
+      async close() {
+        this.state = 'closed';
+      }
+      createAnalyser() {
+        return { fftSize: 0, getFloatTimeDomainData: () => {} };
+      }
+      createMediaStreamSource() {
+        return { connect: () => {} };
+      }
+    }
+    vi.stubGlobal('window', { AudioContext: Ctx });
+    return stopped;
+  }
+
+  it('fails as context-suspended rather than holding a context that reads silence', async () => {
+    const stopped = stub('suspended', false);
+    expect(await openChosenInput('default')).toEqual({ error: 'context-suspended' });
+    expect(stopped, 'the stream was released').toEqual(['t']);
+  });
+
+  it('opens and reports the running state when resume works', async () => {
+    stub('suspended', true);
+    const held = await openChosenInput('default');
+    expect('error' in held).toBe(false);
+    if (!('error' in held)) expect(held.contextState()).toBe('running');
   });
 });

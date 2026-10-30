@@ -534,6 +534,8 @@ export async function listInputsAfterGrant(): Promise<{ devices: InputDevice[]; 
 export interface HeldInput {
   label: string;
   trackSampleRate: number | null;
+  /** A23: the AudioContext's state now, so a suspended instrument is visible in the log. */
+  contextState(): string;
   /** RMS and peak of the input over the next `ms`, not played anywhere. */
   measure(ms: number): Promise<{ rms: number; peak: number; frames: number }>;
   close(): Promise<void>;
@@ -564,6 +566,13 @@ export async function openChosenInput(deviceId: string): Promise<HeldInput | { e
       (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     ctx = new Ctor();
     if (ctx.state !== 'running') await ctx.resume().catch(() => {});
+    // A23: a context left suspended reads rms 0, which would be reported as
+    // a silent mic. Say it was the instrument instead.
+    if (ctx.state !== 'running') {
+      stream.getTracks().forEach((t) => t.stop());
+      await ctx.close().catch(() => {});
+      return { error: 'context-suspended' };
+    }
     const analyser = ctx.createAnalyser();
     analyser.fftSize = 2048;
     ctx.createMediaStreamSource(stream).connect(analyser);
@@ -575,7 +584,10 @@ export async function openChosenInput(deviceId: string): Promise<HeldInput | { e
     const input: HeldInput = {
       label: track?.label ?? '',
       trackSampleRate: typeof sr === 'number' ? sr : null,
+      contextState: () => c.state,
       measure: async (ms) => {
+        // A23: measure runs from a tap, so a resume here is inside a gesture.
+        if (c.state !== 'running') await c.resume().catch(() => {});
         let sumSq = 0;
         let n = 0;
         let peak = 0;
