@@ -51,7 +51,11 @@ describe('figureLine: a continuous shuffler', () => {
 });
 
 describe('figureLine: a counted game', () => {
-  const counted = (over: Partial<GameFigures>) => figures({ methods: [method], best: { ...method, hours: { evHourCi: 0 } } as unknown as MethodFigures, n0Hours: 120, ...over });
+  // The best method's hours carry the row's figure (C25 reads them for the EV target).
+  const counted = (over: Partial<GameFigures>) => {
+    const f = figures({ methods: [method], n0Hours: 120, ...over });
+    return { ...f, best: { ...method, hours: { evHour: f.evHour, evHourCi: f.evHourCi } } as unknown as MethodFigures };
+  };
 
   it('carries the interval always, marks an estimate, and names no best method on one', () => {
     const r = row(counted({ evHour: 260, evHourCi: 300, edge: -0.0133, edgeCi: 0.02 }), { kind: 'current', result: result('partial', 10, 60_000) });
@@ -63,11 +67,20 @@ describe('figureLine: a counted game', () => {
   });
 
   it('a firm win: the figure with its interval, the method named', () => {
-    const line = figureLine(row(counted({ evHour: 41, evHourCi: 6 }), { kind: 'current', result: result('done') }));
-    expect(line.text).toBe('+$41 ±$6/h');
+    const line = figureLine(row(counted({ evHour: 41, evHourCi: 4 }), { kind: 'current', result: result('done') }));
+    expect(line.text).toBe('+$41 ±$4/h');
     expect(line.sign).toBe(1);
     expect(line.badges).toEqual([]);
     expect(line.extras).toEqual(['N0 120 h', 'Play all']);
+  });
+
+  it('C25: a done run that misses the EV target at the exit minutes now in force is marked partial', () => {
+    // +$41 ±$6 is ±15%, wider than the ±10% target.
+    const wide = figureLine(row(counted({ evHour: 41, evHourCi: 6, exitMinutes: 15 }), { kind: 'current', result: result('done') }));
+    expect(wide.badges).toEqual(['partial']);
+    expect(wide.edge).toBe('edge 0.50%');
+    const firm = figureLine(row(counted({ evHour: 41, evHourCi: 4 }), { kind: 'current', result: result('done') }));
+    expect(firm.badges).toEqual([]);
   });
 
   it('a stale result is marked Updating, whatever its status', () => {

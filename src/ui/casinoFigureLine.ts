@@ -1,6 +1,6 @@
 import { methodBadge } from '../engine/betMethods';
 import { workFor } from './casinoAutoSim';
-import { rankedEvHour, verdictOf, type RankRow } from './casinoRanking';
+import { evTargetMet, rankedEvHour, verdictOf, type RankRow } from './casinoRanking';
 import { ciText, edgeText, evCiText, n0Text, pctText } from './casinoStatsText';
 
 /**
@@ -60,6 +60,11 @@ export function figureLine(row: RankRow, failed?: string): FigureLine {
   if (row.state.kind === 'stale') badges.push('updating');
   else if (estimate) badges.push('estimate');
   else if (!done) badges.push('partial');
+  // C25 (audit 2026-10-29): a run finished at one exit-minutes setting can miss
+  // the EV target at a longer one (the key ignores exit minutes); the stats
+  // card says so, and the row now marks it too. The edge keeps no interval:
+  // its own target does not move with exit minutes.
+  else if (!evTargetMet(f)) badges.push('partial');
 
   // With a side bet the interval is the seated method's (sideCombinedText): the side figure carries none.
   const ci = row.withSide?.method ? row.withSide.method.hours.evHourCi : f.evHourCi;
