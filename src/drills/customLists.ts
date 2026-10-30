@@ -1,5 +1,6 @@
 import type { CustomSelection, SelectionTier, Settings } from '../store/types';
 import { getStorage } from '../store/persist';
+import { quarantineRaw } from '../store/quarantine';
 import { reportStorageFailure, shrinkDiagnostics } from '../store/storageHealth';
 import { subscribeToExternalWrites } from '../store/crossTab';
 import { defaultSelection, mixShare, TIERS } from './cellSelection';
@@ -229,12 +230,23 @@ type Listener = () => void;
 const listeners = new Set<Listener>();
 
 export function loadCustomLists(): CustomListsDoc {
+  let raw: string | null;
   try {
-    const raw = getStorage().getItem(CUSTOM_LISTS_KEY);
-    return raw === null ? emptyLists() : normLists(JSON.parse(raw));
+    raw = getStorage().getItem(CUSTOM_LISTS_KEY);
   } catch {
     return emptyLists();
   }
+  if (raw === null) return emptyLists();
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    quarantineRaw(getStorage(), CUSTOM_LISTS_KEY, raw, 'unparseable');
+    return emptyLists();
+  }
+  // B5: a shape this build cannot read is kept aside before a save replaces it.
+  if (!isObj(parsed) || !Array.isArray(parsed.lists)) quarantineRaw(getStorage(), CUSTOM_LISTS_KEY, raw, 'unknown-shape');
+  return normLists(parsed);
 }
 
 /** Write the lists; false (and the shell's storage toast) when the write could not land. */

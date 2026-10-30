@@ -1,0 +1,12 @@
+/* B13: unreadable saved data was set aside. A notice, not an alarm: nothing
+ * is lost, but it has to be seen before anyone resets. */
+.stats-quarantine-note {
+  margin: 0.25rem 0 0.75rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  line-height: 1.45;
+}

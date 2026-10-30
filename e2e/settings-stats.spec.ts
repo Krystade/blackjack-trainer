@@ -702,3 +702,24 @@ test('the range picker reaches the sections that were reading lifetime totals', 
   await page.getByRole('button', { name: 'All time', exact: true }).click();
   await expect(section(page, 'True count drill')).toContainText('1/2');
 });
+
+test('unreadable saved stats are set aside with a notice, not silently', async ({ page }) => {
+  // B13: the quarantine used to happen with nothing on screen.
+  await page.addInitScript(() => {
+    if (!sessionStorage.getItem('seeded')) {
+      localStorage.setItem('bjtrainer.stats.v1', '{"version":1,"sessions":[trunc');
+      sessionStorage.setItem('seeded', '1');
+    }
+  });
+  await page.goto('/?e2e=1');
+  await page.locator('.home-stats-link').click();
+  await expect(page.getByTestId('stats-quarantine-note')).toContainText('Saved stats could not be read on this phone');
+  expect(await page.evaluate(() => localStorage.getItem('bjtrainer.stats.v1.corrupt'))).toBe('{"version":1,"sessions":[trunc');
+});
+
+test('no notice when nothing was set aside', async ({ page }) => {
+  await page.goto('/?e2e=1');
+  await page.locator('.home-stats-link').click();
+  await expect(page.locator('.stats-tabs')).toBeVisible();
+  await expect(page.getByTestId('stats-quarantine-note')).toHaveCount(0);
+});

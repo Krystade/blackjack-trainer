@@ -4,6 +4,7 @@ import { DEFAULT_SPREAD, DEFAULT_SEATS } from '../engine/game';
 import type { SpreadRow, SeatConfig } from '../engine/game';
 import type { Profile } from './types';
 import { diag } from '../diag/diagnosticLog';
+import { quarantineRaw } from './quarantine';
 import { diffSettings, formatChanges } from '../diag/settingsDiff';
 
 // Storage injection for testing (guards missing localStorage in node).
@@ -243,6 +244,8 @@ export function loadProfiles(): Profile[] {
        * Whatever is still readable is kept, in its original order. The
        * reset below now runs only when NOTHING is readable.
        */
+      // B5: whatever is not kept below is kept aside first, whole.
+      quarantineRaw(store, PROFILES_KEY, json, 'unreadable');
       if (Array.isArray(parsed)) {
         const survivors = parsed.filter(isValidProfile);
         if (survivors.length > 0) {
@@ -254,7 +257,8 @@ export function loadProfiles(): Profile[] {
         }
       }
     } catch {
-      // corrupt JSON: fall through to the plain-default reset below
+      // corrupt JSON: kept aside, then the plain-default reset below
+      quarantineRaw(store, PROFILES_KEY, json, 'unparseable');
     }
 
     const fresh = makeDefaultProfile();

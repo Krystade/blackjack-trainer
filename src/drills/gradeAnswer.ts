@@ -34,6 +34,7 @@ import { trackedElapsedMs } from './idleAnswer';
 import type { AnswerChannel } from './spacedRepetition';
 import type { SrCard, SrDeck } from './spacedRepetition';
 import { loadStats, saveStats } from '../store/persist';
+import { quarantineRaw } from '../store/quarantine';
 import type { Stats } from '../store/types';
 import { applyEvents, tallyCellIdFor } from '../store/stats';
 import { notePracticeDay } from '../store/practiceDays';
@@ -59,8 +60,16 @@ function loadSrDeck(key: string): SrDeck {
     if (typeof window === 'undefined' || !window.localStorage) return {};
     const raw = window.localStorage.getItem(key);
     if (!raw) return {};
-    const parsed = JSON.parse(raw) as unknown;
-    if (typeof parsed === 'object' && parsed !== null) return parsed as SrDeck;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw) as unknown;
+    } catch {
+      parsed = undefined;
+    }
+    if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) return parsed as SrDeck;
+    // B5: the review schedule encodes elapsed real time no re-drilling
+    // rebuilds; bytes that cannot be read are kept aside before a save.
+    quarantineRaw(window.localStorage, key, raw, 'unreadable');
     return {};
   } catch {
     return {};

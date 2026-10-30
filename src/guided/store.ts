@@ -1,4 +1,5 @@
 import { getStorage } from '../store/persist';
+import { quarantineRaw } from '../store/quarantine';
 import { SEGMENTS, PRESETS, type GuidedPreset, type PlannedSegment, type SegmentId } from './plan';
 import { countsAsCompleted, toRecord, type GuidedRecord, type GuidedSession } from './session';
 
@@ -131,11 +132,23 @@ function storage(): Pick<Storage, 'getItem' | 'setItem'> | null {
 export function loadGuided(): GuidedStore {
   const raw = storage()?.getItem(GUIDED_KEY);
   if (!raw) return emptyGuidedStore();
+  let parsed: unknown;
   try {
-    return normalizeGuidedStore(JSON.parse(raw));
+    parsed = JSON.parse(raw);
   } catch {
+    keepAside(raw, 'unparseable');
     return emptyGuidedStore();
   }
+  // B5: unknown version or shape: kept aside before the next save replaces it.
+  if (!parsed || typeof parsed !== 'object' || (parsed as { version?: unknown }).version !== 1) {
+    keepAside(raw, 'unknown-version');
+  }
+  return normalizeGuidedStore(parsed);
+}
+
+function keepAside(raw: string, reason: string): void {
+  const s = storage();
+  if (s) quarantineRaw(s, GUIDED_KEY, raw, reason);
 }
 
 function save(store: GuidedStore): void {

@@ -1,3 +1,4 @@
+import { quarantineRaw } from '../store/quarantine';
 import type { Stats } from '../store/types';
 import { getStorage, loadSettings, loadStats, setStatsSaveObserver } from '../store/persist';
 import { loadCasinoLog } from '../store/casinoLog';
@@ -79,11 +80,24 @@ function storage(): Pick<Storage, 'getItem' | 'setItem'> | null {
 export function loadProgress(): ProgressState {
   const raw = storage()?.getItem(PROGRESS_KEY);
   if (!raw) return emptyProgress();
+  let parsed: unknown;
   try {
-    return normalizeProgress(JSON.parse(raw));
+    parsed = JSON.parse(raw);
   } catch {
+    keepAside(raw, 'unparseable');
     return emptyProgress();
   }
+  // B5: a version this build does not know (a newer build, then a rollback)
+  // or the wrong shape is kept aside before the next answer overwrites it.
+  if (!parsed || typeof parsed !== 'object' || (parsed as { version?: unknown }).version !== 1) {
+    keepAside(raw, 'unknown-version');
+  }
+  return normalizeProgress(parsed);
+}
+
+function keepAside(raw: string, reason: string): void {
+  const s = storage();
+  if (s) quarantineRaw(s, PROGRESS_KEY, raw, reason);
 }
 
 function saveProgress(p: ProgressState): void {

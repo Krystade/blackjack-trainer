@@ -3,6 +3,7 @@ import { capHistories } from './retention';
 import { diag } from '../diag/diagnosticLog';
 import { diffSettings, formatChanges } from '../diag/settingsDiff';
 import { DIAGNOSTICS_KEY, reportStorageFailure, shrinkDiagnostics } from './storageHealth';
+import { graveKeys, quarantineRaw, quarantinedKeys } from './quarantine';
 
 // Storage injection for testing (guards missing localStorage in node)
 let storage: Pick<Storage, 'getItem' | 'setItem'> | null = null;
@@ -264,29 +265,13 @@ function mergeStats(parsed: Record<string, unknown>): Stats {
 }
 
 /**
- * Keep the bytes we could not read, once, before anything overwrites them.
- *
- * "Corrupt" and "absent" returned the same value from every reader here, and
- * every caller is read-modify-write -- `loadStats()` then `saveStats({...})`
- * on every graded answer. So a blob truncated by an interrupted write (or a
- * version this build does not know) read as empty, and the next answer
- * committed that emptiness over the only copy of months of history.
- *
- * The quarantine is written ONCE and never overwritten: the first failure is
- * the one closest to the original, and a second pass must not replace it
- * with the damage done since. It costs one extra key's worth of space in the
- * one case where the ordinary key is about to be thrown away anyway.
+ * Keep the bytes we could not read before anything overwrites them: see
+ * store/quarantine.ts (two slots, logged). Every reader here is
+ * read-modify-write, so "unreadable" answered as "empty" would otherwise be
+ * committed over the only copy by the next save.
  */
 function quarantine(key: string, raw: string): void {
-  const graveKey = `${key}.corrupt`;
-  try {
-    const store = getStorage();
-    if (store.getItem(graveKey) !== null) return;
-    store.setItem(graveKey, raw);
-  } catch {
-    // A full quota is exactly when this matters and exactly when it cannot
-    // be done. Nothing else in the load path may fail because of it.
-  }
+  quarantineRaw(getStorage(), key, raw, 'unreadable');
 }
 
 /**
@@ -537,9 +522,10 @@ export function exportAll(): string {
   // user got a file that looked complete, believed they were safe, and
   // reset. Whatever could not be read rides along verbatim so a human (or a
   // later build) can still get at it.
-  for (const key of [SETTINGS_KEY, 'bjtrainer.stats.v1']) {
-    const grave = store.getItem(`${key}.corrupt`);
-    if (grave !== null) blob[`${key}.corrupt`] = grave;
+  // B5/B13: every backed-up store keeps its unreadable bytes now, in two slots.
+  for (const grave of allGraveKeys()) {
+    const raw = store.getItem(grave);
+    if (raw !== null) blob[grave] = raw;
   }
 
   for (const { key, field } of EXTRA_KEYS) {
@@ -671,9 +657,28 @@ function validateBackup(json: string): { ok: true; obj: Record<string, unknown> 
 export type BackupSnapshot = Record<string, string | null>;
 
 function importTouchedKeys(): string[] {
-  const keys = [...BACKED_UP_KEYS];
-  for (const key of [SETTINGS_KEY, 'bjtrainer.stats.v1']) keys.push(`${key}.corrupt`);
-  return keys;
+  return [...BACKED_UP_KEYS, ...allGraveKeys()];
+}
+
+/** Both quarantine slots of every key a backup carries. */
+function allGraveKeys(): string[] {
+  return BACKED_UP_KEYS.flatMap((key) => graveKeys(key));
+}
+
+/**
+ * B13: the backed-up keys that have unreadable bytes set aside, for the notice
+ * on Stats -- a quarantine used to happen with nothing on screen, so Jack saw
+ * empty Stats and might reset or keep drilling over it.
+ */
+export function quarantinedBackupKeys(): string[] {
+  return quarantinedKeys(getStorage(), BACKED_UP_KEYS);
+}
+
+/** The same, in words ("stats", "both review schedules"), deduplicated. */
+export function quarantinedBackupLabels(): string[] {
+  const label = (key: string): string =>
+    key === SETTINGS_KEY ? 'settings' : key === 'bjtrainer.stats.v1' ? 'stats' : (EXTRA_KEYS.find((e) => e.key === key)?.label ?? key);
+  return [...new Set(quarantinedBackupKeys().map(label))];
 }
 
 export function snapshotBackedUp(): BackupSnapshot {
@@ -735,9 +740,9 @@ export function importAll(json: string): { ok: boolean; error?: string } {
     // backup taken while something was unreadable still holds the only copy
     // of it; dropping them here would mean the round trip -- the exact
     // sequence the crash screen tells people to perform -- destroyed it.
-    for (const key of [SETTINGS_KEY, 'bjtrainer.stats.v1']) {
-      const grave = extras[`${key}.corrupt`];
-      if (typeof grave === 'string') pending.push({ key: `${key}.corrupt`, value: grave });
+    for (const grave of allGraveKeys()) {
+      const value = extras[grave];
+      if (typeof value === 'string') pending.push({ key: grave, value });
     }
 
     const store = getStorage();
