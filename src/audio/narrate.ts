@@ -365,6 +365,15 @@ export function narrateCountAnswer(rc: number): string {
   return `The count is ${narrateTc(rc)}.`;
 }
 
+/**
+ * Wave X fix round 1: a Rewind's first line, the count it starts from -- the
+ * one last answered right. The sentence the true-count drill already says
+ * (narrateTcQuestion), so every value from -20 to +20 is recorded.
+ */
+export function narrateRewindFrom(rc: number): string {
+  return `Running count ${narrateTc(rc)}.`;
+}
+
 /* ---------------------------------------------------------------- */
 /* DRILL AND TABLE LINES that used to be composed inline in views.   */
 /* Moved here so scripts/spokenPhrases.ts and the clip-coverage      */

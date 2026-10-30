@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Game, handPlayNumber } from '../engine/game';
 import type { Action } from '../engine/deviations';
 import type { Card, Rank } from '../engine/cards';
+import { hiLoTag } from '../engine/count';
 import type { Category, GradedEvent, MistakeClass } from '../engine/grade';
 import type { Profile, Settings } from '../store/types';
 import { loadStats, saveStats } from '../store/persist';
@@ -95,6 +96,15 @@ export interface CountCheckVerdict {
   /** Wave X (item 2): after a wrong running count, the cards counted since the
    * count was last known right, in counting order -- what a Rewind replays. */
   rewind?: Card[];
+  /** Fix round 1: the running count as it was last known right (0 at the
+   * shoe's start) -- where a Rewind starts from. */
+  rewindFrom?: number;
+  /** Fix round 1: this answer HELD the deal it was asked on (a wrong count,
+   * tapping): the deal waits for `releaseHeldDeal`. Stays set once released. */
+  held?: boolean;
+  /** Fix round 1: the true counts are kept back -- not shown, not said --
+   * until Show count, a recount, or the held deal. Cleared by the screen. */
+  withheld?: boolean;
 }
 
 export interface SessionReport {
@@ -849,30 +859,12 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
     [poseCountCheckBeforeDeal],
   );
 
-  /** Grade the count check. `endNow` is true when the answer released an End
-   * that was waiting on it (see `requestEnd`): the caller ends the session.
-   * `check` is the verdict, for the screen to show -- the spoken answer alone
-   * left a muted player never knowing what the count was. */
-  const submitCount = useCallback(
-    (rc: number | null, tcGuess?: number): { endNow: boolean; check: CountCheckVerdict } => {
-      // Wave X (item 2): the cards behind this count, before a right answer clears them.
-      const trail = [...game.countTrail];
-      const result = game.submitCountCheck(rc, tcGuess);
-      const roundAtCheck = game.roundNo;
-      if (result.rcCorrect !== undefined) {
-        audio.say(narrateCountAnswer(result.actualRc));
-        audio.ding(result.rcCorrect ? 'good' : 'bad');
-      } else if (result.actualTc !== undefined) {
-        // #3: a true-count-only check answers with the true count.
-        audio.say(narrateCountAnswer(result.actualTc));
-        audio.ding(result.tcCorrect ? 'good' : 'bad');
-      }
-      // F1: the answer is graded now; commit it before the next deal starts
-      // a round whose events wait for its settle.
-      persistSession(false);
-      // #36: the deal that was asked for happens right after the answer.
-      const pending = pendingDealRef.current;
-      pendingDealRef.current = null;
+  /**
+   * #36: the deal that was asked for, run once its count check is answered
+   * (or, fix round 1, once a held answer lets it go).
+   */
+  const runPendingDeal = useCallback(
+    (pending: PendingDeal | null): void => {
       const next = pending?.kind === 'deal' || pending?.kind === 'sitOut';
       // Wave A: the round just counted reached the cut card. Its shuffle was
       // held back so as not to tell the player the count was 0 before the
@@ -891,12 +883,61 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
         if (pending?.kind === 'deal') runDeal(pending.bets);
         else if (pending?.kind === 'sitOut') runSitOut();
       }
-      bump();
-      const rewind = result.rcCorrect === false && trail.length > 0 ? { rewind: trail } : {};
-      return { endNow: pending?.kind === 'end', check: { ...result, rcGuess: rc, tcGuess, round: roundAtCheck + 1, ...rewind } };
     },
-    [game, bump, audio, runDeal, runSitOut, persistSession],
+    [game, audio, runDeal, runSitOut],
   );
+
+  /** Grade the count check. `endNow` is true when the answer released an End
+   * that was waiting on it (see `requestEnd`): the caller ends the session.
+   * `check` is the verdict, for the screen to show -- the spoken answer alone
+   * left a muted player never knowing what the count was. */
+  const submitCount = useCallback(
+    (rc: number | null, tcGuess?: number, opts?: { withhold?: boolean }): { endNow: boolean; check: CountCheckVerdict } => {
+      // Wave X (item 2): the cards behind this count, before a right answer clears them.
+      const trail = [...game.countTrail];
+      const result = game.submitCountCheck(rc, tcGuess);
+      const roundAtCheck = game.roundNo;
+      const pending = pendingDealRef.current;
+      const rewindable = result.rcCorrect === false && trail.length > 0;
+      // Fix round 1 (review): "a recount is not a recount" when the answer was
+      // just shown and said. Tapping, a wrong running count with cards to
+      // recount keeps the answer back and holds the deal it was asked on, so a
+      // Rewind runs between rounds on cards whose count is still unknown.
+      // Eyes-free (opts.withhold false) is as before: said, and dealt on.
+      const hold = opts?.withhold === true && rewindable && (pending?.kind === 'deal' || pending?.kind === 'sitOut');
+      if (result.rcCorrect !== undefined) {
+        if (!hold) audio.say(narrateCountAnswer(result.actualRc));
+        audio.ding(result.rcCorrect ? 'good' : 'bad');
+      } else if (result.actualTc !== undefined) {
+        // #3: a true-count-only check answers with the true count.
+        audio.say(narrateCountAnswer(result.actualTc));
+        audio.ding(result.tcCorrect ? 'good' : 'bad');
+      }
+      // F1: the answer is graded now; commit it before the next deal starts
+      // a round whose events wait for its settle.
+      persistSession(false);
+      if (!hold) {
+        pendingDealRef.current = null;
+        runPendingDeal(pending);
+      }
+      bump();
+      const rewind = rewindable
+        ? { rewind: trail, rewindFrom: result.actualRc - trail.reduce((n, c) => n + hiLoTag(c.rank), 0) }
+        : {};
+      const held = hold ? { held: true, withheld: true } : {};
+      return { endNow: pending?.kind === 'end', check: { ...result, rcGuess: rc, tcGuess, round: roundAtCheck + 1, ...rewind, ...held } };
+    },
+    [game, bump, audio, persistSession, runPendingDeal],
+  );
+
+  /** Fix round 1: run the deal a held answer kept waiting. A no-op with none held. */
+  const releaseHeldDeal = useCallback((): void => {
+    const pending = pendingDealRef.current;
+    if (pending?.kind !== 'deal' && pending?.kind !== 'sitOut') return;
+    pendingDealRef.current = null;
+    runPendingDeal(pending);
+    bump();
+  }, [runPendingDeal, bump]);
 
   /**
    * End the session. Returns null when nothing was played (F22): no rounds,
@@ -935,6 +976,7 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
     insure,
     callFoul,
     submitCount,
+    releaseHeldDeal,
     requestEnd,
     overlay,
     dismissOverlay,

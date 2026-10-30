@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { withProfile, withSettings, resolveInsurance, playRoundByAdvice } from './helpers';
+import { withProfile, withSettings, resolveInsurance, playRoundByAdvice, dealPastHeldCount } from './helpers';
 
 /**
  * Two operator requests on the table screen.
@@ -172,6 +172,7 @@ test('no peek while the count check is open', async ({ page }) => {
   await expect(page.locator('.tc-peek-btn')).toHaveCount(0);
   // Answered: the next round is dealt and the peek is back.
   for (const k of ['0', 'OK']) await page.locator('.bottom-sheet').getByRole('button', { name: k, exact: true }).click();
+  await dealPastHeldCount(page);
   await resolveInsurance(page, false);
   await expect(page.locator('.bottom-sheet', { hasText: 'Running count?' })).toHaveCount(0);
   await expect(page.locator('.tc-peek-btn')).toBeVisible();

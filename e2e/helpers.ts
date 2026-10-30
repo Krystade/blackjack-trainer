@@ -537,3 +537,16 @@ export async function tableRoundDown(page: Page): Promise<void> {
   if ((await table.getAttribute('data-stage')) === 'deal') await page.locator('.manual-tap-zone').click();
   await expect(table).toHaveAttribute('data-stage', 'payout');
 }
+
+/**
+ * Wave X fix round 1: tapping, a WRONG count check keeps its answer back and
+ * holds the deal it was asked on (the "Count check" sheet: Rewind / Show
+ * count / Deal). For a spec that answers a check and means to play on, this
+ * is the Deal there -- the answer shown and the held deal dealt. A no-op when
+ * the answer was right (or eyes-free), which deals on as ever.
+ */
+export async function dealPastHeldCount(page: Page): Promise<void> {
+  await expect(page.locator('.bottom-sheet .numpad')).toHaveCount(0);
+  const held = page.getByTestId('count-held-deal');
+  if (await held.isVisible()) await held.click();
+}

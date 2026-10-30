@@ -9,6 +9,7 @@ import {
   narrateCards,
   narrateCorrection,
   narrateCountAnswer,
+  narrateRewindFrom,
   narrateCountPrompt,
   narrateDealerUp,
   narrateFlashcardPrompt,
@@ -109,6 +110,7 @@ function everyPromptAndCommentary(): string[] {
   ]);
 
   for (let rc = -20; rc <= 20; rc++) texts.add(narrateCountAnswer(rc));
+  for (let rc = -20; rc <= 20; rc++) texts.add(narrateRewindFrom(rc));
   for (const rank of RANKS) texts.add(narrateDealerUp(rank));
 
   for (const seat of ['P1', 'P2', 'P3', 'P4', 'P5']) {

@@ -1,0 +1,53 @@
+/*
+ * Wave X fix round 1: a wrong count, tapping, keeps its answer back and holds
+ * the deal it was asked on. The held sheet sits where the count check was
+ * asked, in the action bar's place: the verdict, then Rewind / Show count /
+ * Deal side by side under the thumb.
+ */
+.count-held-verdict {
+  margin: 0;
+  padding: 0 var(--space-4) var(--space-2);
+  font-weight: 700;
+  color: var(--ink);
+}
+
+/* As many equal columns as there are choices (three, then one). */
+.bottom-sheet-actions.count-held-actions {
+  grid-template-columns: none;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+}
+
+.count-held-actions .count-held-deal {
+  border-color: var(--accent);
+}
+
+/* While the answer is kept back the peek is gone, and an empty dock above the
+   sheet is a band of nothing. */
+.table-screen:has(> .bottom-sheet) > .peek-dock:empty {
+  display: none;
+}
+
+/* Eyes-free: Rewind in the dock's free side, away from the holding thumb. */
+.peek-dock > .count-rewind-dock {
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: start;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 0.9rem;
+}
+
+.peek-dock[data-hand='left'] > .count-rewind-dock {
+  grid-column: 3;
+  justify-self: end;
+}
+
+/* The count a Rewind starts from, over its replay and its question. */
+.rewind-from {
+  margin: 0;
+  padding: 0 var(--space-4) var(--space-1);
+  text-align: center;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}

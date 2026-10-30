@@ -56,6 +56,7 @@ import {
   narrateTableCountPrompt,
   narrateResult,
   narrateCountAnswer,
+  narrateRewindFrom,
 } from '../src/audio/narrate';
 import { hiLoTag } from '../src/engine/count';
 import { VARIANT_OPENERS, narrateVariantCorrection, narrateVariantTotal } from '../src/audio/narrateVariant';
@@ -294,6 +295,7 @@ export function drillSentences(): string[] {
   for (let rc = TC_MIN; rc <= TC_MAX; rc++) {
     for (const decks of DECK_DEPTHS) add(narrateTcQuestion(rc, decks));
     add(narrateCountAnswer(rc));
+    add(narrateRewindFrom(rc));
   }
   for (const decks of DECK_DEPTHS) add(narrateProduceTcPrompt(decks));
   for (const action of ACTIONS) {

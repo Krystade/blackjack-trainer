@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { shot, withSettings, withProfile, resolveInsurance, playRoundByAdvice } from './helpers';
+import { shot, withSettings, withProfile, resolveInsurance, playRoundByAdvice, dealPastHeldCount } from './helpers';
 
 
 /**
@@ -219,6 +219,8 @@ test('#36: the count check is posed when Deal is pressed, over the settled hand,
   await prompt.getByRole('button', { name: '5', exact: true }).click();
   await prompt.getByRole('button', { name: 'OK', exact: true }).click();
   await expect(prompt).not.toBeVisible();
+  // Wave X fix round 1: a wrong answer, tapping, holds the deal for its Deal.
+  await dealPastHeldCount(page);
   await expect(round).toHaveText('Round 2');
   expect(await feltCards(page)).not.toEqual(settled);
 
@@ -383,6 +385,7 @@ test('count-check modal: RC then TC two-stage prompt on the 2nd trigger (askTcTo
   await expect(modal.locator('.bottom-sheet-title')).toHaveText('Running count?');
   await modal.getByRole('button', { name: '5', exact: true }).click();
   await modal.getByRole('button', { name: 'OK', exact: true }).click();
+  await dealPastHeldCount(page);
   await expect(modal).not.toBeVisible();
 
   // The answer dealt round 2. Second trigger -> RC stage, then (without
@@ -439,6 +442,7 @@ test('#3: count checks set to "both" ask RC then TC on the first check', async (
   await expect(modal.locator('.bottom-sheet-title')).toHaveText('True count?');
   await modal.getByRole('button', { name: '1', exact: true }).click();
   await modal.getByRole('button', { name: 'OK', exact: true }).click();
+  await dealPastHeldCount(page);
   await expect(modal).not.toBeVisible();
   await expect(page.locator('.topbar-stat', { hasText: /^Round / })).toHaveText('Round 2');
 });
@@ -730,6 +734,7 @@ test('cut card with a count check owed: the check first, then the shuffle, then 
   await prompt.getByRole('button', { name: '2', exact: true }).click();
   await prompt.getByRole('button', { name: 'OK', exact: true }).click();
   await expect(prompt).not.toBeVisible();
+  await dealPastHeldCount(page);
 
   // Answered: now the shuffle is announced, once, after the question -- and
   // the deal waits, because the bet was placed before the player knew.
@@ -757,6 +762,7 @@ test('cut card with a count check owed and no bet spread: the answer deals the f
   expect(shuffleLines(await speechLog(page))).toBe(0);
   await prompt.getByRole('button', { name: '2', exact: true }).click();
   await prompt.getByRole('button', { name: 'OK', exact: true }).click();
+  await dealPastHeldCount(page);
 
   // Nothing is graded on the bet, so the deal follows the answer (#36).
   await expect(page.locator('.topbar-stat', { hasText: /^Round / })).toHaveText('Round 2');

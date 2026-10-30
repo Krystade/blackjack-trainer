@@ -34,7 +34,7 @@ import {
   matchSpokenAlternatives,
 } from '../../audio/voiceRecognition';
 import { parseCountSpeech, speakableCount, COUNT_BIAS_PHRASES } from '../../audio/voiceNumber';
-import { narrateCards, narrateCountAnswer, narrateReadback, narrateTableCountPrompt } from '../../audio/narrate';
+import { narrateCards, narrateCountAnswer, narrateReadback, narrateRewindFrom, narrateTableCountPrompt } from '../../audio/narrate';
 import type { VoiceAction } from '../../audio/voiceRecognition';
 import { actionUnavailable } from '../../drills/answerGate';
 import { enableAudioNow } from '../audioGate';
@@ -84,7 +84,10 @@ import './dealerTraining.css';
 import { createDecisionTimer, holdWhileSpeaking, type DecisionTimer } from '../decisionTimer';
 import { dealerPaceMs, isSlowDecision, slowDecisionsText } from '../dealerPace';
 import { trackedElapsedMs } from '../../drills/idleAnswer';
-import { isAppSpeaking } from '../../audio/speech';
+import { isAppSpeaking, speakAsync } from '../../audio/speech';
+import { speechOptsFrom } from '../../audio/speechOpts';
+import { signedTc } from '../../drills/tcFeedback';
+import './tableCountHeld.css';
 import { useEyesFreeToggle } from '../eyesFreeSession';
 import { loadStats } from '../../store/persist';
 import { trayMarksShown } from '../trayFade';
@@ -246,6 +249,9 @@ interface RewindRun {
   cards: Card[];
   /** The running count the check was graded against. */
   actual: number;
+  /** Fix round 1: the count it starts from, the one last answered right. */
+  from: number;
+  /** Lines put up so far: 0 is the start count alone, then one card each. */
   shown: number;
   stage: 'replay' | 'ask' | 'done';
   guess?: number;
@@ -480,6 +486,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
     insure,
     callFoul,
     submitCount,
+    releaseHeldDeal,
     requestEnd,
     overlay,
     dismissOverlay,
@@ -658,7 +665,10 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
     if (game.countCheckOpen) return;
     // Wave X (item 2): likewise a Rewind; "yes" (or the wheel's forward) closes its verdict.
     if (rewind !== null) {
-      if (command === 'yes' && rewind.stage === 'done') finishRewind();
+      if (command === 'yes' && rewind.stage === 'done') {
+        if (countVerdict?.held) dealHeld();
+        else finishRewind();
+      }
       return;
     }
 
@@ -877,6 +887,12 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
   });
 
   const handleDeal = () => {
+    // Fix round 1: a deal held by a wrong count is the deal asked for -- shown
+    // and dealt in one tap, by the button, the wheel or "deal".
+    if (countVerdict?.held) {
+      dealHeld();
+      return;
+    }
     // Wave J toggle rework: Out, the round is dealt without the player.
     if (!game.isIn) {
       handleSitOut();
@@ -910,33 +926,60 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
 
   /**
    * Wave X (item 2): "If I get the count wrong in play I'd like to rewind and
-   * recount. Not forced but with the option." A wrong running count's verdict
-   * offers Rewind: the cards counted since the count was last known right
-   * (the shoe's start or the last right check) are dealt again, one a deal
-   * beat apart, and the count is asked again. Ignored, play goes on exactly
-   * as before. The wrong answer stays graded; the recount grades nothing, and
-   * a right one makes the check the new point a later Rewind starts from.
+   * recount. Not forced but with the option." A wrong running count offers
+   * Rewind: from the count last answered right (the shoe's start or the last
+   * right check), the cards counted since come back one at a time, and the
+   * count is asked again. The wrong answer stays graded; the recount grades
+   * nothing, and a right one makes the check the new point a later Rewind
+   * starts from.
+   *
+   * Fix round 1 (review): tapping, the answer is kept back and the deal it was
+   * asked on waits (useGame `held` / `withheld`), so the recount is of cards
+   * whose count is still unknown, with no live round under it. The sheet
+   * offers Rewind and Show count; its Deal shows the count and deals. Eyes-free
+   * is as before: the answer said, play on, Rewind offered in the dock.
    */
   const [rewind, setRewind] = useState<RewindRun | null>(null);
+  const [countVerdict, setCountVerdict] = useState<CountCheckVerdict | null>(null);
   const rewindMs = settings.dealSpeedMs > 0 ? settings.dealSpeedMs : REWIND_FALLBACK_MS;
   const countAsking = game.countCheckOpen || rewind?.stage === 'ask';
+  // Fix round 1 (review): each line waits until the one before it has been
+  // SAID, and a deal beat at least -- a fixed beat queued a long trail's ranks
+  // behind each other and the question behind them all, so the sheet asked
+  // while the voice was still dealing. Silent, it is the deal beat alone.
+  const rewindStage = rewind?.stage;
+  const rewindShown = rewind?.shown;
   useEffect(() => {
     if (rewind === null || rewind.stage !== 'replay') return undefined;
-    const t = setTimeout(() => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const startedAt = Date.now();
+    const a = settings.audio;
+    const first = rewind.shown === 0;
+    const line = first ? narrateRewindFrom(rewind.from) : narrateCards([rewind.cards[rewind.shown - 1]!], 'rank');
+    // The start count at any spoken verbosity, as the question is; the ranks at 'full', as the deal's are.
+    const voiced = a.enabled && (first ? a.verbosity !== 'off' : a.verbosity === 'full');
+    const advance = () => {
+      if (cancelled) return;
       if (rewind.shown < rewind.cards.length) {
-        const next = rewind.cards[rewind.shown]!;
-        audio.sayFull(narrateCards([next], 'rank'));
         setRewind({ ...rewind, shown: rewind.shown + 1 });
         return;
       }
-      // Every card is back up: the count again, asked as the check asks it.
+      // Every card is back up, and said: the count again, asked as the check asks it.
       audio.ding('attention');
       audio.say(narrateTableCountPrompt('rc'));
       setRewind({ ...rewind, stage: 'ask' });
-    }, rewindMs);
-    return () => clearTimeout(t);
+    };
+    void (voiced ? speakAsync(line, speechOptsFrom(a)) : Promise.resolve()).then(() => {
+      if (cancelled) return;
+      timer = setTimeout(advance, Math.max(0, rewindMs - (Date.now() - startedAt)));
+    });
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) clearTimeout(timer);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rewind, rewindMs]);
+  }, [rewindStage, rewindShown]);
 
   // Ask out loud when the prompt appears, and again if it moves on to the
   // true count. Without this the app simply goes quiet mid-drive and the
@@ -956,7 +999,9 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
   // Wave X review: nor while a round Out is still going onto the felt -- the
   // engine has played all of it, so the peek would count the hole card and the
   // dealer's draws before they are shown. Skip has the dock meanwhile.
-  const peekBlocked = game.countCheckDue || game.countCheckOpen || rewind !== null || sitOutPace.pending;
+  // Fix round 1: nor while a wrong count's answer is kept back -- the peek is the answer.
+  const peekBlocked =
+    game.countCheckDue || game.countCheckOpen || rewind !== null || sitOutPace.pending || countVerdict?.withheld === true;
   useEffect(() => {
     if (peekBlocked) setPeeking(false);
   }, [peekBlocked]);
@@ -967,51 +1012,73 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
     setPendingCount(null);
   }, [countDue, countStage, rewind?.stage]);
 
-  const [countVerdict, setCountVerdict] = useState<CountCheckVerdict | null>(null);
   const handleCountSubmit = (n: number) => {
     if (game.askRc && game.askTcToo && countStage === 'rc') {
       setPendingRc(n);
       setCountStage('tc');
       return;
     }
+    // Fix round 1: tapping, a wrong count's answer is kept back for a recount.
+    const opts = { withhold: !eyesFree };
     const { endNow, check } = !game.askRc
-      ? submitCount(null, n)
+      ? submitCount(null, n, opts)
       : game.askTcToo
-        ? submitCount(pendingRc, n)
-        : submitCount(n);
+        ? submitCount(pendingRc, n, opts)
+        : submitCount(n, undefined, opts);
     setCountVerdict(check);
     setCountStage('rc');
     // The answer released an End that was waiting on it.
     if (endNow) finishSession();
   };
 
-  // Wave X (item 2): offered under a wrong running count's verdict, while it shows.
-  const rewindOffer =
+  // Wave X (item 2): Rewind is offered while a wrong running count's answer is
+  // kept back (tapping: in the held sheet), or eyes-free, under its verdict
+  // for the round dealt after it (in the dock).
+  const heldOffer =
+    countVerdict?.held === true && countVerdict.withheld === true && countVerdict.rewind !== undefined && rewind === null;
+  const liveOffer =
     countVerdict !== null &&
+    countVerdict.held !== true &&
     countVerdict.rewind !== undefined &&
     game.roundNo <= countVerdict.round &&
     rewind === null &&
     !game.countCheckOpen;
+  const rewindOffer = heldOffer || liveOffer;
   const startRewind = () => {
     if (!countVerdict?.rewind || countVerdict.rewind.length === 0) return;
     const cards = countVerdict.rewind;
     setPeeking(false);
-    audio.sayFull(narrateCards([cards[0]!], 'rank'));
-    setRewind({ cards, actual: countVerdict.actualRc, shown: 1, stage: 'replay' });
+    setRewind({ cards, actual: countVerdict.actualRc, from: countVerdict.rewindFrom ?? 0, shown: 0, stage: 'replay' });
   };
   const submitRewind = (n: number) => {
     if (rewind === null || rewind.stage !== 'ask') return;
     const right = n === rewind.actual;
+    // The recount's verdict gives the answer, right or wrong.
     audio.say(narrateCountAnswer(rewind.actual));
     audio.ding(right ? 'good' : 'bad');
     // The count is known again as of the check: a later Rewind starts there.
     if (right) game.confirmCountAt(rewind.cards);
+    setCountVerdict((v) => (v ? { ...v, withheld: false } : v));
     setRewind({ ...rewind, stage: 'done', guess: n });
   };
   /** Done after a recount: the offer has been taken. (Closed before one, it stays.) */
   const finishRewind = () => {
     setRewind(null);
     setCountVerdict((v) => (v ? { ...v, rewind: undefined } : v));
+  };
+  /** Fix round 1: Show count -- the kept-back answer, on screen and said. The deal still waits. */
+  const revealCount = () => {
+    if (!countVerdict?.withheld) return;
+    audio.say(narrateCountAnswer(countVerdict.actualRc));
+    setCountVerdict({ ...countVerdict, withheld: false });
+  };
+  /** Fix round 1: the held deal -- the answer shown (and said, if still kept back), then dealt. */
+  const dealHeld = () => {
+    revealCount();
+    setRewind(null);
+    setCountVerdict((v) => (v ? { ...v, withheld: false, held: false, rewind: undefined } : v));
+    releaseHeldDeal();
+    setCountStage('rc');
   };
 
   // End is two taps, like Finish in the field test: it sits at the top of the
@@ -1153,8 +1220,9 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
   }
 
   let barMode: ActionBarMode;
-  if (rewind !== null) {
-    // Wave X (item 2): the Rewind sheet is in the action bar's place until it closes.
+  if (rewind !== null || countVerdict?.held) {
+    // Wave X (item 2): the Rewind sheet -- or, fix round 1, the held deal's
+    // sheet -- is in the action bar's place until it closes.
     barMode = { kind: 'hidden' };
   } else if (game.phase === 'player') {
     barMode = { kind: 'actions', legal, onAction: timedAct, advice };
@@ -1502,7 +1570,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
         className="message-strip"
         onClick={hasBots || dealAnimating || sitOutPace.pending ? skipEverything : undefined}
       >
-        {countVerdict && game.roundNo <= countVerdict.round && (
+        {countVerdict && !countVerdict.held && game.roundNo <= countVerdict.round && (
           <ResultStrip
             id={countVerdict.round}
             tone={countVerdictOk(countVerdict) ? 'ok' : 'miss'}
@@ -1510,7 +1578,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
             {countVerdictText(countVerdict)}
           </ResultStrip>
         )}
-        {rewindOffer && (
+        {liveOffer && missInDock && (
           <div className="count-rewind-offer">
             <button
               type="button"
@@ -1600,6 +1668,19 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
         data-hand={settings.handedness === 'left' ? 'left' : 'right'}
       >
         {missInDock && <div className="peek-dock-misses">{missStrips}</div>}
+        {/* Wave X review: eyes-free, Rewind sits in the dock's free side, away
+            from the peek -- under the verdict, a short screen's sticky dock
+            covered it. With the misses docked it stays under the verdict. */}
+        {liveOffer && !missInDock && (
+          <button
+            type="button"
+            className="u-btn count-rewind-btn count-rewind-dock"
+            data-testid="count-rewind"
+            onClick={startRewind}
+          >
+            Rewind
+          </button>
+        )}
         {/* F9 / B2 #31: no peek while a count check is owed or open -- the
             peeked answer was graded correct. */}
         {!peekBlocked && !peekGivesWayToSkip && (
@@ -1705,13 +1786,43 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
         </BottomSheet>
       )}
 
+      {countVerdict?.held && rewind === null && (
+        <BottomSheet title="Count check">
+          <div className="count-held" data-testid="count-held" data-withheld={countVerdict.withheld === true}>
+            <p className="count-held-verdict" data-testid="count-held-verdict">
+              {countVerdict.withheld ? `Count ✗ you said ${countVerdict.rcGuess === null ? '—' : signedTc(countVerdict.rcGuess)}` : countVerdictText(countVerdict)}
+            </p>
+            <div className="bottom-sheet-actions count-held-actions">
+              {heldOffer && (
+                <button type="button" data-testid="count-rewind" onClick={startRewind}>
+                  Rewind
+                </button>
+              )}
+              {countVerdict.withheld && (
+                <button type="button" data-testid="count-show" onClick={revealCount}>
+                  Show count
+                </button>
+              )}
+              <button type="button" className="count-held-deal" data-testid="count-held-deal" onClick={dealHeld}>
+                Deal
+              </button>
+            </div>
+          </div>
+        </BottomSheet>
+      )}
+
       {rewind !== null && (
         <BottomSheet title={rewind.stage === 'replay' ? 'Rewind' : rewind.stage === 'ask' ? 'Running count?' : 'Recount'}>
           <div data-testid="rewind-sheet" data-stage={rewind.stage}>
+            {rewind.stage !== 'done' && (
+              <p className="rewind-from" data-testid="rewind-from">
+                From {signedTc(rewind.from)}
+              </p>
+            )}
             {rewind.stage === 'replay' && (
               <div className="rewind-replay">
                 <div className="rewind-card" data-testid="rewind-card" data-index={rewind.shown}>
-                  <PlayingCard key={rewind.shown} card={rewind.cards[rewind.shown - 1]} />
+                  {rewind.shown > 0 && <PlayingCard key={rewind.shown} card={rewind.cards[rewind.shown - 1]} />}
                 </div>
                 <div className="rewind-progress">
                   {rewind.shown} / {rewind.cards.length} since the count was last right
@@ -1743,9 +1854,16 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
                   {countVerdictPart('Recount', rewind.guess, rewind.guess === rewind.actual, rewind.actual)}
                 </p>
                 <div className="rewind-actions">
-                  <button type="button" className="u-btn u-btn-primary" onClick={finishRewind}>
-                    Done
-                  </button>
+                  {/* Fix round 1: held, the deal it waited for is the next thing. */}
+                  {countVerdict?.held ? (
+                    <button type="button" className="u-btn u-btn-primary" onClick={dealHeld}>
+                      Deal
+                    </button>
+                  ) : (
+                    <button type="button" className="u-btn u-btn-primary" onClick={finishRewind}>
+                      Done
+                    </button>
+                  )}
                 </div>
               </>
             )}
