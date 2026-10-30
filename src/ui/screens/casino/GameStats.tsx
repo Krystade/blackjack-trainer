@@ -313,6 +313,19 @@ export function GameStats({
               {exitWhat} (Casino settings). Leaving on the last round before the cut costs nothing: the shuffle was coming anyway.
             </p>
           )}
+          {/* C23 (audit 2026-10-29): two unknowns that are not table rules, said where the figures rest on them. */}
+          {(row.input.spec.maxBet === null || !(game.roundsPerHour && game.roundsPerHour > 0)) && (
+            <p data-testid="gs-unlogged">
+              <strong>Not logged:</strong>{' '}
+              {[
+                row.input.spec.maxBet === null ? 'the table max, so no cap is simulated and the ramp’s top bets are never limited (the best case)' : null,
+                !(game.roundsPerHour && game.roundsPerHour > 0) ? `the pace, so ${rph} rounds/h is assumed (the default; EV/h scales with it)` : null,
+              ]
+                .filter(Boolean)
+                .join('; ')}
+              .
+            </p>
+          )}
           {row.input.assumed.length > 0 && (
             <p data-testid="gs-assumed">
               <strong>Assumed</strong> ({assumedLead(row.input.assumed)}):{' '}

@@ -210,6 +210,8 @@ test('figures appear on their own, the ranking follows them, and the cards say w
   await expect(card.locator('[data-testid="gs-method"][data-best="true"]')).toHaveCount(1);
   await expect(card.getByTestId('gs-profile')).toContainText('Default (6D H17)');
   await expect(card.getByTestId('gs-assumed')).toHaveCount(0);
+  // C23: its max is logged, its pace is not -- the default is said.
+  await expect(card.getByTestId('gs-unlogged')).toHaveText('Not logged: the pace, so 80 rounds/h is assumed (the default; EV/h scales with it).');
   // The card's best EV is the ranking's figure for the game.
   const bestEv = money((await card.getByTestId('gs-best-ev').textContent())!);
   await back(page);
@@ -221,6 +223,8 @@ test('figures appear on their own, the ranking follows them, and the cards say w
   await expect(card.getByTestId('gs-method')).toHaveCount(0);
   // C8: a continuous shuffler has no cut, so none is assumed.
   await expect(card.getByTestId('gs-assumed')).not.toContainText('cut');
+  // C23: no max logged here either: no cap is simulated, and that is said.
+  await expect(card.getByTestId('gs-unlogged')).toContainText('the table max, so no cap is simulated');
   await back(page);
 
   // No mid-shoe entry at El Cortez: no back-count method was even worked out.
