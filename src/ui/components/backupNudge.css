@@ -1,0 +1,26 @@
+/* B7: the training-data backup reminder on Home, in the casino nudge strip's shape. */
+.backup-nudge {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
+  padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md);
+  background: var(--accent-wash);
+}
+
+.backup-nudge-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.3;
+}
+
+.backup-nudge-btn {
+  flex: none;
+  min-height: 44px;
+  padding-inline: var(--space-3);
+  font-size: var(--fs-sm);
+}

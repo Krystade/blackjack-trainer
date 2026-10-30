@@ -10,3 +10,10 @@
   color: var(--ink);
   line-height: 1.45;
 }
+
+/* B7: when the training data was last backed up, under the backup buttons. */
+.stats-last-backup {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--ink-dim);
+}

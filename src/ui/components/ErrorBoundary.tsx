@@ -2,6 +2,7 @@ import { Component } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
 import { exportAll } from '../../store/persist';
 import { backupFileName, saveTextFile, type SaveResult } from '../saveFile';
+import { markBackedUp } from '../../store/backupStatus';
 
 /**
  * Catches a render throw so it blanks one screen instead of the whole app.
@@ -70,7 +71,11 @@ export class ErrorBoundary extends Component<Props, State> {
       this.setState({ backup: 'failed' });
       return;
     }
-    void saveTextFile(text, backupFileName(new Date())).then((backup) => this.setState({ backup }));
+    const at = new Date();
+    void saveTextFile(text, backupFileName(at)).then((backup) => {
+      if (backup === 'shared' || backup === 'downloaded') markBackedUp(at);
+      this.setState({ backup });
+    });
   };
 
   private handleReload = (): void => {

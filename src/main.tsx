@@ -1,3 +1,4 @@
+import { noteStoragePersistence } from './store/backupStatus';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './ui/App.tsx';
@@ -29,7 +30,8 @@ registerOfflineWorker();
 
 // Ask the browser to exempt this origin's storage from eviction (F24). Every
 // answer the operator has given lives in localStorage; refusal is normal.
-void requestPersistentStorage();
+// B25: the answer is kept (Settings > Offline shows it) and logged, not dropped.
+void requestPersistentStorage().then(noteStoragePersistence);
 
 // The stored theme before React's first render (index.html does it even
 // earlier, before the bundle loads; this covers a document served without it).

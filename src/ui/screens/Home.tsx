@@ -1,3 +1,4 @@
+import { BackupNudge } from '../components/BackupNudge';
 import type { Screen } from '../App';
 import type { Profile, Settings } from '../../store/types';
 import { loadStats, saveSettings } from '../../store/persist';
@@ -140,6 +141,7 @@ export function Home({ onNavigate, activeProfile, settings, onSettingsChange }: 
 
       {/* Wave N: the streak card, above everything else. */}
       <StreakCard settings={settings} onOpen={() => onNavigate('progress')} />
+      <BackupNudge />
 
       {/* Wave L (lane v): one tap runs a guided routine (its own component). */}
       <GuidedCard settings={settings} activeProfile={activeProfile} onSettingsChange={onSettingsChange} onNavigate={onNavigate} />

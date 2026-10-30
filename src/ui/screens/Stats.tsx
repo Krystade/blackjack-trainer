@@ -26,6 +26,8 @@ import {
 import { backupDateText, clearUndo, importConfirmText, readUndo, storeUndo, type ImportUndo } from './backupText';
 import { backupFileName, saveTextFile, type SaveResult } from '../saveFile';
 import { useTabSettings } from '../tabSettingsContext';
+import { lastBackupAt, markBackedUp } from '../../store/backupStatus';
+import { lastBackupText } from '../components/BackupNudge';
 import {
   summarize,
   bestSecondsPerDeck,
@@ -519,6 +521,11 @@ export function Stats({ activeProfile, settings, onSettingsChange, onNavigate }:
   const handleExport = () => {
     const at = new Date();
     void saveTextFile(exportAll(), backupFileName(at)).then((r) => {
+      // B7: remembered only once a file was really handed over.
+      if (r === 'shared' || r === 'downloaded') {
+        markBackedUp(at);
+        setLastBackup(at.toISOString());
+      }
       setMessage(EXPORT_MESSAGE[r]);
     });
   };
@@ -527,6 +534,7 @@ export function Stats({ activeProfile, settings, onSettingsChange, onNavigate }:
     fileInputRef.current?.click();
   };
 
+  const [lastBackup, setLastBackup] = useState<string | null>(() => lastBackupAt());
   // B4: the undo for the last import, until the app is closed.
   const [undo, setUndo] = useState<ImportUndo | null>(() => readUndo());
   const tabSettings = useTabSettings();
@@ -1925,6 +1933,9 @@ export function Stats({ activeProfile, settings, onSettingsChange, onNavigate }:
             Reset stats
           </button>
         </div>
+        <p className="stats-last-backup" data-testid="stats-last-backup">
+          {lastBackupText(lastBackup, now)}
+        </p>
         <input
           ref={fileInputRef}
           type="file"

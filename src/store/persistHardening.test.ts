@@ -396,6 +396,8 @@ const NOT_BACKED_UP: Record<string, string> = {
   'bjtrainer.casinoDirSort.v1': 'which order the casino directory was last sorted in, on this device',
   'bjtrainer.variant.v1': 'wave L: which variant chart was last picked, on this device -- a bare id, one tap to choose again',
   'bjtrainer.youView.v1': 'wave W: which half of the You tab (Progress or Stats) was open last, on this device -- one tap to choose again',
+  'bjtrainer.lastBackup.v1':
+    'B7: when THIS phone last handed a backup over -- a restore onto a wiped phone must not carry the date of the phone that made it and hide the reminder',
   'bjtrainer.importUndo.v1':
     'B4: sessionStorage, not localStorage -- the undo for the last import in this tab, a copy of keys the backup already carries',
   'bjtrainer.stats.v1.corrupt':
