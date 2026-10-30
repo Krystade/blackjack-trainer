@@ -7,8 +7,8 @@ import { cellIdForDeviation, diffRules, rulesNames, type IndexDiff, type RulesDi
 import { EYE_DECK_ERROR, tcBand, tcWithinEye, trueCount, type TcRounding } from '../engine/count';
 import { generateAllCells, type Cell } from './flashcards';
 import { drillLegalActions } from './legalActions';
-import { gradeDeckEstimate, makeDeckEstimationQuestion } from './deckEstimation';
-import { depthOptions } from './depthResolution';
+import { makeDeckEstimationQuestion } from './deckEstimation';
+import { depthOptions, isNearestDepth } from './depthResolution';
 import { signed } from './signed';
 import { indexPlayAt, publishedIndex } from './indexDisplay';
 
@@ -199,7 +199,8 @@ export function expectedRulesAnswer(q: RulesQuestion, plan: RulesDrillPlan, roun
 }
 
 export function gradeRulesAnswer(q: RulesQuestion, plan: RulesDrillPlan, taken: RulesAnswer, rounding?: TcRounding): boolean {
-  if (q.kind === 'tray-decks') return typeof taken === 'number' && gradeDeckEstimate(taken, exactRemaining(q), 0.5).correct;
+  // C15: the nearest button, not anything within half a deck.
+  if (q.kind === 'tray-decks') return typeof taken === 'number' && isNearestDepth(taken, exactRemaining(q), depthOptions(q.totalDecks, 'half'));
   if (q.kind === 'tray-tc') return typeof taken === 'number' && tcWithinEye(taken, q.rc, exactRemaining(q), EYE_DECK_ERROR, rounding);
   return taken === expectedRulesAnswer(q, plan, rounding);
 }

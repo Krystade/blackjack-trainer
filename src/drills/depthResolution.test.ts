@@ -5,6 +5,7 @@ import {
   depthOptions,
   isLastDeckTightened,
   formatDepthSlack,
+  nearestDepths,
   DEFAULT_DEPTH_RESOLUTION,
   LAST_DECK_DECKS,
 } from './depthResolution';
@@ -186,5 +187,28 @@ describe('explaining the grade', () => {
     expect(formatDepthSlack(0.5)).toBe('half a deck');
     expect(formatDepthSlack(0.25)).toBe('a quarter deck');
     expect(formatDepthSlack(1.5)).toBe('1.5 decks');
+  });
+});
+
+// C15 (audit 2026-10-29): grading by the nearest button.
+describe('nearestDepths', () => {
+  it('names one button, or both at an exact midpoint', () => {
+    expect(nearestDepths(2.63, depthOptions(8, 'half'))).toEqual([2.5]);
+    expect(nearestDepths(2.75, depthOptions(8, 'half'))).toEqual([2.5, 3]);
+    expect(nearestDepths(2.5, depthOptions(8, 'half'))).toEqual([2.5]);
+  });
+  it('is answerable below the first button of a 1-deck half grid', () => {
+    expect(nearestDepths(0.1, depthOptions(1, 'half'))).toEqual([0.5]);
+  });
+  it('at every reachable depth in every shoe, exactly one or two buttons are right', () => {
+    for (const decks of [1, 2, 6, 8]) {
+      for (const res of ['half', 'last-deck', 'quarter'] as DepthResolution[]) {
+        const opts = depthOptions(decks, res);
+        for (let left = 1; left <= decks * 52; left += 1) {
+          const n = nearestDepths(left / 52, opts).length;
+          expect(n === 1 || n === 2).toBe(true);
+        }
+      }
+    }
   });
 });

@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Profile, Settings } from '../../../store/types';
-import { makeDeckEstimationQuestion, gradeDeckEstimate } from '../../../drills/deckEstimation';
+import { makeDeckEstimationQuestion } from '../../../drills/deckEstimation';
 import type { DeckEstimationQuestion } from '../../../drills/deckEstimation';
 import { Stepper, Segmented } from '../Settings';
 import {
   depthOptions,
   depthTolerance,
   isLastDeckTightened,
-  formatDepthSlack,
+  nearestDepths,
 } from '../../../drills/depthResolution';
 import type { DepthResolution } from '../../../drills/depthResolution';
 import { loadStats, saveStats, saveSettings } from '../../../store/persist';
@@ -131,11 +131,9 @@ export function DeckEstimationView({
   const handleGuess = (value: number) => {
     if (!question) return;
     const tolerance = depthTolerance(question.decksRemaining, resolution);
-    const { correct, errorDecks: err } = gradeDeckEstimate(
-      value,
-      question.decksRemaining,
-      tolerance,
-    );
+    // C15: right is the nearest button (or either at an exact midpoint).
+    const correct = nearestDepths(question.decksRemaining, depthOptions(question.totalDecks, resolution)).includes(value);
+    const err = Math.abs(value - question.decksRemaining);
     setGuessValue(value);
     setWasCorrect(correct);
     setErrorDecks(err);
@@ -160,6 +158,7 @@ export function DeckEstimationView({
             errorDecks: err,
             correct,
             toleranceDecks: tolerance,
+            nearestButton: true,
           },
         ],
       },
@@ -309,8 +308,11 @@ export function DeckEstimationView({
               without the player having touched anything since the question
               appeared. */}
           <div className="result-detail">
-            Anything within{' '}
-            {formatDepthSlack(depthTolerance(question.decksRemaining, resolution))} counts.
+            The nearest answer counts:{' '}
+            {nearestDepths(question.decksRemaining, depthOptions(question.totalDecks, resolution))
+              .map(formatGuess)
+              .join(' or ')}
+            .
             {isLastDeckTightened(question.decksRemaining, resolution) && (
               <> Tighter than usual: you were inside the last deck.</>
             )}

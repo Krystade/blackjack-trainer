@@ -776,6 +776,12 @@ export interface Stats {
       errorDecks: number;
       correct: boolean;
       toleranceDecks?: number;
+      /**
+       * C15 (audit 2026-10-29): graded as "the nearest button" (toleranceDecks
+       * is then the grid step). Rows without it were right anywhere within
+       * toleranceDecks, both bracketing buttons included.
+       */
+      nearestButton?: true;
     }[];
   };
   timedCount: {

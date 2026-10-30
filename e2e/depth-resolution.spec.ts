@@ -19,9 +19,9 @@ import { withSettings, withProfile } from './helpers';
  * The constant is not arbitrary and must not be "tidied": `randomSeed()` runs
  * the value through `mulberry32`, so what the drill sees is nothing like the
  * value pinned here. This one puts a 1-deck Deck Estimation question at 0.6731
- * decks remaining -- 0.33 away from the 1.0 button, which is inside a half-deck
- * tolerance and outside a quarter-deck one, which is the whole point of the
- * test below. Changing it silently turns that test into a coin flip.
+ * decks remaining -- nearest the 0.5 button on the half-deck grid (0.17 away)
+ * but the 0.75 button once the last deck runs in quarters (C15: the nearest
+ * button is the right answer), which is the whole point of the test below. Changing it silently turns that test into a coin flip.
  */
 const PINNED = 0.00009;
 
@@ -118,16 +118,16 @@ test('the drill-local control persists across a reload', async ({
 test('the same estimate is right at half resolution and wrong at last-deck', async ({ page }) => {
   // The verdict itself, which is the only thing that proves the tolerance moved
   // rather than just the buttons. With Math.random pinned, a 1-deck shoe always
-  // asks the same question: 0.6731 decks remaining. Guessing 1 deck is 0.33 out
-  // -- inside a half-deck tolerance, outside a quarter-deck one.
+  // asks the same question: 0.6731 decks remaining. Guessing 0.5 is the nearest
+  // half-deck button, but not the nearest once 0.75 is on the grid (C15).
   await pinRandom(page);
   await withProfile(page, { rules: { decks: 1 } });
 
   await openDrill(page, 'Deck estimation');
   await page.getByRole('button', { name: 'Start', exact: true }).click();
-  await page.locator('.deck-guess-btn', { hasText: /^1\.0$/ }).click();
+  await page.locator('.deck-guess-btn', { hasText: /^0\.5$/ }).click();
   await expect(page.locator('.result-correct')).toBeVisible();
-  await expect(page.locator('.drill-result')).toContainText('Anything within half a deck counts');
+  await expect(page.locator('.drill-result')).toContainText('The nearest answer counts: 0.5.');
 
   // Same question, same answer, tighter rule. "Back to Drills" lands on the
   // picker, not this drill's setup, so the drill has to be re-entered.
@@ -135,11 +135,9 @@ test('the same estimate is right at half resolution and wrong at last-deck', asy
   await page.getByRole('button', { name: 'Deck estimation', exact: true }).click();
   await page.getByRole('button', { name: 'Last deck', exact: true }).click();
   await page.getByRole('button', { name: 'Start', exact: true }).click();
-  await page.locator('.deck-guess-btn', { hasText: /^1\.0$/ }).click();
+  await page.locator('.deck-guess-btn', { hasText: /^0\.5$/ }).click();
   await expect(page.locator('.result-wrong')).toBeVisible();
-  await expect(page.locator('.drill-result')).toContainText(
-    'Anything within a quarter deck counts',
-  );
+  await expect(page.locator('.drill-result')).toContainText('The nearest answer counts: 0.75.');
   await expect(page.locator('.drill-result')).toContainText('you were inside the last deck');
 });
 
@@ -152,16 +150,17 @@ test('the grade records the tolerance it was given, not a constant', async ({ pa
 
   await openDrill(page, 'Deck estimation');
   await page.getByRole('button', { name: 'Start', exact: true }).click();
-  await page.locator('.deck-guess-btn', { hasText: /^0\.5$/ }).click();
+  await page.locator('.deck-guess-btn', { hasText: /^0\.75$/ }).click();
   await expect(page.locator('.result-correct')).toBeVisible();
 
   const rows = await page.evaluate(() => {
     const raw = window.localStorage.getItem('bjtrainer.stats.v1');
     const blob = raw ? (JSON.parse(raw) as { deckEstimation?: { history?: unknown[] } }) : null;
-    return (blob?.deckEstimation?.history ?? []) as { toleranceDecks?: number }[];
+    return (blob?.deckEstimation?.history ?? []) as { toleranceDecks?: number; nearestButton?: boolean }[];
   });
   expect(rows).toHaveLength(1);
   expect(rows[0]?.toleranceDecks).toBe(0.25);
+  expect(rows[0]?.nearestButton).toBe(true);
 });
 
 test('the produce-TC band tightens with the resolution too', async ({ browser }) => {

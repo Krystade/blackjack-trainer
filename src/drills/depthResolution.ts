@@ -67,6 +67,24 @@ export function depthTolerance(decksRemaining: number, resolution: DepthResoluti
 }
 
 /**
+ * C15 (audit 2026-10-29): the grid answers nearest the real depth -- one,
+ * or two at an exact midpoint. A depth answer is right when it is one of
+ * these. A distance threshold of a full step passed both bracketing buttons
+ * (and three on the grid), so "always round up" scored 100%. Nearest is
+ * answerable at every depth, the 1-deck edge below the first button too.
+ */
+export function nearestDepths(actual: number, options: readonly number[]): number[] {
+  if (options.length === 0) return [];
+  const best = Math.min(...options.map((o) => Math.abs(o - actual)));
+  return options.filter((o) => Math.abs(o - actual) <= best + 1e-9);
+}
+
+/** C15: whether `guess` is a nearest grid answer to `actual` (see nearestDepths). */
+export function isNearestDepth(guess: number, actual: number, options: readonly number[]): boolean {
+  return nearestDepths(actual, options).includes(guess);
+}
+
+/**
  * Every decks-remaining value the answer grid offers, ascending.
  *
  * Built from the FINEST step in play and then filtered by what is legal at each

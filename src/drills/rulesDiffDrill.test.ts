@@ -194,6 +194,16 @@ describe('#52 tray-decks miss names a button, never a raw float', () => {
       expect(gradeRulesAnswer(q, plan, correct)).toBe(true);
     }
   });
+  it('C15: only the nearest button is right, not its neighbour up', () => {
+    const plan = planRulesDrill(r({ decks: 6 }), r({ decks: 8 }));
+    // 279 of 416 dealt: 2.63 decks left; 2.5 is nearest, 3 is half a deck over.
+    const q: RulesQuestion = { kind: 'tray-decks', side: 'b', totalDecks: 8, cardsDealt: 279 };
+    expect(gradeRulesAnswer(q, plan, 2.5)).toBe(true);
+    expect(gradeRulesAnswer(q, plan, 3)).toBe(false);
+    // 286 dealt: exactly 2.5 left -- 2 and 3 are a whole half deck out.
+    const onGrid: RulesQuestion = { kind: 'tray-decks', side: 'b', totalDecks: 8, cardsDealt: 286 };
+    expect([2, 2.5, 3].map((g) => gradeRulesAnswer(onGrid, plan, g))).toEqual([false, true, false]);
+  });
   it('279 of 416 dealt (2.63 decks left) reads 2.5', () => {
     const plan = planRulesDrill(r({ decks: 6 }), r({ decks: 8 }));
     const q: RulesQuestion = { kind: 'tray-decks', side: 'b', totalDecks: 8, cardsDealt: 279 };
