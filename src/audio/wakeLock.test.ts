@@ -182,6 +182,34 @@ describe('wakeLock — released while the request is in flight (D20)', () => {
   });
 });
 
+describe('wakeLock — asked for again while a late lock is being let go (review R2)', () => {
+  afterEach(() => {
+    delete (navigator as { wakeLock?: unknown }).wakeLock;
+  });
+
+  it('a holder that asks during the late release still gets a lock', async () => {
+    const resolvers: ((v: unknown) => void)[] = [];
+    let resolveRel: () => void = () => {};
+    const lateRelease = vi.fn(() => new Promise<void>((r) => (resolveRel = r)));
+    const request = vi.fn(() => new Promise((r) => resolvers.push(r)));
+    (navigator as unknown as { wakeLock: unknown }).wakeLock = { request };
+    const { requestWakeLock, releaseWakeLock, isWakeLockActive } = await freshModule();
+
+    const p1 = requestWakeLock('voice');
+    await releaseWakeLock('voice');
+    resolvers[0]({ release: lateRelease, addEventListener: vi.fn(), removeEventListener: vi.fn() });
+    await new Promise((r) => setTimeout(r, 0)); // the late lock is being released
+    expect(lateRelease).toHaveBeenCalledTimes(1);
+    const p2 = requestWakeLock('default'); // a drill starts a round now
+    resolveRel();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(request, 'the second holder was handed the dying request').toHaveBeenCalledTimes(2);
+    resolvers[1]({ release: vi.fn().mockResolvedValue(undefined), addEventListener: vi.fn(), removeEventListener: vi.fn() });
+    await Promise.all([p1, p2]);
+    expect(isWakeLockActive()).toBe(true);
+  });
+});
+
 describe('wakeLock — request() rejects (browsers reject when the tab is hidden)', () => {
   afterEach(() => {
     delete (navigator as { wakeLock?: unknown }).wakeLock;

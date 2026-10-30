@@ -78,8 +78,11 @@ async function acquire(): Promise<void> {
       // the page was hidden.
       if (sentinel || !wantedByAnyone()) {
         const late = !sentinel;
+        // Review R2: not awaited. While `acquiring` stayed set through the
+        // release, a holder asking in that moment was handed this dying
+        // request and got no lock at all.
         try {
-          await lock.release();
+          void lock.release().catch(() => {});
         } catch {
           // never throw
         }
