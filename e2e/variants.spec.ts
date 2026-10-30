@@ -238,7 +238,7 @@ test('a variant game at a card room: commission added, assumed only for that; lo
   await expect(card.getByTestId('gs-edge')).toHaveText(`${loggedEdge.toFixed(2)}%`);
   await expect(card.getByTestId('gs-edge')).toHaveAttribute('data-edge-state', 'done');
   await expect(card.getByTestId('gs-variant-rules')).toContainText('split to 2 hands');
-  await expect(card.getByTestId('gs-variant-rules')).toContainText('The logged rules');
+  await expect(card.getByTestId('gs-variant-rules')).toContainText('These are the logged rules');
   await expect(card.getByTestId('gs-assumed-rules')).toHaveCount(0);
   await expect(card.getByTestId('gs-commission')).toHaveCount(0);
   await expect(card.getByTestId('gs-variant-mismatch-badge')).toHaveText('Rules differ');

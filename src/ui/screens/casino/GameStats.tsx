@@ -485,8 +485,8 @@ function VariantGameStats({ casino, game, editRules }: { casino: Casino; game: C
             <strong>Rules used:</strong> {variantRulesSummary(rules)}.{' '}
             {fromLogged ? (
               <>
-                The logged rules, the {PRESET_LABEL[preset]} preset&rsquo;s where none is logged. The edge is computed in the app for an infinite
-                deck, playing perfectly for these rules; the Charts tab shows the preset&rsquo;s chart, which can differ in a cell or two.
+                These are the logged rules, with the {PRESET_LABEL[preset]} preset&rsquo;s for any not logged. The edge is computed in the app for
+                an infinite deck, playing perfectly for these rules; the Charts tab shows the preset&rsquo;s chart, which can differ in a cell or two.
               </>
             ) : (
               <>
