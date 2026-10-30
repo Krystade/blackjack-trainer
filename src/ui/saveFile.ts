@@ -100,6 +100,12 @@ export function localFileStamp(d: Date, withTime = false): string {
   return withTime ? `${day}-${p(d.getHours())}${p(d.getMinutes())}` : day;
 }
 
+/** B35: `2026-10-28T18-30-05`, local and file-safe, for a Test Kit recording's name. */
+export function localRecordingStamp(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${localFileStamp(d)}T${p(d.getHours())}-${p(d.getMinutes())}-${p(d.getSeconds())}`;
+}
+
 /** The training backup's file name: dated, local, to the minute, so several backups in Files can be told apart. */
 export function backupFileName(d: Date): string {
   return `bjtrainer-backup-${localFileStamp(d, true)}.json`;

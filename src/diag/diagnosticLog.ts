@@ -1078,13 +1078,40 @@ export function formatElapsed(ms: number): string {
  * collapsing to `[object Object]`.
  */
 /** `+01:00`, so the two clocks in this artefact can be reconciled. */
-function utcOffsetLabel(): string {
+function utcOffsetLabel(at: number = Date.now()): string {
   // `getTimezoneOffset` is minutes BEHIND UTC, so the sign is inverted.
-  const minutes = -new Date().getTimezoneOffset();
+  // B31: AT A GIVEN MOMENT. Taken at export, a log of a 31 Oct (PDT) drive
+  // copied on 2 Nov said UTC-08:00 over lines rendered at -07:00.
+  const minutes = -new Date(Number.isNaN(at) ? Date.now() : at).getTimezoneOffset();
   const sign = minutes < 0 ? '-' : '+';
   const abs = Math.abs(minutes);
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`;
+}
+
+/**
+ * B31: the body's own clock for an ISO stamp, `18:30:05` local, so a header
+ * line that names a moment reads on the same clock as the lines under it.
+ * The stamp itself back when it is not a date.
+ */
+export function localClockOf(iso: string): string {
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return iso;
+  const d = new Date(t);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+/** B31: a scope line's "since" phrase: `the car run started at 18:30:05 local (2026-10-29T01:30:05.000Z)`. */
+export function scopeSince(what: string, sinceIso: string): string {
+  return `${what} started at ${localClockOf(sinceIso)} local (${sinceIso})`;
+}
+
+/** The body clock's offset over the log: one label, or the first and last when they differ (a DST change, a trip). */
+function bodyOffsetLabel(firstAt: string, lastAt: string): string {
+  const a = utcOffsetLabel(Date.parse(firstAt));
+  const b = utcOffsetLabel(Date.parse(lastAt));
+  return a === b ? `UTC${a}` : `UTC${a} at the first line, UTC${b} at the last`;
 }
 
 /** `14:32:16.047` in local time, or blank padding when the stamp is unusable. */
@@ -1408,7 +1435,7 @@ export function formatDiagnosticLog(entries: readonly DiagEntry[], scope?: strin
     // ten past" against the header landed hours away from the body lines. The
     // body clock also carries no date, which a drive crossing midnight reads
     // as running backwards.
-    `# body clock is local (UTC${utcOffsetLabel()}); first/last below are UTC`,
+    `# body clock is local (${bodyOffsetLabel(first.at, last.at)}); first/last below are UTC`,
     // SAID, WHEN IT HAPPENED. The body prints times exactly as they were
     // recorded -- the log does not invent a timestamp -- so a corrected clock
     // still shows a backwards jump in the wall-clock column even though the

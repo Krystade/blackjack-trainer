@@ -50,7 +50,8 @@ import { readAudioSessionType } from '../../audio/audioSession';
 import { endCaptureRoute } from '../../audio/audioRoute';
 import { ROUTE_ANSWERS, isRouteKitId, routeKitSummary, type RouteAnswer, type RouteStepResult } from '../../diag/routeKit';
 import { RouteSnapshotStep, RouteVoiceStep } from './RouteKitSteps';
-import { diag, formatDiagnosticLog, readDiagnosticLog } from '../../diag/diagnosticLog';
+import { diag, formatDiagnosticLog, readDiagnosticLog, scopeSince } from '../../diag/diagnosticLog';
+import { localRecordingStamp } from '../saveFile';
 import { listMicrophones, probeMicSpectrum, type MicProbeResult } from '../../diag/micSpectrum';
 import { FIELD_TEST_STEPS } from '../../diag/fieldTest';
 import { readFieldTestRun, subscribeFieldTestRun } from '../../diag/fieldTestRun';
@@ -1518,7 +1519,8 @@ function RecordStep({ step, kit, ensureMic, onAnswer, onRecording }: StepProps &
       }
     }
     const recording = await rec.stop();
-    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    // B35: local, like the diagnostic log body, so a recording matches a drive without converting.
+    const stamp = localRecordingStamp(new Date());
     onRecording(`${kit}-${step.what}-${stamp}`, recording);
     setPhase('saved');
   };
@@ -1571,7 +1573,8 @@ function DoneView({ kit, recordings, onBack }: { kit: KitId; recordings: Array<{
       // filter above keeps every line, and a full log must not carry a scope
       // warning it has not earned -- a header that always warns gets skipped.
       const scope = since
-        ? `the ${KITS[kit].label} run started at ${since.slice(11, 19)}`
+        ? // B31: on the body's clock (local), with the UTC stamp beside it.
+          scopeSince(`the ${KITS[kit].label} run`, since)
         : undefined;
       await navigator.clipboard.writeText(formatDiagnosticLog(entries, scope));
       setCopied(
