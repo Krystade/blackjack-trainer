@@ -754,12 +754,24 @@ export function importAll(json: string): { ok: boolean; error?: string; rollback
     // backup taken while something was unreadable still holds the only copy
     // of it; dropping them here would mean the round trip -- the exact
     // sequence the crash screen tells people to perform -- destroyed it.
-    for (const grave of allGraveKeys()) {
-      const value = extras[grave];
-      if (typeof value === 'string') pending.push({ key: grave, value });
+    //
+    // R6: BUT NEVER OVER THIS PHONE'S OWN. A slot the phone holds may be the
+    // only copy of what it set aside; the file's copies fill only the free
+    // slots (the file itself still holds any that do not fit).
+    const store = getStorage();
+    for (const key of BACKED_UP_KEYS) {
+      const slots = graveKeys(key);
+      const here = slots.map((g) => store.getItem(g));
+      const incoming = slots
+        .map((g) => extras[g])
+        .filter((v): v is string => typeof v === 'string' && !here.includes(v));
+      slots.forEach((g, i) => {
+        if (here[i] !== null) return;
+        const value = incoming.shift();
+        if (value !== undefined) pending.push({ key: g, value });
+      });
     }
 
-    const store = getStorage();
     const before = new Map<string, string | null>();
     for (const { key } of pending) before.set(key, store.getItem(key));
 
