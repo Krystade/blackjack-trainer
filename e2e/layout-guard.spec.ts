@@ -125,7 +125,8 @@ const SCREENS: { name: string; open: (page: Page) => Promise<void> }[] = [
   { name: 'Settings', open: (p) => openSettingsScreen(p) },
   { name: 'Profiles', open: async (p) => { await p.locator('.home-profile-chip').click(); } },
   { name: 'Profile editor', open: async (p) => { await p.locator('.home-profile-chip').click(); await p.getByRole('button', { name: 'Edit', exact: true }).first().click(); } },
-  { name: 'Test kit', open: async (p) => { await openSettingsScreen(p); await p.getByTestId('settings-testkit-open').click(); } },
+  // Wave X: the kit is a lazy chunk opened in a transition, so the click can return with Settings still up.
+  { name: 'Test kit', open: async (p) => { await openSettingsScreen(p); await p.getByTestId('settings-testkit-open').click(); await expect(p.getByTestId('testkit-screen')).toBeVisible(); } },
   { name: 'Field test gate', open: async (p) => { await openSettingsScreen(p); await p.getByTestId('settings-testkit-open').click(); await p.getByTestId('fieldtest-open').click(); } },
   { name: 'Charts (from Home)', open: (p) => tab(p, 'Charts') },
 ];
@@ -401,3 +402,34 @@ for (const theme of THEMES) {
     expect(bad, `low contrast in ${theme}`).toEqual([]);
   });
 }
+
+/**
+ * Wave X (item 9): "Test kit (top): under the status bar" failed once under the
+ * 4-worker suite with Back and the heading inside the 47px inset. The Test kit
+ * is a lazy screen opened from Settings scrolled down to its button, and the
+ * screen's `data-screen` (which pins the bar below the inset) and the scroll
+ * reset were applied in passive effects -- after the new screen could paint.
+ * Under load that frame was what got measured; on the phone it was a frame of
+ * the bar under the clock. Watched at the commit itself, not by a timer: the
+ * first mutation that puts the Test kit in the document must already see the
+ * screen named and the page at its top.
+ */
+test('B1: a lazily opened screen is never in the document under the last screen\'s name or scroll', async ({ page }) => {
+  await page.addInitScript(() => {
+    const w = window as unknown as { __firstTestKit?: { screen: string | undefined; scrollY: number } };
+    new MutationObserver(() => {
+      if (w.__firstTestKit || !document.querySelector('[data-testid="testkit-screen"]')) return;
+      w.__firstTestKit = { screen: document.body.dataset.screen, scrollY: window.scrollY };
+    }).observe(document, { childList: true, subtree: true });
+  });
+  await page.goto('/?e2e=1');
+  await page.addStyleTag({ content: ':root { --safe-top: 47px; }' });
+  await openSettingsScreen(page);
+  const open = page.getByTestId('settings-testkit-open');
+  await open.scrollIntoViewIfNeeded();
+  expect(await page.evaluate(() => window.scrollY), 'Settings must be scrolled for this to mean anything').toBeGreaterThan(100);
+  await open.click();
+  await expect(page.getByTestId('testkit-screen')).toBeVisible();
+  const first = await page.evaluate(() => (window as unknown as { __firstTestKit?: unknown }).__firstTestKit);
+  expect(first).toEqual({ screen: 'testkit', scrollY: 0 });
+});

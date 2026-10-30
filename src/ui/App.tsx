@@ -1,4 +1,4 @@
-import { Suspense, startTransition, useEffect, useState } from 'react';
+import { Suspense, startTransition, useEffect, useLayoutEffect, useState } from 'react';
 import './app.css';
 import './themeCues.css';
 import './formControls.css';
@@ -227,14 +227,20 @@ function App() {
 
   // Which screen is up, for the one layout rule that is per-screen rather than
   // per-component: the field test gives the mute strip back (app.css).
-  useEffect(() => {
+  //
+  // Wave X (item 9): both of these are LAYOUT effects, run in the commit that
+  // puts the new screen in, before it can paint. As passive effects they ran
+  // a frame later, so a lazy screen opened from a scrolled Settings (Test kit)
+  // painted once under Settings' name and scroll -- its sticky bar at top 0,
+  // under the status bar -- which is what the loaded suite measured.
+  useLayoutEffect(() => {
     if (typeof document !== 'undefined') document.body.dataset.screen = screen;
   }, [screen]);
 
   // A new screen opens at its top. The document is the scroller for every
   // screen, so switching tabs kept the old offset: Stats opened halfway down
   // after scrolling Charts to its indexes.
-  useEffect(() => {
+  useLayoutEffect(() => {
     window.scrollTo(0, 0);
   }, [screen]);
 
