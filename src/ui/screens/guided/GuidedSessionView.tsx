@@ -114,6 +114,9 @@ export function GuidedSessionView({
   const runningSince = useRef<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const endingRef = useRef(false);
+  // The running drill's run in progress (count and true count report it): the
+  // clock neither ends nor idles a segment mid-run.
+  const midRunRef = useRef(false);
   const audioRef = useRef(settings.audio);
   audioRef.current = settings.audio;
   const [summary, setSummary] = useState<GuidedSummary | null>(null);
@@ -264,7 +267,7 @@ export function GuidedSessionView({
       const s = sessionRef.current;
       const seg = current(s);
       if (!seg || endingRef.current) return;
-      const verdict = verdictOnTick(seg, s.progress[s.index]!, activeMsNow(s, at));
+      const verdict = verdictOnTick(seg, s.progress[s.index]!, activeMsNow(s, at), midRunRef.current);
       if (verdict === 'end') {
         finishCurrent(false);
         return;
@@ -280,6 +283,9 @@ export function GuidedSessionView({
     }, 1000);
     return () => {
       window.clearInterval(id);
+      // The drill goes with the running stretch; the next one reports afresh
+      // (its own effects run after this cleanup).
+      midRunRef.current = false;
     };
     // Per segment and per phase.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -481,6 +487,9 @@ export function GuidedSessionView({
         onSettingsChange={onSettingsChange}
         onPause={() => pauseNow()}
         onReviewDone={endSoon}
+        onMidRun={(m) => {
+          midRunRef.current = m;
+        }}
       />
     </div>
   );
@@ -578,6 +587,7 @@ function SegmentDrill({
   onSettingsChange,
   onPause,
   onReviewDone,
+  onMidRun,
 }: {
   seg: PlannedSegment;
   drive: boolean;
@@ -586,6 +596,7 @@ function SegmentDrill({
   onSettingsChange: (s: Settings) => void;
   onPause: () => void;
   onReviewDone: () => void;
+  onMidRun: (midRun: boolean) => void;
 }): ReactNode {
   const run = segmentSettings(seg, drive, settings);
   const overridden = run !== settings;
@@ -611,9 +622,9 @@ function SegmentDrill({
       // and it has no microphone for answers or the session's commands.
       return <FlashcardsView {...common} />;
     case 'count':
-      return <CountDrillView settings={run} autoStart onBack={onPause} onSettingsChange={change} />;
+      return <CountDrillView settings={run} autoStart onBack={onPause} onSettingsChange={change} onMidRun={onMidRun} />;
     case 'truecount':
-      return <TrueCountDrillView {...common} autoStart />;
+      return <TrueCountDrillView {...common} autoStart onMidRun={onMidRun} />;
     case 'deviations': {
       const askable = new Set(askedIndexSet(strategyRulesFor(activeProfile)).map((d) => d.id as string));
       const ids = (seg.indexes ?? []).filter((id) => askable.has(id));

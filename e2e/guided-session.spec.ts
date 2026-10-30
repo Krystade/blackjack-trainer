@@ -381,3 +381,38 @@ test('no segment shows a drill switch for how to answer: the session decides', a
   }
   await expect(page.getByTestId('guided-summary')).toBeVisible();
 });
+
+test('a count run is never cut off: past the cap mid-run, the segment waits for its answer', async ({ page }) => {
+  await base(page);
+  await seedGuided(page, {
+    preset: 5,
+    drive: false,
+    plan: [
+      { id: 'count', minutes: 1, target: { kind: 'time', ms: 60_000 }, weak: true },
+      { id: 'deviations', minutes: 1, target: { kind: 'answers', n: 5 }, weak: true, indexes: [] },
+    ],
+    index: 0,
+    progress: [
+      { answers: 0, right: 0, activeMs: 0 },
+      { answers: 0, right: 0, activeMs: 0 },
+    ],
+    phase: 'intro',
+  });
+  await page.clock.install();
+  await page.goto('/?e2e=1');
+  await page.locator('.guided-card').getByRole('button', { name: 'Resume', exact: true }).click();
+  await page.getByRole('button', { name: 'Start now' }).click();
+  await expect(running(page, 'count')).toBeVisible();
+  // The first run's answer is being asked for: mid-run, nothing answered yet.
+  await expect(page.locator('.numpad')).toBeVisible({ timeout: 20_000 });
+
+  // Well past the cap (time + a minute): neither ended nor idled.
+  await page.clock.fastForward(150_000);
+  await expect(strip(page)).toHaveText('0:00');
+  await expect(running(page, 'count')).toBeVisible();
+  await expect(page.getByTestId('guided-paused')).toHaveCount(0);
+
+  // The run's answer is its end, and with the time up, the segment's.
+  await submitZero(page);
+  await expect(page.locator('[data-testid="guided-transition"][data-segment="deviations"]')).toBeVisible();
+});

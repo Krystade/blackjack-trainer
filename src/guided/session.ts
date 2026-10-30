@@ -91,8 +91,13 @@ export function endsOnAnswer(seg: PlannedSegment, prog: SegmentProgress, activeM
  * start): 'end' past the cap with something answered in it; 'idle' past the
  * cap with nothing answered in it (nobody is there: pause rather than talk to
  * an empty car); else 'continue'.
+ *
+ * Never mid-run: a count run (cards being dealt, or its answer being taken)
+ * is neither cut off at the cap nor called idle -- a long first run is not
+ * "nobody there". The verdict waits for the run to end, between runs.
  */
-export function verdictOnTick(seg: PlannedSegment, prog: SegmentProgress, activeMs: number): 'continue' | 'end' | 'idle' {
+export function verdictOnTick(seg: PlannedSegment, prog: SegmentProgress, activeMs: number, midRun = false): 'continue' | 'end' | 'idle' {
+  if (midRun) return 'continue';
   if (activeMs - (prog.windowMs ?? 0) < capMs(seg)) return 'continue';
   return prog.answers - (prog.windowAnswers ?? 0) > 0 ? 'end' : 'idle';
 }

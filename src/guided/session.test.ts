@@ -54,6 +54,16 @@ describe('segment ends', () => {
     expect(verdictOnTick(answersSeg(10, 2), prog(4), 5 * 60_000)).toBe('end');
   });
 
+  it('never mid-run: a count run in progress is neither cut off at the cap nor called idle', () => {
+    const seg = timeSeg(1);
+    // Answered before, past the cap, a run in progress: it finishes first.
+    expect(verdictOnTick(seg, prog(2), capMs(seg) + 30_000, true)).toBe('continue');
+    expect(verdictOnTick(seg, prog(2), capMs(seg) + 30_000, false)).toBe('end');
+    // A first run longer than the cap: being dealt (or answered), not idle.
+    expect(verdictOnTick(seg, prog(0), capMs(seg) + 30_000, true)).toBe('continue');
+    expect(verdictOnTick(seg, prog(0), capMs(seg) + 30_000, false)).toBe('idle');
+  });
+
   it('nothing answered by the cap: idle (the host pauses), not end', () => {
     expect(verdictOnTick(timeSeg(3), prog(0), capMs(timeSeg(3)))).toBe('idle');
     expect(verdictOnTick(answersSeg(10), prog(0), 10 * 60_000)).toBe('idle');

@@ -113,6 +113,7 @@ export function TrueCountDrillView({
   activeProfile,
   onBack,
   onSettingsChange,
+  onMidRun,
 }: {
   settings: Settings;
   /** C-R3: opened by Home's Drive tap -- skip the setup screen and go. */
@@ -122,6 +123,8 @@ export function TrueCountDrillView({
   // Needed so the eyes-free toggle can enable audio itself rather than
   // sitting disabled and pointing at another screen -- see ui/audioGate.ts.
   onSettingsChange: (settings: Settings) => void;
+  /** Wave L (guided session): as CountDrillView's -- a question in progress, or between questions. */
+  onMidRun?: (midRun: boolean) => void;
 }) {
   const [phase, setPhaseState] = useState<TcPhase>('setup');
   /**
@@ -152,10 +155,13 @@ export function TrueCountDrillView({
    * four" immediately after the question lost all four presses.
    */
   const wheelResetRef = useRef<() => void>(() => {});
+  const onMidRunRef = useRef(onMidRun);
+  onMidRunRef.current = onMidRun;
   const setPhase = (next: TcPhase): void => {
     phaseRef.current = next;
     wheelResetRef.current();
     setPhaseState(next);
+    onMidRunRef.current?.(next !== 'setup' && next !== 'result');
   };
   const [question, setQuestion] = useState<TrueCountQuestion | null>(null);
   const [wasCorrect, setWasCorrect] = useState(false);

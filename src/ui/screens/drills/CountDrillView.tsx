@@ -179,12 +179,20 @@ export function CountDrillView({
   autoStart = false,
   onBack,
   onSettingsChange,
+  onMidRun,
 }: {
   settings: Settings;
   /** C-R3: opened by Home's Drive tap -- skip the setup screen and go. */
   autoStart?: boolean;
   onBack: () => void;
   onSettingsChange: (settings: Settings) => void;
+  /**
+   * Wave L (guided session): told at every phase change whether a run is in
+   * progress (cards being dealt, or its answer being taken) -- true -- or the
+   * drill is between runs (setup, the result) -- false. A guided time
+   * segment only ends, or idles, between runs.
+   */
+  onMidRun?: (midRun: boolean) => void;
 }) {
   const [countdownMode, setCountdownMode] = useState(false);
   // V3-4 soft gate: computed once at mount (fluency doesn't change mid-session).
@@ -222,11 +230,14 @@ export function CountDrillView({
    * wiped by a reset belonging to the old one.
    */
   const wheelResetRef = useRef<() => void>(() => {});
+  const onMidRunRef = useRef(onMidRun);
+  onMidRunRef.current = onMidRun;
   const setPhase = (next: CountPhase): void => {
     phaseRef.current = next;
     wheelResetRef.current();
     setPendingCount(null);
     setPhaseState(next);
+    onMidRunRef.current?.(next !== 'setup' && next !== 'result');
   };
   const [drillRound, setDrillRound] = useState<CountDrillRound | null>(null);
   const [countdownRound, setCountdownRound] = useState<CountdownRound | null>(null);
