@@ -279,7 +279,7 @@ export function useVoiceControl({
     const deadWatch = createMicDeadWatch({
       schedule: (fn, ms) => window.setTimeout(fn, ms),
       cancel: (handle) => window.clearTimeout(handle),
-      now: () => Date.now(),
+      now: monoNow,
       // e2e only: a spec cannot wait out ten real seconds of a stuck engine.
       stuckMs: isE2eAudioMode() ? (window as { __e2eMicStuckMs?: number }).__e2eMicStuckMs : undefined,
       currentState: () => controllerRef.current?.state() ?? 'off',
