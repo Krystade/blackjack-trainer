@@ -2,7 +2,7 @@ import { noteStoragePersistence } from './store/backupStatus';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './ui/App.tsx';
-import { startUpdateWatch } from './updateCheck.ts';
+import { dropVersionParam, startUpdateWatch } from './updateCheck.ts';
 import { updateMustWait } from './ui/activityLive.ts';
 import { primeVoices } from './audio/speech.ts';
 import { dropRetiredKeys, loadSettings } from './store/persist.ts';
@@ -32,6 +32,8 @@ registerOfflineWorker();
 // answer the operator has given lives in localStorage; refusal is normal.
 // B25: the answer is kept (Settings > Offline shows it) and logged, not dropped.
 void requestPersistentStorage().then(noteStoragePersistence);
+// R5: the ?v= update stamp has done its job once this document is running.
+dropVersionParam();
 
 // The stored theme before React's first render (index.html does it even
 // earlier, before the bundle loads; this covers a document served without it).

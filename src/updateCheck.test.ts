@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import {
+  withoutVersionParam,
   buildLabel,
   formatBuiltAt,
   isStale,
@@ -58,6 +59,16 @@ describe('versionUrl', () => {
 
   it('carries a cache-busting parameter', () => {
     expect(versionUrl('https://example.com/app/')).toMatch(/[?&]t=/);
+  });
+});
+
+describe('withoutVersionParam (R5)', () => {
+  it('drops only the update stamp', () => {
+    expect(withoutVersionParam('https://x.github.io/bj/?e2e=1&v=B2#top')).toBe('https://x.github.io/bj/?e2e=1#top');
+    expect(withoutVersionParam('https://x.github.io/bj/?v=B2')).toBe('https://x.github.io/bj/');
+  });
+  it('says there is nothing to do when there is no stamp', () => {
+    expect(withoutVersionParam('https://x.github.io/bj/?e2e=1')).toBeNull();
   });
 });
 

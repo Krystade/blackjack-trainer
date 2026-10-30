@@ -122,6 +122,32 @@ export function reloadUrl(href: string, deployedId: string): string {
 }
 
 /**
+ * R5: the address without the update stamp, or null when there is none.
+ *
+ * The stamp has done its job once the page has loaded: the cache-busting URL
+ * got the new document. Left in place it makes every later navigation to this
+ * address -- the crash screen's Reload, iOS restoring a discarded page in the
+ * car -- an update reload to the worker, which waits up to 15s on weak signal
+ * (sw.js UPDATE_NAV_TIMEOUT_MS) for a document it already holds.
+ */
+export function withoutVersionParam(href: string): string | null {
+  const url = new URL(href);
+  if (!url.searchParams.has('v')) return null;
+  url.searchParams.delete('v');
+  return url.toString();
+}
+
+/** R5: drop the update stamp from the address bar, keeping history and every other parameter. */
+export function dropVersionParam(): void {
+  try {
+    const next = withoutVersionParam(window.location.href);
+    if (next !== null) window.history.replaceState(window.history.state, '', next);
+  } catch {
+    /* no history API: the stamp stays, which costs only the wait */
+  }
+}
+
+/**
  * Belt-and-braces against a reload loop.
  *
  * The flow is sound in theory -- reload, get the new document, ids now
