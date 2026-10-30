@@ -404,6 +404,10 @@ test('count-check modal: RC then TC two-stage prompt on the 2nd trigger (askTcTo
 
   await modal.getByRole('button', { name: '1', exact: true }).click();
   await modal.getByRole('button', { name: 'OK', exact: true }).click();
+  // The typed counts are arbitrary, so a wrong answer holds the deal (Wave X):
+  // pass the held sheet the way round 1 does. What is under test is the
+  // two-stage prompt, not the answer.
+  await dealPastHeldCount(page);
   await expect(modal).not.toBeVisible();
   await expect(page.locator('.topbar-stat', { hasText: /^Round / })).toHaveText('Round 3');
 });
