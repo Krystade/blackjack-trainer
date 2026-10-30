@@ -83,8 +83,13 @@ describe('Wave L merge: side bets at a 4- or 5-deck shoe (Wave M)', () => {
     expect(spec.cutDecks).toBe(1);
     // Not in the generated table (1, 2, 6, 8 decks): the game's own run.
     expect(sideRowFor(four, sb)).toBeNull();
-    // The cut is clamped to the 4-deck shoe, as the main simulator clamps it.
-    expect(sideCutOf({ ...four, cutDecksLeft: 3.9 })).toBe(3.5);
+    // The cut is clamped to the 4-deck shoe, as the main simulator clamps it
+    // (C4: a quarter deck from either end, not half a deck).
+    expect(sideCutOf({ ...four, cutDecksLeft: 3.9 })).toBe(3.75);
+    // C4: a single-deck cut under half a deck is dealt as logged, to the quarter.
+    const one = { ...blankGame('g1'), decks: 1 as const, s17: true };
+    expect(sideCutOf({ ...one, cutDecksLeft: 0.25 })).toBe(0.25);
+    expect(sideCutOf({ ...one, cutDecksLeft: 0.1 })).toBe(0.25);
     expect(sideRowSpec({ ...four, decks: 5 }, sb).decks).toBe(5);
   });
   it('leaves 1, 2, 6 and 8 decks keyed as before (their seeds and cached rows unchanged)', () => {

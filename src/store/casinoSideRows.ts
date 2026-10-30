@@ -1,7 +1,7 @@
 import type { CasinoGame } from './casinoLog';
 import type { CasinoSideBet } from './casinoSideBets';
 import { assumedCutFor, SIM_VERSION, simRules } from './casinoGameStats';
-import { CUT_MIN_DECKS } from '../engine/cut';
+import { simCutDecks } from '../engine/cut';
 import { CUT_FOR_DECKS, sideBetRow } from '../engine/sideBets/plan';
 import type { SideBetRow } from '../engine/sideBets/plan';
 import type { SideRowSpec } from '../engine/sideBets/build';
@@ -22,12 +22,11 @@ export const SIDE_ROWS_KEY = 'bjtrainer.casinoSideBets.v1';
 export const CASINO_SIDE_ROUNDS = 300_000;
 const MAX_CACHED = 120;
 
-/** The cut a game's side bet is simulated at: the game's own (as the main simulator clamps it), to the quarter deck. */
+/** The cut a game's side bet is simulated at: the game's own, clamped as the main simulator clamps it (simCutDecks, C4), to the quarter deck. */
 export function sideCutOf(game: CasinoGame): number {
   const shoe = sideShoeDecksOf(game);
   const cut = game.cutDecksLeft ?? assumedCutFor(shoe);
-  const clamped = Math.min(Math.max(CUT_MIN_DECKS, shoe - CUT_MIN_DECKS), Math.max(CUT_MIN_DECKS, cut));
-  return Math.round(clamped * 4) / 4;
+  return Math.round(simCutDecks(cut, shoe) * 4) / 4;
 }
 
 /**
