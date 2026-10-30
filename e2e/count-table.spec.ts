@@ -16,7 +16,8 @@ async function openCountDrill(page: Page) {
 
 test('a manual table run shows rounds like Play and records every card shown', async ({ page }) => {
   await withSettings(page, {
-    drill: { countManual: true, countTableMode: true, countTableRounds: 5, countLengthCards: 52 },
+    // Wave X: slow enough that the first tap always lands mid-deal.
+    drill: { countManual: true, countTableMode: true, countTableRounds: 5, countLengthCards: 52, countIntervalMs: 3000 },
   });
   await openCountDrill(page);
   await expect(page.getByRole('button', { name: '5', exact: true })).toBeVisible();
@@ -26,6 +27,9 @@ test('a manual table run shows rounds like Play and records every card shown', a
   for (let round = 1; round <= 5; round++) {
     const table = page.getByTestId('count-table');
     await expect(page.locator('.manual-tap-hint')).toContainText(`Tap for the next round · ${round}/5`);
+    // Wave X: the round is dealt in; a tap lays the rest down, and it waits at the payout.
+    await page.locator('.manual-tap-zone').click();
+    await expect(table).toHaveAttribute('data-stage', 'payout');
     const dealer = await table.locator('.count-table-dealer .card').count();
     const seats = await table.locator('.bot-seat').count();
     expect(dealer).toBeGreaterThanOrEqual(2);

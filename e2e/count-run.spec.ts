@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings, openCountOptions, submitZero } from './helpers';
+import { withSettings, openCountOptions, submitZero, tableRoundDown } from './helpers';
 
 /**
  * Wave E E5 (W2-8): the count drill's result shows the dealt run under a
@@ -158,7 +158,13 @@ test('E5: a table run lists one row per round, and its tags still sum to the cou
   });
   await page.setViewportSize(PHONE);
   await openCountDrill(page);
-  await advanceUntil(page, () => page.locator('.numpad').isVisible(), 8);
+  // Wave X: each round is dealt in, laid down by a tap, and collected by the next.
+  for (let round = 1; round <= 5; round++) {
+    await expect(page.locator('.manual-tap-hint')).toContainText(`${round}/5`);
+    await tableRoundDown(page);
+    await page.locator('.manual-tap-zone').click();
+  }
+  await expect(page.locator('.numpad')).toBeVisible();
   await submitZero(page);
   const actual = await shownActual(page);
   await page.addStyleTag({ content: NOTCH });

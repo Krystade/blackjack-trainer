@@ -525,3 +525,15 @@ export async function shownHandRightPlay(page: Page, rules: RuleSet = DEFAULT_RU
 export async function pastCountLeadIn(page: Page): Promise<void> {
   await expect(page.getByTestId('count-leadin')).toHaveCount(0);
 }
+
+/**
+ * Wave X (item 8): an On-tap Table-mode round is dealt in card by card; a tap
+ * lays the rest down and the round waits at its payout for the tap that
+ * collects it. Returns with the whole round on the felt.
+ */
+export async function tableRoundDown(page: Page): Promise<void> {
+  const table = page.getByTestId('count-table');
+  await expect(table).toBeVisible();
+  if ((await table.getAttribute('data-stage')) === 'deal') await page.locator('.manual-tap-zone').click();
+  await expect(table).toHaveAttribute('data-stage', 'payout');
+}

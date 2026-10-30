@@ -105,6 +105,9 @@ export interface Settings {
     // Absent = off; run length then counts rounds (countTableRounds, default 10).
     countTableMode?: boolean;
     countTableRounds?: number;
+    // Wave X: Table mode deals each round card by card at the time per card,
+    // or lays it down at once ('instant'). Absent = card by card.
+    countTableDeal?: 'dealt' | 'instant';
     // G1 (L-1): the count drill prints each flashed card's Hi-Lo value under
     // it, and opens the result's run listing. A beginner aid. Absent = off.
     countShowHiLo?: boolean;

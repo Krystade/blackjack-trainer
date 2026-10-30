@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { sayMomentAtPause } from '../../../habits/moment';
 import type { Settings } from '../../../store/types';
 import type { Card } from '../../../engine/cards';
@@ -80,6 +80,9 @@ import type { TableRound } from '../../../drills/countTable';
 import './countTable.css';
 import './countPause.css';
 import './countLeadIn.css';
+import './countTableDeal.css';
+import { tableDealOf, tableHoldMs, tableRoundPlan, tableView, type TableDeal } from '../../countTableDeal';
+import { DEALER_SEAT } from '../../dealSequence';
 import { COUNT_PAUSED_LINE } from '../../../drills/countPause';
 import { EASY_FIRST_RUN, hiLoLabel, hiLoShown, offersEasyFirstRun } from '../../../drills/hiLoAid';
 import './hiLoAid.css';
@@ -259,6 +262,10 @@ export function CountDrillView({
   // grading run unchanged on rounds.
   const [tableRun, setTableRun] = useState<TableRound[] | null>(null);
   const [shownIndex, setShownIndex] = useState(0);
+  // Wave X (item 8): how many of the table round's steps (countTableDeal.ts)
+  // are on the felt. Tagged with the run and round it belongs to, so a new
+  // round starts from its own first step without a reset at every advance.
+  const [tableAt, setTableAt] = useState<{ run: TableRound[]; index: number; shown: number } | null>(null);
   // F7: this session's graded runs, for the car status line.
   const [runScore, setRunScore] = useState({ right: 0, total: 0 });
   const [wasCorrect, setWasCorrect] = useState(false);
@@ -494,6 +501,26 @@ export function CountDrillView({
       ? drillRound.groups
       : [];
 
+  // Wave X (item 8): the table round on the felt, dealt, paid and collected
+  // step by step (countTableDeal.ts). Its own clock below drives a table run
+  // in place of the one-timer-per-round advance.
+  const roundOnFelt = tableRun && shownIndex < tableRun.length ? tableRun[shownIndex] : null;
+  const tableManual = settings.drill.countManual && !timedChallenge;
+  const tableDeal = tableDealOf(settings.drill.countTableDeal);
+  const tablePlan = useMemo(
+    () => (roundOnFelt ? tableRoundPlan(roundOnFelt, settings.drill.countIntervalMs, tableDeal, tableManual) : null),
+    [roundOnFelt, settings.drill.countIntervalMs, tableDeal, tableManual],
+  );
+  const tableShown =
+    tablePlan === null
+      ? 0
+      : tableAt !== null && tableAt.run === tableRun && tableAt.index === shownIndex
+        ? tableAt.shown
+        : tablePlan.first;
+  const showTableSteps = (shown: number) => {
+    if (tableRun) setTableAt({ run: tableRun, index: shownIndex, shown });
+  };
+
   // D1 part 2 (docs/BACKLOG.md, distraction training): pause the flashing
   // stream and pose a distraction. Called from all three of the standard
   // count drill's advance mechanisms (the fixed-interval effect, the
@@ -560,6 +587,37 @@ export function CountDrillView({
   const distractionAt = (idx: number) =>
     isDistractionPoint(idx, settings.drill.distractionFreq, runSeedRef.current);
 
+  /** The step past card/round `i`: a checkpoint, a distraction, the answer, or the next. */
+  const advanceFrom = (i: number) => {
+    const isLast = i >= groups.length - 1;
+    if (isCheckpoint(i)) {
+      triggerCheckpoint(i, isLast);
+      return;
+    }
+    if (!countdownMode && distractionAt(i)) {
+      triggerDistraction(i, isLast);
+      return;
+    }
+    if (isLast) enterAnswerPhase();
+    else setShownIndex(i + 1);
+  };
+
+  // Wave X (item 8): Table mode's own clock. Each step holds its beat -- a
+  // card the time per card, the payout its set beat, a collect a quick one --
+  // and once the dealer's own cards are taken, the round moves on. On tap,
+  // the payout waits for the tap that collects it (advanceManual).
+  useEffect(() => {
+    if (phase !== 'flashing' || paused || tablePlan === null) return undefined;
+    const hold = tableHoldMs(tablePlan, tableShown);
+    if (hold === null) return undefined;
+    const t = setTimeout(() => {
+      if (tableShown < tablePlan.steps.length) showTableSteps(tableShown + 1);
+      else advanceFrom(shownIndex);
+    }, hold);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, paused, tablePlan, tableShown, shownIndex]);
+
   // Visual-mode (non-eyes-free) fixed-interval advance -- UNCHANGED behavior
   // apart from the D1 distraction check below. Eyes-free auto mode is driven
   // by speech instead (see the effect below), so it's explicitly excluded
@@ -571,7 +629,9 @@ export function CountDrillView({
       groups.length === 0 ||
       settings.drill.countManual ||
       eyesFree ||
-      timedChallenge
+      timedChallenge ||
+      // Wave X (item 8): a table round runs on the table's own clock above.
+      tablePlan !== null
     ) {
       return undefined;
     }
@@ -617,6 +677,7 @@ export function CountDrillView({
     countdownMode,
     timedChallenge,
     tableRun,
+    tablePlan,
     paused,
   ]);
 
@@ -924,6 +985,21 @@ export function CountDrillView({
 
   const advanceManual = () => {
     if (pausedAtRef.current !== null) return;
+    if (tablePlan !== null) {
+      // Wave X (item 8): a tap mid-deal lays the rest of the round down; at
+      // the payout it collects, and the round moves on once that is done.
+      const payout = tablePlan.payoutAt + 1;
+      if (tableShown < payout) {
+        showTableSteps(payout);
+        return;
+      }
+      if (tableShown > payout) return;
+      const now = performance.now();
+      if (lastCardAtRef.current !== null) tapGapsRef.current.push(now - lastCardAtRef.current);
+      lastCardAtRef.current = now;
+      showTableSteps(payout + 1);
+      return;
+    }
     const isLast = shownIndex >= groups.length - 1;
     // #20: the gap this tap closes. Read before any interruption is posed --
     // the card was up until now whatever happens next.
@@ -970,6 +1046,9 @@ export function CountDrillView({
     if (timedStartRef.current !== null) timedStartRef.current += pausedMs;
     if (lastCardAtRef.current !== null) lastCardAtRef.current += pausedMs;
     setPaused(false);
+    // Wave X (item 8): a table round picks up where it stopped -- skipping on
+    // would take away cards still to be dealt.
+    if (tablePlan !== null) return;
     const i = shownIndex;
     const isLast = i >= groups.length - 1;
     if (isCheckpoint(i)) {
@@ -1783,32 +1862,58 @@ export function CountDrillView({
   const currentGroup = shownIndex < groups.length ? groups[shownIndex] : null;
 
   /** G1: the card with its Hi-Lo value printed under it, when the aid is on. */
-  function withHiLo(node: ReactNode, c: Card, key: string): ReactNode {
+  function withHiLo(node: ReactNode, c: Card, key: string, faceDown = false): ReactNode {
     if (!showHiLo) return node;
     return (
       <span key={key} className="hilo-card">
         {node}
-        <span className="hilo-value" data-testid="hilo-value" data-rank={c.rank}>
-          {hiLoLabel(c)}
-        </span>
+        {/* Wave X: a face-down card keeps its slot but not its value. */}
+        {faceDown ? (
+          <span className="hilo-value" aria-hidden="true" style={{ visibility: 'hidden' }}>
+            0
+          </span>
+        ) : (
+          <span className="hilo-value" data-testid="hilo-value" data-rank={c.rank}>
+            {hiLoLabel(c)}
+          </span>
+        )}
       </span>
     );
   }
-  const currentTable = tableRun && shownIndex < tableRun.length ? tableRun[shownIndex] : null;
-
-  /** #47: the round laid out like Play -- dealer on top, seats below, read-only. */
-  const tableLayout = currentTable && (
-    <div className="count-table" data-testid="count-table">
-      <div className="dealer-area count-table-dealer">
-        {currentTable.dealer.map((c, i) => withHiLo(<PlayingCard key={i} card={c} />, c, `d${i}`))}
+  /**
+   * #47: the round laid out like Play -- dealer on top, seats below, read-only.
+   * Wave X (item 8): only the steps dealt so far; the hole card face down
+   * until the dealer turns it; a seat's cards gone once collected. Keyed by
+   * round, so every round's cards are dealt in fresh. A card still to come
+   * holds its place unseen, so the felt never reflows as the round is dealt
+   * and each card lands where it stays.
+   */
+  const tableFelt = roundOnFelt && tablePlan ? tableView(tablePlan, roundOnFelt.players.length, tableShown) : null;
+  const tableCard = (c: Card, key: string, dealt: boolean, opts: { compact?: boolean; down?: boolean } = {}): ReactNode => {
+    const size = opts.compact ? 'compact' : undefined;
+    if (!dealt) {
+      return (
+        <span key={`${key}-pending`} className="count-table-pending" aria-hidden="true">
+          {withHiLo(<PlayingCard card={c} faceDown={opts.down} size={size} />, c, key, true)}
+        </span>
+      );
+    }
+    return withHiLo(<PlayingCard key={key} card={c} faceDown={opts.down} size={size} />, c, key, opts.down);
+  };
+  const tableLayout = roundOnFelt && tableFelt && (
+    <div className="count-table" data-testid="count-table" data-stage={tableFelt.stage} key={shownIndex}>
+      <div className={`dealer-area count-table-dealer${tableFelt.collected.has(DEALER_SEAT) ? ' is-collected' : ''}`}>
+        {roundOnFelt.dealer.map((c, i) =>
+          tableCard(c, `d${i}`, i < tableFelt.dealerCards, { down: i === 1 && tableFelt.holeDown }),
+        )}
       </div>
       <div className="bot-seats-row count-table-seats">
-        {currentTable.players.map((hand, seat) => (
-          <div key={seat} className="bot-seat">
+        {roundOnFelt.players.map((hand, seat) => (
+          <div key={seat} className={`bot-seat${tableFelt.collected.has(seat) ? ' is-collected' : ''}`}>
             <div className="bot-seat-label">P{seat + 1}</div>
             <div className="bot-hand">
               <div className="bot-hand-cards">
-                {hand.map((c, j) => withHiLo(<PlayingCard key={j} card={c} size="compact" />, c, `p${j}`))}
+                {hand.map((c, j) => tableCard(c, `p${j}`, j < (tableFelt.seatCards[seat] ?? 0), { compact: true }))}
               </div>
             </div>
           </div>
@@ -1993,6 +2098,20 @@ export function CountDrillView({
                 options={TABLE_ROUND_CHOICES.map((n) => ({ value: String(n), label: String(n) }))}
                 value={String(tableRounds(settings.drill.countTableRounds))}
                 onChange={(v) => updateDrill({ countTableRounds: Number(v) })}
+              />
+            </div>
+          )}
+          {tableOn && (
+            <div className="settings-row">
+              {/* Wave X (item 8): dealt at the time per card, or all at once. */}
+              <span className="settings-label">Dealing</span>
+              <Segmented<TableDeal>
+                options={[
+                  { value: 'dealt', label: 'Card by card' },
+                  { value: 'instant', label: 'Instant' },
+                ]}
+                value={tableDeal}
+                onChange={(v) => updateDrill({ countTableDeal: v })}
               />
             </div>
           )}

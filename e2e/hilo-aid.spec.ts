@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings, withStats, openCountOptions, submitZero, pastCountLeadIn } from './helpers';
+import { withSettings, withStats, openCountOptions, submitZero, pastCountLeadIn, tableRoundDown } from './helpers';
 
 /**
  * G1 (L-1): the count drill's beginner aid. "Show Hi-Lo values" (off by
@@ -144,7 +144,8 @@ test('option on in Table mode: every card of the round carries its value', async
   await page.getByRole('button', { name: 'Start', exact: true }).click();
   await pastCountLeadIn(page);
   const table = page.getByTestId('count-table');
-  await expect(table).toBeVisible();
+  // Wave X: the round is dealt in; laid down, every card is on the felt.
+  await tableRoundDown(page);
   const cards = await table.locator('.card').evaluateAll((els) =>
     els.map((c) => ({
       card: c.getAttribute('data-card') ?? '',
