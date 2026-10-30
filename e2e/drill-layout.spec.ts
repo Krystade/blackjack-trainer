@@ -643,3 +643,34 @@ test('D5: at 320x568 the miss strip\'s right play clears the sticky answer bar',
     .toBe(true);
   await page.screenshot({ path: 'e2e/screenshots/d5-miss-320.png' });
 });
+
+/**
+ * D6: THE STRIP SAYS IT IS ABOUT THE LAST HAND. It sits under a newly dealt
+ * hand (in Mixed, under a different true count), and nothing said which hand
+ * it described. A muted "Last hand" leads the verdict, on the verdict's own
+ * line so the height budget at 375x812 is unchanged.
+ */
+test('D6: right or wrong, the result strip is labelled as the last hand, on the verdict line', async ({ page }) => {
+  await withSettings(page, { drill: { scopes: ['hard'], flashCategory: 'hard' } });
+  await page.setViewportSize(PHONE);
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
+  const bar = page.locator('.action-bar');
+  const sameLine = async (tone: 'ok' | 'miss', verdict: string) => {
+    const strip = page.locator(`[data-testid="result-strip"][data-tone="${tone}"]`);
+    const eyebrow = strip.getByTestId('last-hand-eyebrow');
+    await expect(eyebrow).toHaveText(/last hand/i);
+    const a = (await eyebrow.boundingBox())!;
+    const b = (await strip.locator(verdict).boundingBox())!;
+    expect(a.y + a.height, 'the eyebrow is on a line of its own').toBeGreaterThan(b.y);
+    expect(a.y).toBeLessThan(b.y + b.height);
+  };
+
+  await bar.getByRole('button', { name: await shownHandRightPlay(page), exact: true }).click();
+  await sameLine('ok', '.result-correct');
+
+  const right = await shownHandRightPlay(page);
+  await bar.getByRole('button', { name: right === 'Hit' ? 'Stand' : 'Hit', exact: true }).click();
+  await sameLine('miss', '.result-wrong');
+});

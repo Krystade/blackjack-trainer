@@ -103,3 +103,20 @@
   font-size: var(--fs-sm);
   color: var(--ink-dim);
 }
+
+/* D6: "Last hand", muted and small, on the verdict's own line. */
+.hand-result-row {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0 8px;
+}
+
+.hand-result-eyebrow {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}

@@ -28,6 +28,19 @@ import './handResultIndex.css';
  * - Wrong: the exact cards, what you played, the right play, the reason, and
  *   in mastery the progress the miss cost. It stays until the next answer.
  */
+/**
+ * D6: the strip is about the hand BEFORE the one on screen, and in Mixed the
+ * two can carry different true counts ("TC +5" above, "at TC -1" in the box).
+ * A muted eyebrow on the same line says so without costing height.
+ */
+export function LastHand({ text = 'Last hand' }: { text?: string }) {
+  return (
+    <span className="hand-result-eyebrow" data-testid="last-hand-eyebrow">
+      {text}
+    </span>
+  );
+}
+
 export function HandResultStrip({
   result,
   onShowChart,
@@ -53,8 +66,11 @@ export function HandResultStrip({
     return (
       <ResultStrip id={result.id} tone="ok">
         <div className="hand-result" data-cell-id={result.cellId} data-result-id={result.id}>
-          <div className="hand-result-undone" data-testid="hand-result-undone">
-            {undoneLine(result)}
+          <div className="hand-result-row">
+            <LastHand />
+            <div className="hand-result-undone" data-testid="hand-result-undone">
+              {undoneLine(result)}
+            </div>
           </div>
         </div>
       </ResultStrip>
@@ -78,7 +94,10 @@ export function HandResultStrip({
     return (
       <ResultStrip id={result.id} tone="ok">
         <div className="hand-result" data-cell-id={result.cellId} data-result-id={result.id}>
-          <div className="hand-result-ok result-correct">{correctLine(result)}</div>
+          <div className="hand-result-row">
+            <LastHand />
+            <div className="hand-result-ok result-correct">{correctLine(result)}</div>
+          </div>
           {result.label && <div className="hand-result-label quiz-label">{result.label}</div>}
           {indexNote}
           {/* Right or wrong, the table this was asked for is worth saying. */}
@@ -99,6 +118,7 @@ export function HandResultStrip({
     <ResultStrip id={result.id} tone="miss">
       <div ref={missRef} className="hand-result" data-cell-id={result.cellId} data-result-id={result.id}>
         <div className="hand-result-head">
+          <LastHand />
           {/* `result-wrong` is the app-wide hook for a graded miss. */}
           <span className="hand-result-verdict result-wrong">{isTimeout(result) ? 'Too slow' : 'Wrong'}</span>
           <span className="hand-result-hand" data-testid="hand-result-hand">

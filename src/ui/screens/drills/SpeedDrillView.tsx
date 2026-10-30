@@ -21,6 +21,7 @@ import { gradeSpeedAnswer } from '../../../drills/speedGrade';
 import { BLIND_TAP_CHANNEL, SCREEN_CHANNEL } from '../../../drills/spacedRepetition';
 import { PlayingCard } from '../../components/PlayingCard';
 import { ResultStrip } from '../../components/ResultStrip';
+import { LastHand } from '../../components/HandResultStrip';
 import { releaseAnswerFocus, resultHandLine } from '../../handResult';
 import { answerTooSoon } from '../../answerBounce';
 import { signed } from '../../../drills/signed';
@@ -329,13 +330,14 @@ function SpeedSession({
         {last && (
           <ResultStrip id={last.id} tone={last.correct ? 'ok' : 'miss'}>
             <div className="speed-result" data-testid="speed-result" data-cell-id={last.q.cellId}>
+              {/* D6: inline, so it costs no height. */}
               {last.correct ? (
                 <div className="result-correct">
-                  Correct! {resultHandLine(last.q)} — <Word yes={last.q.answer} />
+                  <LastHand text="Last" /> Correct! {resultHandLine(last.q)} — <Word yes={last.q.answer} />
                 </div>
               ) : (
                 <div className="speed-result-miss">
-                  {resultHandLine(last.q)}: you said <Word yes={last.saidYes} />, answer{' '}
+                  <LastHand text="Last" /> {resultHandLine(last.q)}: you said <Word yes={last.saidYes} />, answer{' '}
                   <strong>
                     <Word yes={last.q.answer} />
                   </strong>
