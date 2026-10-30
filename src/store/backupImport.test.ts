@@ -138,7 +138,7 @@ describe('the confirm names what this file replaces (B22)', () => {
         'The file is older than this phone: what you practised since it was made will be replaced.',
         '',
         'It replaces your stats, settings and profiles.',
-        'You can undo the import from this screen until the app is closed.',
+        'You can undo this until you practise or for 24 hours.',
       ].join('\n'),
     );
     expect(importConfirmText({ ...file, summary: phone }, phone, false)).not.toContain('older than this phone');

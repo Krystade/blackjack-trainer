@@ -711,7 +711,7 @@ export function restoreSnapshot(snap: BackupSnapshot): boolean {
   return ok;
 }
 
-export function importAll(json: string): { ok: boolean; error?: string } {
+export function importAll(json: string): { ok: boolean; error?: string; rollbackFailed?: true } {
   try {
     const v = validateBackup(json);
     if (!v.ok) return v;
@@ -783,6 +783,8 @@ export function importAll(json: string): { ok: boolean; error?: string } {
         error: restored
           ? `not enough space to import (${key}); nothing was changed. Clearing the diagnostic log (Settings) frees space.`
           : `Could not write ${key}, and the previous data could not be put back`,
+        // R2: the caller keeps its own copy of what was here as the undo.
+        ...(restored ? {} : { rollbackFailed: true as const }),
       };
     }
 

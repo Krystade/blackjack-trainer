@@ -25,7 +25,17 @@ import {
   summarizeBackupBlob,
   quarantinedBackupLabels,
 } from '../../store/persist';
-import { backupDateText, lastBackupText, clearUndo, importConfirmText, readUndo, storeUndo, type ImportUndo } from './backupText';
+import {
+  backupDateText,
+  canKeepUndo,
+  lastBackupText,
+  clearUndo,
+  importConfirmText,
+  liveUndo,
+  practiceMark,
+  storeUndo,
+  type ImportUndo,
+} from './backupText';
 import { backupFileName, saveTextFile, type SaveResult } from '../../platform/saveFile';
 import { useTabSettings } from '../tabSettingsContext';
 import { lastBackupAt, markBackedUp } from '../../store/backupStatus';
@@ -543,8 +553,9 @@ export function Stats({ activeProfile, settings, onSettingsChange, onNavigate }:
   };
 
   const [lastBackup, setLastBackup] = useState<string | null>(() => lastBackupAt());
-  // B4: the undo for the last import, until the app is closed.
-  const [undo, setUndo] = useState<ImportUndo | null>(() => readUndo());
+  // B4: the undo for the last import.
+  // R1: only while nothing has been practised since, and for 24 hours at most.
+  const [undo, setUndo] = useState<ImportUndo | null>(() => liveUndo());
   const tabSettings = useTabSettings();
   // B13: a quarantine used to be silent. Read on every render: cheap, and an
   // import or undo changes it.
@@ -579,21 +590,29 @@ export function Stats({ activeProfile, settings, onSettingsChange, onNavigate }:
         setMessage(`Import failed: ${inspected.error}`);
         return;
       }
-      const at = new Date().toISOString();
-      const undoKept = storeUndo({ at, snap: snapshotBackedUp() });
+      // R2: IN MEMORY until the import commits. Picking a second file just
+      // to read its date, then cancelling, used to overwrite the first
+      // import's undo and then delete it.
+      const snap = snapshotBackedUp();
+      const undoPossible = canKeepUndo();
       // B22: the sentence names what THIS file replaces, from the keys it carries.
       const phone = summarizeBackupBlob(JSON.parse(exportAll()) as Record<string, unknown>);
-      if (!window.confirm(importConfirmText(inspected, phone, undoKept))) {
-        if (undoKept) clearUndo();
-        return;
-      }
+      if (!window.confirm(importConfirmText(inspected, phone, undoPossible))) return;
+      const at = new Date().toISOString();
       const result = importAll(text);
       if (result.ok) {
+        // R2: replaced only now, by an import that committed.
+        const kept = undoPossible && storeUndo({ at, snap, mark: practiceMark() });
+        // An older undo would put back a phone from before the PREVIOUS import.
+        if (!kept) clearUndo();
         afterReplace();
-        setUndo(undoKept ? readUndo() : null);
-        setMessage('Backup imported.');
+        setUndo(kept ? liveUndo() : null);
+        setMessage(kept ? 'Backup imported.' : 'Backup imported. There was no room to keep an undo.');
       } else {
-        if (undoKept) clearUndo();
+        // R2: a failed import leaves the undo as it was -- unless putting the
+        // previous data back failed too, when this copy is the only one.
+        if (result.rollbackFailed && undoPossible) storeUndo({ at, snap, mark: practiceMark() });
+        setUndo(liveUndo());
         setMessage(`Import failed: ${result.error ?? 'unknown error'}`);
       }
     };
@@ -602,17 +621,24 @@ export function Stats({ activeProfile, settings, onSettingsChange, onNavigate }:
   };
 
   const handleUndoImport = () => {
-    const u = readUndo();
+    const u = liveUndo();
     if (!u) {
       setUndo(null);
+      setMessage('The undo is no longer available: something was practised since the import, or it is over 24 hours old.');
       return;
     }
     if (!window.confirm(`Put back what this phone held before the import of ${backupDateText(u.at)}?`)) return;
     const ok = restoreSnapshot(u.snap);
-    clearUndo();
-    setUndo(null);
+    if (ok) {
+      clearUndo();
+      setUndo(null);
+    } else {
+      // R2: a half-done undo keeps its snapshot, so it can be tried again.
+      const again = { ...u, mark: practiceMark() };
+      setUndo(storeUndo(again) ? again : null);
+    }
     afterReplace();
-    setMessage(ok ? 'Import undone.' : 'Undo failed part way: storage is full or unavailable.');
+    setMessage(ok ? 'Import undone.' : 'Undo failed part way: storage is full or unavailable. Free some space and try Undo again.');
   };
 
   const handleReset = () => {

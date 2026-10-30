@@ -152,7 +152,7 @@ test('the import question shows the file beside the phone and names what it repl
   expect(warning).toMatch(/^Import this backup\?\n\nThe file: made 2 Jan 2026, \d\d:30\. 0 answers, 1 table session, 0 profiles, 0 review cards, newest practice 2 Jan 2026/);
   expect(warning).toContain('\nThis phone: 0 answers, 1 table session,');
   expect(warning).toContain('It replaces your stats, settings, streaks and achievements and guided sessions.');
-  expect(warning).toContain('You can undo the import from this screen until the app is closed.');
+  expect(warning).toContain('You can undo this until you practise or for 24 hours.');
 
   await statsTab(page, 'Over time');
   await expect(page.locator('.session-row', { hasText: 'File Profile' })).toBeVisible();
