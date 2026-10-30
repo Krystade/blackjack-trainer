@@ -43,6 +43,7 @@ export const ALLOWED: readonly Allowed[] = [
   // Fluid sizes: they track the viewport or container, so no single step fits.
   { file: 'ui/app.css', selector: '.action-btn', value: 'clamp(0.65rem, 2.9vw, 0.85rem)', reason: 'Fluid: five action buttons on one row at any width' },
   { file: 'ui/screens/tableGlance.css', selector: '.table-screen .action-btn', value: 'clamp(0.8125rem, 3.6vw, 1rem)', reason: "Fluid: Play's action row" },
+  { file: 'ui/components/drillActionLabels.css', selector: '.drill-screen > .action-bar > .action-btn', value: 'clamp(0.8125rem, 3.6vw, 1rem)', reason: "D10 Fluid: the drills' action row, at Play's size from 360px up" },
   { file: 'ui/app.css', selector: '.zone-pad-quad', value: 'clamp(1.6rem, 8vmin, 2.4rem)', reason: 'Fluid: eyes-free pad labels scale with the pad' },
   { file: 'ui/app.css', selector: '.zone-pad-circle', value: 'clamp(0.85rem, 4.5cqmin, 1.4rem)', reason: 'Fluid: scales with its container' },
   { file: 'ui/app.css', selector: '.zone-pad-half', value: 'clamp(1.8rem, 9vmin, 2.6rem)', reason: 'Fluid: eyes-free pad labels scale with the pad' },
