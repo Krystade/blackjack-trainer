@@ -37,6 +37,7 @@ import { isVoiceCaptureActive, micSessionCostPaid } from './micSessionCost';
 import { applyRouteSink, routeSinkId } from './audioRoute';
 import { diag } from '../diag/diagnosticLog';
 import { notifySpeechEnded } from './speechActivity';
+import { DecodedClipCache } from './decodedClipCache';
 
 function hasWindow(): boolean {
   return typeof window !== 'undefined';
@@ -96,6 +97,9 @@ export async function activeClipVoice(): Promise<string | null> {
 }
 
 export function setClipVoice(voiceId: string): void {
+  // D19: another voice's decoded clips will not be played again; keyed by
+  // URL, they would otherwise sit beside the new voice's as a second set.
+  if (voiceId !== currentClipVoice) decodedClips.clear();
   currentClipVoice = voiceId;
 }
 
@@ -876,7 +880,7 @@ const NOTHING_PLAYED: ClipPlayResult = { played: false, remainder: null };
  * microphone moves, and stretched and chopped the clips. Jack, on the decoded
  * path with the mic open, 2026-10-05: "they sounded identical".
  */
-const decodedClips = new Map<string, Promise<AudioBuffer>>();
+const decodedClips = new DecodedClipCache<AudioBuffer>();
 // Decoded buffers were made by the context that is being replaced.
 onAudioContextReplaced(() => decodedClips.clear());
 
@@ -889,8 +893,7 @@ function decodeClip(ctx: AudioContext, url: string): Promise<AudioBuffer> {
         return r.arrayBuffer();
       })
       .then((bytes) => ctx.decodeAudioData(bytes));
-    // A failed decode must not poison the cache for the next attempt.
-    p.catch(() => decodedClips.delete(url));
+    // A failed decode is dropped by the cache itself (D19).
     decodedClips.set(url, p);
   }
   return p;
