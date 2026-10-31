@@ -117,9 +117,32 @@ export function classifyInputs(devices: readonly DeviceLike[], sinkIdSupported =
  * route this app is driven on.
  */
 export function guessBluetoothKind(label: string): 'car' | 'headset' {
-  return /airpods|beats|buds|headphone|headset|earphone|earbud|\bpods?\b|bose|jabra|sony wh|sony wf|powerbeats|shokz|pixel buds/i.test(label)
+  return /airpods|beats|buds|tozo|headphone|headset|earphone|earbud|\bpods?\b|bose|jabra|sony wh|sony wf|powerbeats|shokz|pixel buds/i.test(label)
     ? 'headset'
     : 'car';
+}
+
+/**
+ * Whether the microphone in use right now is a headset's -- the first listed
+ * input, which WebKit sorts to the front for the live route. Kept here, set
+ * from every input listing, because the recogniser has to ask it synchronously
+ * as each result lands.
+ *
+ * A headset's mic sits in the ear, out of reach of its own speaker, so the
+ * app's prompt cannot come back through it the way it does on a loud speaker
+ * or a car's cabin mic. Drive `siw` (2026-10-30, one TOZO-T6 earbud): a
+ * correct "Send" given over a replayed prompt was thrown away as echo.
+ */
+let headsetInputNow = false;
+
+export function noteRouteInputs(route: DetectedRoute): void {
+  const first = route.first;
+  headsetInputNow =
+    first !== null && route.bluetooth !== null && first === route.bluetooth.label && guessBluetoothKind(first) === 'headset';
+}
+
+export function isHeadsetInputNow(): boolean {
+  return headsetInputNow;
 }
 
 /** A loud-speaker output, if iOS lists one by a name that says so. */

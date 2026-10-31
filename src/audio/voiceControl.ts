@@ -6,6 +6,7 @@ import {
 } from './voiceRecognition';
 import { looksLikeLateSelfEcho, looksLikeSelfEcho, looksLikeShortSelfEcho } from './selfEcho';
 import { msSinceInputDeviceChanged } from '../diag/deviceChurn';
+import { isHeadsetInputNow } from './audioRoute';
 
 /**
  * A speech-recognition session that survives being left running.
@@ -92,6 +93,12 @@ export type HeardVerdict = VoiceAction | 'rejected' | 'suppressed' | (string & {
 export type SuppressedWhy = 'speaking' | 'tail' | 'echo';
 
 export interface VoiceControllerDeps {
+  /**
+   * Whether the live input is a headset's mic (audioRoute.ts). Answers given
+   * over a prompt are then taken, since the prompt cannot reach that mic.
+   * Defaults to the module-level reading; tests inject it.
+   */
+  isHeadsetInput?: () => boolean;
   /** Returns null when the browser has no recognition API. */
   createRecognition: () => RecognitionLike | null;
   /**
@@ -902,7 +909,13 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
         });
       };
 
-      if (isSuppressed(deps.now(), suppressedUntil)) {
+      const headsetBargeIn =
+        isSuppressed(deps.now(), suppressedUntil) &&
+        !(tailSince !== null && deps.now() >= tailSince) &&
+        (deps.isHeadsetInput ?? isHeadsetInputNow)() &&
+        !looksLikeSelfEcho(heard, lastSaid);
+      if (headsetBargeIn) log('barge-in', { heard, forMs: suppressedUntil - deps.now() });
+      if (!headsetBargeIn && isSuppressed(deps.now(), suppressedUntil)) {
         const why: SuppressedWhy = tailSince !== null && deps.now() >= tailSince ? 'tail' : 'speaking';
         log('suppressed', { heard, forMs: suppressedUntil - deps.now(), why });
         timing('suppressed');

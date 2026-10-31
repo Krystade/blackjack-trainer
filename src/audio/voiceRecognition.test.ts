@@ -795,6 +795,9 @@ describe('misheard forms from the btf drive', () => {
     expect(resolveSpoken(['Hate me'])).toEqual({ action: 'hit', via: 'misheard' });
     expect(resolveSpoken(['Teach me.'])).toEqual({ action: 'hit', via: 'misheard' });
     expect(resolveSpoken(['Settle down'])).toEqual({ action: 'double', via: 'misheard' });
+    expect(resolveSpoken(['Help me', 'Add me'])).toEqual({ action: 'hit', via: 'misheard' });
+    expect(resolveSpoken(['Send it', 'Send'])).toEqual({ action: 'stand', via: 'misheard' });
+    expect(resolveSpoken(['Help me', 'Stand'])).toBe(null);
     // A runner-up agreeing (or saying nothing) leaves it standing.
     expect(resolveSpoken(['Hate me', 'Hit me'])).toEqual({ action: 'hit', via: 'misheard' });
     expect(resolveSpoken(['Spot', 'Spit', 'Split'])).toEqual({ action: 'split', via: 'misheard' });

@@ -90,6 +90,7 @@ function harness(
     onTranscript?: (heard: string, offered: readonly string[]) => string | null;
     claimsEchoes?: boolean;
     speechTailMs?: number;
+    headset?: boolean;
   } = {},
 ): Harness {
   const actions: VoiceAction[] = [];
@@ -112,6 +113,7 @@ function harness(
       }),
     now: () => clock,
     speechTailMs: opts.speechTailMs,
+    isHeadsetInput: () => opts.headset ?? false,
     schedule: (fn, ms) => {
       const handle = nextHandle++;
       timers.set(handle, { at: clock + ms, fn });
@@ -1367,6 +1369,24 @@ describe('the deaf window after a sound', () => {
       ['hit', 'suppressed'],
     ]);
     expect(h.why).toEqual(['speaking', 'tail']);
+  });
+
+  it('on a headset mic, an answer over the prompt is taken (drive siw)', () => {
+    const h = harness({ headset: true });
+    h.controller.start();
+    h.controller.suppressFor(2000, 'You have twelve. Dealer shows six.');
+    h.current().say('Send');
+    expect(h.actions).toEqual(['stand']);
+  });
+
+  it("on a headset mic, the prompt's own words and the tail are still held", () => {
+    const h = harness({ headset: true });
+    h.controller.start();
+    h.controller.suppressFor(3000, 'You have a pair of fours. Dealer shows six.');
+    h.current().say('You have a pair of fours');
+    h.controller.releaseSuppression();
+    h.current().say('hit');
+    expect(h.actions).toEqual([]);
   });
 
   it('a new line after the ending is "speaking" again', () => {

@@ -32,6 +32,7 @@ import { runningBuildId, runningBuiltAt } from '../updateCheck';
 import { markInputDeviceChanged } from './deviceChurn';
 import { monoNow } from '../audio/monoClock';
 import { openMicStream } from '../audio/openMicStream';
+import { classifyInputs, noteRouteInputs } from '../audio/audioRoute';
 
 /** Kept so a second mount (React strict mode, a remount) cannot double-log. */
 let installed = false;
@@ -243,6 +244,7 @@ export async function logAudioInputs(reason: string): Promise<void> {
     }
     const devices = await md.enumerateDevices();
     const inputs = devices.filter((d) => d.kind === 'audioinput');
+    noteRouteInputs(classifyInputs(devices));
     diag('route', 'inputs', {
       reason,
       count: inputs.length,

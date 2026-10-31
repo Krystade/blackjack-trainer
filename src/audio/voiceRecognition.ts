@@ -592,6 +592,12 @@ export const MISHEARD_FORMS: Readonly<Record<string, VoiceAction>> = {
   'hate me': 'hit',
   'teach me': 'hit',
   'settle down': 'double',
+  // Drives `slf` (speakerphone) and `siw` (one earbud), 2026-10-30: "Help me"
+  // came back four times for "hit me", rescued only when a runner-up happened
+  // to say it; "Send it" for "stand", rejected because the approximation pass
+  // takes one word and the runner-up "Send" may not approximate.
+  'help me': 'hit',
+  'send it': 'stand',
 };
 
 function isShort(cleaned: string): boolean {

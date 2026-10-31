@@ -18,7 +18,9 @@ import { driveTarget, setDriveAutoStart } from '../driveLaunch';
 import { setEyesFreeOn } from '../eyesFreeSession';
 import { diag } from '../../diag/diagnosticLog';
 import { setVoiceOn } from '../voiceSession';
+import { useEffect } from 'react';
 import { speak } from '../../audio/speech';
+import { prewarmClips } from '../../audio/clips';
 import { speechOptsFrom } from '../../audio/speechOpts';
 import { withAudioEnabled } from '../audioGate';
 import { useDayTick } from '../useDayTick';
@@ -105,6 +107,14 @@ export function Home({ onNavigate, activeProfile, settings, onSettingsChange }: 
    * cutting it off. Eyes-free on, voice as it was, and the drill starts itself.
    */
   const drive = driveTarget(settings);
+  // The tap speaks the drill's name at once, and the clip gate is synchronous:
+  // a manifest still loading sends that line to live speech, which the car
+  // never hears (drive `siw`, 2026-10-30: "Flashcards." fell to Samantha and
+  // timed out). Nothing else on Home has warmed it by then.
+  const warm = !!drive && settings.audio.useClips;
+  useEffect(() => {
+    if (warm) void prewarmClips();
+  }, [warm]);
   const startDrive = () => {
     if (!drive) return;
     const next = settings.audio.enabled ? settings : withAudioEnabled(settings);
