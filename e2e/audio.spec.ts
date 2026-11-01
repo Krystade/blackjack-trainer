@@ -1,5 +1,8 @@
 import { test, expect, type Page } from '@playwright/test';
 import { shot, withSettings, withProfile, resolveInsurance, playRoundByAdvice, answerSelfReportIfPresent, openCountOptions } from './helpers';
+import { RANKS } from '../src/engine/cards';
+import { hiLoTag } from '../src/engine/count';
+import { narrateCountAnswer, narrateRank } from '../src/audio/narrate';
 
 /**
  * Cycle-3 Task 10: `window.__speechLog` e2e coverage for the audio system.
@@ -24,6 +27,27 @@ const CARD_RE = /^(ace|two|three|four|five|six|seven|eight|nine|ten|jack|queen|k
 const BOT_ACTION_RE = /^Player (one|two|three|four|five) (hits|stands|doubles|splits|surrenders)/;
 /** narrateHandResult's exact format, e.g. "Win, plus two." / "Hand one: Lose, minus one." */
 const RESULT_RE = /^(Hand (one|two|three|four|five): )?(Win|Lose|Push|Blackjack!|Surrender)/;
+
+/** Each spoken rank word's Hi-Lo tag, from the engine's own table. */
+const TAG_BY_WORD = new Map(RANKS.map((r) => [narrateRank(r), hiLoTag(r)]));
+
+/**
+ * The cards an eyes-free count run SPOKE before asking for the count, as rank
+ * words, and the running count they add up to. A line is a card line when
+ * every ", "-separated part is a rank word (countGroup 2+ says "seven, king").
+ * In the car the cards are only heard, so the spoken cards, not the dealt
+ * ones, are what Jack counts.
+ */
+function spokenCards(log: string[]): { cards: string[]; runningCount: number } {
+  const prompt = log.indexOf("What's the running count?");
+  const before = prompt < 0 ? log : log.slice(0, prompt);
+  const cards = before
+    .filter((l) => !l.startsWith('chime:'))
+    .map((l) => l.split(', '))
+    .filter((parts) => parts.every((w) => TAG_BY_WORD.has(w)))
+    .flat();
+  return { cards, runningCount: cards.reduce((rc, w) => rc + TAG_BY_WORD.get(w)!, 0) };
+}
 
 async function readSpeechLog(page: Page): Promise<string[]> {
   return page.evaluate(() => window.__speechLog ?? []);
@@ -216,6 +240,12 @@ test('eyes-free count drill: cards, then the count prompt, then the spoken answe
 
   const answerIndex = log.findIndex((l, i) => i > promptIndex && /^The count is .+\.$/.test(l));
   expect(answerIndex, `expected the spoken count answer in ${JSON.stringify(log)}`).toBeGreaterThanOrEqual(0);
+
+  // The cards heard are the cards graded: all thirteen were spoken, and they
+  // add up to the count the app says is right.
+  const spoken = spokenCards(log);
+  expect(spoken.cards, JSON.stringify(log)).toHaveLength(13);
+  expect(log[answerIndex]).toBe(narrateCountAnswer(spoken.runningCount));
 });
 
 /* ---------------------------------------------------------------- */
@@ -273,6 +303,11 @@ test('eyes-free AUTO count drill: every card is spoken before the count prompt, 
 
   const answerIndex = log.findIndex((l, i) => i > promptIndex && /^The count is .+\.$/.test(l));
   expect(answerIndex, `expected the spoken count answer in ${JSON.stringify(log)}`).toBeGreaterThanOrEqual(0);
+
+  // The cards heard are the cards graded.
+  const spoken = spokenCards(log);
+  expect(spoken.cards, JSON.stringify(log)).toHaveLength(5);
+  expect(log[answerIndex]).toBe(narrateCountAnswer(spoken.runningCount));
 });
 
 /* ---------------------------------------------------------------- */
