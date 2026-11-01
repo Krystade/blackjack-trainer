@@ -14,27 +14,20 @@ const c = (rank: Card['rank'], suit: Card['suit']): Card => ({ rank, suit });
 
 describe('narrateCard — every rank and suit', () => {
   it('names face cards and suits', () => {
-    expect(narrateCard(c('Q', 'h'))).toBe('queen of hearts');
-    expect(narrateCard(c('A', 's'))).toBe('ace of spades');
-    expect(narrateCard(c('10', 'd'))).toBe('ten of diamonds');
-    expect(narrateCard(c('J', 'c'))).toBe('jack of clubs');
-    expect(narrateCard(c('K', 'h'))).toBe('king of hearts');
-    expect(narrateCard(c('2', 's'))).toBe('two of spades');
+    expect(narrateCard(c('Q', 'h'), 'full')).toBe('queen of hearts');
+    expect(narrateCard(c('A', 's'), 'full')).toBe('ace of spades');
+    expect(narrateCard(c('10', 'd'), 'full')).toBe('ten of diamonds');
+    expect(narrateCard(c('J', 'c'), 'full')).toBe('jack of clubs');
+    expect(narrateCard(c('K', 'h'), 'full')).toBe('king of hearts');
+    expect(narrateCard(c('2', 's'), 'full')).toBe('two of spades');
   });
   it('joins multiple cards with commas', () => {
-    expect(narrateCards([c('Q', 'h'), c('4', 's')])).toBe('queen of hearts, four of spades');
+    expect(narrateCards([c('Q', 'h'), c('4', 's')], 'full')).toBe('queen of hearts, four of spades');
   });
 });
 
 describe('narrateCard / narrateCards — detail levels', () => {
-  it('omitting detail defaults to "full" and stays byte-identical to today\'s output', () => {
-    expect(narrateCard(c('Q', 'h'))).toBe('queen of hearts');
-    expect(narrateCard(c('A', 's'))).toBe('ace of spades');
-    expect(narrateCard(c('10', 'd'))).toBe('ten of diamonds');
-    expect(narrateCards([c('Q', 'h'), c('4', 's')])).toBe('queen of hearts, four of spades');
-  });
-
-  it('detail "full" is identical to the default', () => {
+  it('detail "full" names the suit', () => {
     expect(narrateCard(c('Q', 'h'), 'full')).toBe('queen of hearts');
     expect(narrateCard(c('10', 'd'), 'full')).toBe('ten of diamonds');
     expect(narrateCards([c('Q', 'h'), c('4', 's')], 'full')).toBe('queen of hearts, four of spades');

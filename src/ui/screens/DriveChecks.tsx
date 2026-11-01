@@ -553,7 +553,8 @@ export function DriveChecks({
         finalAnswer: null,
         finalTruth: runningCountOf(cards),
       };
-      const cardLines = new Set(cards.map((c) => narrateCard(c)));
+      // The drill's own line form: rank only (CountDrillView narrates 'rank').
+      const cardLines = new Set(cards.map((c) => narrateCard(c, 'rank')));
       for (let i = 0; i < cards.length; i++) {
         if (i === COUNT_CHECKPOINT_AFTER) {
           await say(narrateCountPrompt());
@@ -584,7 +585,7 @@ export function DriveChecks({
             facts.resumedAt = i;
           }
         }
-        await say(narrateCard(cards[i]!));
+        await say(narrateCard(cards[i]!, 'rank'));
         await sleep(500);
       }
       await say(DC_LINES.countFinal);

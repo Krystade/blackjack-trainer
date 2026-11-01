@@ -83,17 +83,21 @@ export function narrateRank(rank: Rank): string {
  * How much of a card is spoken. 'rank' ("queen") is what every drill and the
  * table use: suit is irrelevant to the count and roughly doubles every line.
  * 'full' ("queen of hearts") survives for the bot-action lines only.
+ *
+ * No default: every caller names the level, so a new call site cannot bring
+ * the suits back by forgetting the argument (the Drive count check did, and
+ * timed its pause on lines twice as long as the drill's).
  */
 export type CardDetail = 'full' | 'rank';
 
-export function narrateCard(card: Card, detail: CardDetail = 'full'): string {
+export function narrateCard(card: Card, detail: CardDetail): string {
   if (detail === 'full') {
     return `${narrateRank(card.rank)} of ${SUIT_NAMES[card.suit]}`;
   }
   return narrateRank(card.rank);
 }
 
-export function narrateCards(cards: Card[], detail: CardDetail = 'full'): string {
+export function narrateCards(cards: Card[], detail: CardDetail): string {
   return cards.map((card) => narrateCard(card, detail)).join(', ');
 }
 
@@ -240,7 +244,7 @@ export function narrateBotAction(seatLabel: string, action: Action, card?: Card)
   const seat = narrateSeat(seatLabel);
   const verb = ACTION_VERB[action];
   if (card) {
-    return `${seat} ${verb}. ${capitalize(narrateCard(card))}.`;
+    return `${seat} ${verb}. ${capitalize(narrateCard(card, 'full'))}.`;
   }
   return `${seat} ${verb}.`;
 }

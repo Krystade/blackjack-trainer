@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { openSettingsScreen, readStoredDiagnostics, sayOnceListening, waitForMic } from './helpers';
-import { DC_LINES } from '../src/diag/driveChecks';
+import { DC_LINES, COUNT_CHECKPOINT_AFTER } from '../src/diag/driveChecks';
 import { COUNT_PAUSED_LINE } from '../src/drills/countPause';
 import { SPEECH_TAIL_MS } from '../src/audio/voiceControl';
 
@@ -145,6 +145,13 @@ test('count: pause holds, resume picks up, and the final entry starts from the c
     finalFromCheckpoint: true,
     finalAnswer: 3,
   });
+  // A126: the cards are said as the Count drill says them -- rank only,
+  // never "seven of clubs" -- so the pause is timed on the drill's lines.
+  const log = await page.evaluate(() => window.__speechLog ?? []);
+  const ranks = /^(ace|two|three|four|five|six|seven|eight|nine|ten|jack|queen|king)( of (hearts|spades|clubs|diamonds))?$/;
+  const cardLines = log.filter((l) => ranks.test(l));
+  expect(cardLines.length, JSON.stringify(log)).toBeGreaterThan(COUNT_CHECKPOINT_AFTER);
+  expect(cardLines.filter((l) => l.includes(' of ')), 'a card said with its suit').toEqual([]);
 });
 
 test('mute: the Mute button lands mid-line, sound comes back for the question', async ({ page }) => {
