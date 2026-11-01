@@ -241,7 +241,7 @@ function App() {
   );
 
   // Which screen is up, for the one layout rule that is per-screen rather than
-  // per-component: the field test gives the mute strip back (app.css).
+  // per-component: where the mute disc is seated (muteSeat.css).
   //
   // Wave X (item 9): both of these are LAYOUT effects, run in the commit that
   // puts the new screen in, before it can paint. As passive effects they ran

@@ -2,7 +2,7 @@
  * B1 (D3): THE MUTE DISC SITS IN EACH SCREEN'S TOP BAR, NOT IN A STRIP.
  *
  * The disc used to live in a 44px strip that `body` reserved above every
- * screen (primitives.css, `--mute-h`). The strip was transparent and the page
+ * screen (primitives.css, `--mute-h`, since removed). The strip was transparent and the page
  * scrolled under it, so sticky bars slid beneath the disc, and the 44px it
  * cost was dead space on every screen. Jack chose (D3) to drop the strip and
  * give the disc a seat in each top bar instead, the way Charts has done since
@@ -23,9 +23,9 @@
  * app.css and the screens' own sheets at equal specificity.
  */
 
-/* D3: no strip. The seat and the seat line every screen shares. */
+/* D3: no strip (primitives.css reserves only the status-bar inset). The
+   seat and the seat line every screen shares. */
 :root {
-  --mute-h: 0px;                                      /* D3: the strip is gone (overrides primitives.css, incl. its <700px block) */
   --mute-seat: calc(var(--mute-disc, 44px) + 16px);   /* disc + 8px either side, kept free at the right of every top bar */
   --topbar-h: calc(48px + 1.2rem);                    /* 0.6rem-padded bars holding 48px controls */
   --mute-top: calc((56px - var(--mute-disc, 44px)) / 2); /* default seat line: Home head, picker, report, Charts' 56px bar */

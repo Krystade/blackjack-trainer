@@ -90,13 +90,12 @@
 /* ---------- header ---------- */
 
 /*
- * #24: THE MUTE DISC GETS A SEAT IN THIS BAR. Everywhere else it sits in a
- * reserved strip above the screen (primitives.css, `--mute-h`) -- but that
- * strip is transparent, and the page scrolls under it, so on this screen the
- * grids slid straight under the disc and it covered chart cells. Here the
- * strip is dropped (see the `body` rules below) and the header becomes a
- * sticky, opaque bar the disc sits in, with its right-hand end reserved for
- * it. Cells scroll under the bar, never under the disc, and Back stays in
+ * #24: THE MUTE DISC GETS A SEAT IN THIS BAR. It used to sit in a reserved
+ * strip above every screen -- but that strip was transparent, and the page
+ * scrolled under it, so on this screen the grids slid straight under the disc
+ * and it covered chart cells. The header became a sticky, opaque bar the disc
+ * sits in, with its right-hand end reserved for it, and D3 (muteSeat.css)
+ * later gave every screen the same seat and removed the strip. Cells scroll under the bar, never under the disc, and Back stays in
  * reach while scrolling.
  *
  * The disc itself is still the shell's fixed `.mute-btn`; it is only nudged
@@ -131,13 +130,6 @@
   bottom: 100%;
   height: var(--safe-top, 0px);
   background: var(--felt);
-}
-
-body[data-screen='charts'] {
-  --mute-h: 0px;
-  /* Restated, not inherited: --chrome-top is resolved where it is declared
-     (same as the field test's rule in primitives.css). */
-  --chrome-top: var(--safe-top);
 }
 
 body:has(.charts-screen) .mute-btn {

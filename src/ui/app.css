@@ -3781,15 +3781,13 @@ details.stats-section > summary::after {
 
 /* The global mute button (ui/components/MuteButton.tsx).
 
-   RESERVED STRIP, NOT A FLOATING DISC. It used to float bottom-left at a
+   A SEATED DISC, NOT A FLOATING ONE. It used to float bottom-left at a
    magic offset and landed on Deal, Back to Home, the numpad minus key and
-   the chip rows (docs/research/2026-10-05-ux-audit.md, P1-1). It is now
-   pinned top-right INSIDE a strip that `body` reserves
-   (`padding-top: --safe-top + --mute-h`), so every screen's content starts
-   below it by construction and no control can sit under it. The disc is
-   still rendered once by the app shell, so it exists on the immersive
-   screens and on a crashed one. `--mute-h` is the one number the layouts pad
-   around (see the min-height override in primitives.css). */
+   the chip rows (docs/research/2026-10-05-ux-audit.md, P1-1). It then sat in
+   a 44px strip `body` reserved above every screen; since D3 it sits in each
+   screen's top bar, whose right-hand end is kept free for it (muteSeat.css,
+   which also sets its `top`). The disc is still rendered once by the app
+   shell, so it exists on the immersive screens and on a crashed one. */
 .mute-btn {
   position: fixed;
   top: var(--safe-top, 0px);
@@ -4737,8 +4735,7 @@ details.stats-section > summary::after {
   min-height: 44px;
 }
 
-/* The field test has no mute strip (primitives.css): its top bar makes room
-   for the disc on the right instead. */
+/* The field test's top bar makes room for the disc on the right. */
 body[data-screen='fieldtest'] .fieldtest-topbar {
   padding-right: calc(var(--mute-disc, 44px) + 16px);
 }

@@ -1,6 +1,7 @@
 /* B7: first-run "How to read the chart". A fixed layer like
    .study-chart-overlay that owns its scroll; the top padding keeps the
-   drill top bar clear of the mute seat (--mute-h strip, top-right). */
+   drill top bar clear of the status-bar inset (the mute disc's seat is in
+   that bar, muteSeat.css). */
 .chart-intro {
   position: fixed;
   inset: 0;
@@ -8,7 +9,7 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   background: var(--bg);
-  padding-top: calc(var(--safe-top, 0px) + var(--mute-h, 0px));
+  padding-top: var(--safe-top, 0px);
   padding-left: env(safe-area-inset-left, 0px);
   padding-right: env(safe-area-inset-right, 0px);
 }
