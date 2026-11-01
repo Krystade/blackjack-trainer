@@ -1185,6 +1185,38 @@ describe('count check', () => {
       trueCount(probe.runningCount, probe.shoe.decksRemaining),
     );
   });
+
+  /**
+   * The only wrong running count tested above is off by one, which a grader
+   * comparing magnitudes (|rc| === |actual|) also marks wrong. +4 at a count
+   * of -4 is the opposite of the truth, and must be graded as a miss.
+   */
+  it('marks a running count with the wrong sign wrong', () => {
+    const game = new Game(cfg({ countCheckEvery: 1, seed: 42 }));
+    let posed = false;
+    for (let round = 0; round < 60 && !posed; round++) {
+      game.startRound();
+      if (game.phase === 'insurance') game.insuranceDecision(false);
+      while (game.phase === 'player') game.act('stand');
+      if (!game.countCheckDue) continue;
+      if (game.askRc && game.runningCount !== 0) {
+        posed = true;
+        break;
+      }
+      game.submitCountCheck(game.runningCount, game.askTcToo ? game.trueCountNow : undefined);
+    }
+    // At a count of 0, -0 === 0 would make the check below meaningless.
+    expect(posed).toBe(true);
+    const n = game.runningCount;
+    expect(n).not.toBe(0);
+
+    const result = game.submitCountCheck(-n, game.askTcToo ? game.trueCountNow : undefined);
+    expect(result.rcCorrect).toBe(false);
+    expect(result.actualRc).toBe(n);
+    const event = [...game.events].reverse().find((e) => e.reason === 'Running count check');
+    expect(event?.correct).toBe(false);
+    expect(Number(event?.taken)).toBe(-n);
+  });
 });
 
 /**
