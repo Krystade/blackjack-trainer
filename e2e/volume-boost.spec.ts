@@ -20,14 +20,17 @@ import { openSettingsScreen, withSettings } from './helpers';
  * A caveat that lies is worse than no caveat: it sent Jack up to 200% looking
  * for a louder voice and got him a silent one.
  *
- * The control and its caveat live under "In the car" since 2026-10-02, not
- * under "Audio": Jack asked for more volume from the driver's seat with the
- * car off Bluetooth. NAMED HERE rather than left to a page-wide search -- one
- * of these asserts that the caveat is ABSENT, and a selector pointed at the
- * wrong section passes it without reading anything.
+ * The control and its caveat live under "General" (#35, 4fa1fb8). NAMED
+ * HERE rather than left to a page-wide search -- one of these asserts that
+ * the caveat is ABSENT, and a selector pointed at the wrong section passes it
+ * without reading anything.
+ *
+ * No seed here sets `useClips`: the recorded voice is no longer a choice and
+ * mergeSettings forces it on at every load (store/persist.ts), so a seeded
+ * `useClips: false` never reached the screen and only looked like a second case.
  */
 
-const CAR = 'General'; // #35: volume moved to General
+const GENERAL = 'General';
 const CAVEAT = 'Above 100% raises the alert tones only';
 
 function section(page: import('@playwright/test').Page, title: string) {
@@ -56,30 +59,23 @@ test('the slider goes past 100%', async ({ page }) => {
 });
 
 test('a boost says that it reaches the tones and not the voice', async ({ page }) => {
-  await withSettings(page, { audio: { enabled: true, volume: 1.5, useClips: false } });
+  await withSettings(page, { audio: { enabled: true, volume: 1.5 } });
   await openAudioSettings(page);
 
-  await expect(section(page, CAR)).toContainText(CAVEAT);
-});
-
-test('and says it with the recorded voice on, which used to be the exception', async ({ page }) => {
-  await withSettings(page, { audio: { enabled: true, volume: 1.5, useClips: true } });
-  await openAudioSettings(page);
-
-  // THE CASE THAT WAS WRONG, and it was Jack's case: the caveat used to be
-  // hidden once the recorded voice was on, because the recorded voice was the
-  // one the GainNode reached. Nothing is routed now, so the recorded voice is
-  // capped at 100% exactly like the live one, and a screen that goes quiet
-  // here is a screen promising a boost that does not exist.
-  await expect(section(page, CAR)).toContainText(CAVEAT);
+  // The caveat depends on the volume alone (Settings.tsx: volume > 1). It
+  // used to be hidden once the recorded voice was on, because that was the
+  // voice the GainNode reached -- Jack's case. Nothing is routed now, so the
+  // recorded voice is capped at 100% like the live one, and a screen that
+  // goes quiet here promises a boost that does not exist.
+  await expect(section(page, GENERAL)).toContainText(CAVEAT);
 });
 
 test('no caveat at or below 100%, where nothing is being promised', async ({ page }) => {
-  await withSettings(page, { audio: { enabled: true, volume: 1, useClips: false } });
+  await withSettings(page, { audio: { enabled: true, volume: 1 } });
   await openAudioSettings(page);
 
-  await expect(section(page, CAR)).toContainText('Volume');
-  await expect(section(page, CAR)).not.toContainText(CAVEAT);
+  await expect(section(page, GENERAL)).toContainText('Volume');
+  await expect(section(page, GENERAL)).not.toContainText(CAVEAT);
 });
 
 /**
@@ -91,7 +87,7 @@ test('a boosted volume never throws into playback', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
 
-  await withSettings(page, { audio: { enabled: true, volume: 2, useClips: true } });
+  await withSettings(page, { audio: { enabled: true, volume: 2 } });
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
