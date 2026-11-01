@@ -154,8 +154,32 @@ describe('reachable depths, weighted to misses (E3)', () => {
   });
 
   it('a Max decks stepper at or below the floor asks for shallow trays, and gets them', () => {
+    expect(trayFloorDecks(profile)).toBe(1.5);
     expect(trueCountDrillDepths(profile, 1)).toEqual({ minDecks: 0.5, maxDecks: 1 });
+    // AT the floor: a 1.5-1.5 range would ask one depth forever.
+    expect(trueCountDrillDepths(profile, 1.5)).toEqual({ minDecks: 0.5, maxDecks: 1.5 });
+    expect(trueCountDrillDepths(profile, 2)).toEqual({ minDecks: 1.5, maxDecks: 2 });
     expect(trueCountDrillDepths(profile, 8)).toEqual({ minDecks: 1.5, maxDecks: 8 });
+  });
+
+  it('misses outside the depth range leave the draw alone', () => {
+    // Max decks lowered from 6 to 4 while the history still holds misses at
+    // 4.5 and 5 (above the range) and 1.0 (below the tray floor). None of them
+    // is a depth this range asks, so none may weight it.
+    const opts = trueCountDrillDepths(profile, 4);
+    expect(opts).toEqual({ minDecks: 1.5, maxDecks: 4 });
+    const history = [
+      { decksRemaining: 4.5, correct: false },
+      { decksRemaining: 5, correct: false },
+      { decksRemaining: 5, correct: false },
+      { decksRemaining: 1, correct: false },
+    ];
+    for (let seed = 0; seed < 2000; seed++) {
+      const q = makeTrueCountQuestion(seed, { ...opts, history });
+      expect(q.decksRemaining).toBeGreaterThanOrEqual(1.5);
+      expect(q.decksRemaining).toBeLessThanOrEqual(4);
+      expect(q).toEqual(makeTrueCountQuestion(seed, opts));
+    }
   });
 });
 
