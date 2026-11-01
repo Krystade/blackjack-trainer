@@ -1,5 +1,8 @@
 import { test, expect, type Page } from '@playwright/test';
 import { withSettings, openCountOptions, readStats } from './helpers';
+import { RANKS } from '../src/engine/cards';
+import { hiLoTag } from '../src/engine/count';
+import { narrateCountAnswer, narrateRank } from '../src/audio/narrate';
 
 /**
  * C-R2 (W11): pausing a count run.
@@ -228,4 +231,72 @@ test('an unheard hold lifts by itself once "Resuming." is heard', async ({ page 
   expect(after.indexOf('Resuming.'), 'no "Resuming." before the replay').toBeGreaterThanOrEqual(0);
   expect(after.indexOf(`Again: ${heldLine}`)).toBeGreaterThan(after.indexOf('Resuming.'));
   expect(await cardNumber(page)).toBe(held);
+});
+
+/**
+ * A14: a pause that lands while an eyes-free card is being said cuts that
+ * card off. Resuming says it again, marked "Again:", instead of dealing on
+ * from it -- the cut card is still in the count, so skipping it left Jack
+ * counting one card short and graded wrong.
+ */
+test('a pause that cuts an eyes-free card off mid-word says it again on resume', async ({ page }) => {
+  test.setTimeout(45_000);
+  const SAY_MS = 3000;
+  // Every line takes SAY_MS to say, and each is timestamped as it starts.
+  await page.addInitScript((sayMs) => {
+    const w = window as unknown as { __e2eSpeechDelayMs: number; __speechLog: string[]; __speechAt: number[] };
+    w.__e2eSpeechDelayMs = sayMs;
+    const log: string[] = [];
+    const at: number[] = [];
+    log.push = (...items: string[]) => {
+      for (let i = 0; i < items.length; i++) at.push(performance.now());
+      return Array.prototype.push.apply(log, items);
+    };
+    w.__speechLog = log;
+    w.__speechAt = at;
+  }, SAY_MS);
+  await withSettings(page, {
+    audio: { enabled: true, verbosity: 'full', answerPauseMs: 500 },
+    drill: { wheelMode: 'answer', countLengthCards: 6, countIntervalMs: 100, countGroup: 1 },
+  });
+  await openCountDrill(page);
+  await page.locator('label', { hasText: 'Eyes-free audio' }).locator('input').check();
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+  await expect(progress(page)).toHaveText(/^2 \/ 6/, { timeout: 10_000 });
+
+  // Pause from inside the page, measuring there how far into the card it is,
+  // so the runner's own latency cannot decide whether it landed mid-card.
+  const { cut, intoCardMs, handled } = await page.evaluate(() => {
+    const w = window as unknown as { __speechLog: string[]; __speechAt: number[] };
+    const i = w.__speechLog.length - 1;
+    const intoCardMs = performance.now() - w.__speechAt[i]!;
+    const handled = window.__wheelPress?.('back') ?? false;
+    return { cut: w.__speechLog[i]!, intoCardMs, handled };
+  });
+  expect(handled).toBe(true);
+  expect(intoCardMs, 'the pause must land while the card is still being said').toBeLessThan(SAY_MS);
+  await expect(page.getByRole('status').filter({ hasText: 'Paused' })).toBeVisible();
+
+  // Fast from here on, so the run finishes.
+  await page.evaluate(() => {
+    (window as unknown as { __e2eSpeechDelayMs: number }).__e2eSpeechDelayMs = 1;
+  });
+  const before = await page.evaluate(() => (window.__speechLog ?? []).length);
+  await press(page, 'forward');
+  const prompt = "What's the running count?";
+  await expect.poll(() => page.evaluate(() => window.__speechLog ?? []), { timeout: 15_000 }).toContain(prompt);
+  const all = await page.evaluate(() => window.__speechLog ?? []);
+  const after = all.slice(before, all.indexOf(prompt)).filter((t) => t !== 'Paused.' && !t.startsWith('chime:'));
+  expect(after[0], `resumed with ${JSON.stringify(after)}`).toBe(`Again: ${cut}`);
+  // The cut card and the four after it: every card of the run is heard once.
+  expect(after).toHaveLength(5);
+
+  // And the cards heard add up to the count the app says.
+  const tag = new Map(RANKS.map((r) => [narrateRank(r), hiLoTag(r)]));
+  const earlier = all.slice(0, before).filter((t) => tag.has(t));
+  expect(earlier.pop(), 'the last card said before the pause is the cut one').toBe(cut);
+  const heard = [...earlier, ...after.map((t) => t.replace(/^Again: /, ''))];
+  expect(heard).toHaveLength(6);
+  const rc = heard.reduce((sum, word) => sum + tag.get(word)!, 0);
+  await expect.poll(() => page.evaluate(() => window.__speechLog ?? []), { timeout: 15_000 }).toContain(narrateCountAnswer(rc));
 });

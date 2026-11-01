@@ -727,7 +727,10 @@ export function CountDrillView({
     const runId = runIdRef.current;
     let cancelled = false;
     const gapMs = settings.drill.countIntervalMs;
-    const isStale = () => cancelled || runIdRef.current !== runId;
+    // A14: a pause is stale at once, not only after React has run this
+    // effect's cleanup. A card cut off by the pause resolves its speakAsync
+    // first, and the loop must not deal on from it in that gap.
+    const isStale = () => cancelled || runIdRef.current !== runId || pausedAtRef.current !== null;
 
     const run = async () => {
       let i = shownIndex;
@@ -742,9 +745,12 @@ export function CountDrillView({
         const cardAt = performance.now();
         const cards = narrateCards(g, 'rank');
         const spoken = again ? `${COUNT_AGAIN_PREFIX} ${cards}` : cards;
+        // A14: a pause while this is true cut the card off mid-word.
+        cardSpeakingRef.current = true;
         const outcome = await speakAsync(spoken, speechOptsFrom(settings.audio));
         again = false;
         if (isStale()) return;
+        cardSpeakingRef.current = false;
         // A12: a card nobody heard (a call, Siri, a dead route: the clip and
         // the live fallback both failed) is not dealt past. Hold the run on
         // it; resuming says it again instead of moving on.
@@ -807,6 +813,7 @@ export function CountDrillView({
 
     return () => {
       cancelled = true;
+      cardSpeakingRef.current = false;
       cancelSpeech();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1066,11 +1073,20 @@ export function CountDrillView({
   const [unheardHold, setUnheardHold] = useState(false);
   /** Set by a replaying resume: the loop's first card is said "Again:". */
   const replayNextRef = useRef(false);
+  /**
+   * A14: the eyes-free auto loop is saying a card right now. A pause then
+   * cuts the card off, so `cutOnPauseRef` records it and the resume says
+   * that card again instead of dealing on from it.
+   */
+  const cardSpeakingRef = useRef(false);
+  const cutOnPauseRef = useRef(false);
 
   /** C-R2: stop the run where it is. Only while the cards are flashing. */
   const pauseRun = () => {
     if (phaseRef.current !== 'flashing' || pausedAtRef.current !== null) return;
     pausedAtRef.current = performance.now();
+    // Read before cancelSpeech(), which settles the card being said.
+    cutOnPauseRef.current = cardSpeakingRef.current;
     cancelSpeech();
     setPaused(true);
   };
@@ -1080,6 +1096,11 @@ export function CountDrillView({
    * out of the run's clock (a timed run's elapsed time, a manual run's tap
    * gap). The step past the held card is the one its own advance would have
    * taken: a checkpoint or distraction due there is still posed.
+   *
+   * A14: except when the pause cut an eyes-free card off mid-word. That card
+   * was never finished, so the loop remounts on it and says it again, marked
+   * "Again:" as A12's replay is (Jack may have heard enough of it to count
+   * it). Its checkpoint or distraction comes after the replay, from the loop.
    */
   const resumeRun = () => {
     const pausedAt = pausedAtRef.current;
@@ -1093,9 +1114,16 @@ export function CountDrillView({
     // says it again, rather than skipping a card Jack must count.
     if (replayOnResumeRef.current) {
       replayOnResumeRef.current = false;
+      cutOnPauseRef.current = false;
       replayNextRef.current = true;
       setUnheardHold(false);
       diag('life', 'count-unheard-replayed', { index: shownIndex });
+      return;
+    }
+    if (cutOnPauseRef.current) {
+      cutOnPauseRef.current = false;
+      replayNextRef.current = true;
+      diag('life', 'count-cut-replayed', { index: shownIndex });
       return;
     }
     // Wave X (item 8): a table round picks up where it stopped -- skipping on
@@ -1292,6 +1320,7 @@ export function CountDrillView({
     pausedAtRef.current = null;
     replayOnResumeRef.current = false;
     replayNextRef.current = false;
+    cutOnPauseRef.current = false;
     setUnheardHold(false);
     setPaused(false);
     // #20: Timed Challenge ignores Next card, so it is never a manual run.
