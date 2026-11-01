@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { mergeSettings, _setStorage, loadSettings, saveSettings, SETTINGS_KEY } from './persist';
+import { mergeSettings, _setStorage, loadSettings, saveSettings, SETTINGS_KEY, loadStats, saveStats } from './persist';
+import { EMPTY_STATS, type Stats } from './types';
 
 /**
  * RETIRED SETTINGS, AND WHAT A STORED BLOB THAT STILL HAS THEM BECOMES.
@@ -103,5 +104,56 @@ describe('retired microphone-experiment fields', () => {
     expect('micCueOn' in audio).toBe(false);
     expect('voiceAlternatives' in audio).toBe(false);
     expect(s.audio.rate).toBe(1.2);
+  });
+});
+
+/**
+ * EVERY STATS SECTION SURVIVES A SAVE AND A LOAD.
+ *
+ * Every caller of the stats is load, modify, save. A section the load merge
+ * stops carrying is overwritten on disk by the first graded answer after a
+ * reload. Iterating EMPTY_STATS's keys covers a section added later without
+ * this test naming it; the optional sections absent from EMPTY_STATS are
+ * seeded by hand.
+ */
+describe('stats round trip', () => {
+  it('saves and loads every section unchanged', () => {
+    const map = new Map<string, string>();
+    _setStorage({ getItem: (k) => map.get(k) ?? null, setItem: (k, v) => { map.set(k, v); } });
+    try {
+      const stats = structuredClone(EMPTY_STATS) as unknown as Record<string, unknown>;
+      let historySections = 0;
+      for (const key of Object.keys(EMPTY_STATS)) {
+        const value = stats[key];
+        if (value && typeof value === 'object' && Array.isArray((value as { history?: unknown }).history)) {
+          (value as { history: unknown[] }).history.push({ date: 'D-' + key, marker: key });
+          historySections++;
+        }
+      }
+      // A guard against the loop above silently matching nothing.
+      expect(historySections).toBeGreaterThanOrEqual(11);
+      const s = stats as unknown as Stats;
+      s.sessions.push({ date: 'D-sessions' } as unknown as Stats['sessions'][number]);
+      s.latencyHistory.push({ date: 'D-latency' } as unknown as Stats['latencyHistory'][number]);
+      s.categories.hard = { right: 3, wrong: 1 };
+      s.categories.wongIn = { right: 1, wrong: 2 };
+      s.mistakes['basic-error'] = 4;
+      s.perIndex = { '16v10': { right: 2, wrong: 5 } } as Stats['perIndex'];
+      // Optional sections and counters EMPTY_STATS leaves out.
+      Object.assign(s, {
+        betSizing: { history: [{ date: 'D-betSizing' }] },
+        tableDecisions: { history: [{ elapsedMs: 900, date: 'D-table' }] },
+        misclicks: 2,
+        masterySweepsCompleted: 1,
+        practiceDays: ['2026-10-30'],
+        cellStats: { 'hard-16-10': { right: 1, wrong: 1, lastAt: '2026-10-30' } },
+        wongInMisses: { missed: 1, early: 0 },
+      });
+
+      expect(saveStats(s)).toBe(true);
+      expect(loadStats()).toEqual(s);
+    } finally {
+      _setStorage(null);
+    }
   });
 });
