@@ -224,3 +224,92 @@ describe('wakeLock — request() rejects (browsers reject when the tab is hidden
     expect(isWakeLockActive()).toBe(false);
   });
 });
+
+/**
+ * THE LOCK COMES BACK AFTER THE PAGE WAS HIDDEN.
+ *
+ * Browsers drop a screen wake lock every time the page is hidden (a pulled-down
+ * notification, a switch to Maps, a phone lock). handleVisibilityChange takes
+ * it back on the way to visible. Without it the display sleeps after the first
+ * glance away, iOS suspends the page and the drill and microphone stop.
+ *
+ * Vitest runs in 'node', so the document is a bare EventTarget with a writable
+ * visibilityState, and the stub sentinel keeps its 'release' listener so a
+ * test can play the platform taking the lock back.
+ */
+describe('wakeLock — re-acquired when the page is visible again', () => {
+  let doc: EventTarget & { visibilityState: DocumentVisibilityState };
+  let request: ReturnType<typeof vi.fn>;
+  let platformRelease: (() => void) | null;
+
+  beforeEach(() => {
+    doc = Object.assign(new EventTarget(), { visibilityState: 'visible' as DocumentVisibilityState });
+    (globalThis as { document?: unknown }).document = doc;
+    platformRelease = null;
+    request = vi.fn(async () => ({
+      release: vi.fn().mockResolvedValue(undefined),
+      addEventListener: (type: string, fn: () => void) => {
+        if (type === 'release') platformRelease = fn;
+      },
+      removeEventListener: vi.fn(),
+    }));
+    (navigator as unknown as { wakeLock: unknown }).wakeLock = { request };
+  });
+
+  afterEach(() => {
+    delete (globalThis as { document?: unknown }).document;
+    delete (navigator as { wakeLock?: unknown }).wakeLock;
+  });
+
+  /** The page is hidden and the platform takes the lock back. */
+  function hide(): void {
+    doc.visibilityState = 'hidden';
+    platformRelease?.();
+    doc.dispatchEvent(new Event('visibilitychange'));
+  }
+
+  async function show(): Promise<void> {
+    doc.visibilityState = 'visible';
+    doc.dispatchEvent(new Event('visibilitychange'));
+    await new Promise((r) => setTimeout(r, 0));
+  }
+
+  it('is taken back on the return to visible, and not while still hidden', async () => {
+    const { requestWakeLock, isWakeLockActive } = await freshModule();
+    await requestWakeLock('voice');
+    expect(isWakeLockActive()).toBe(true);
+    expect(platformRelease).not.toBeNull();
+
+    hide();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(isWakeLockActive()).toBe(false);
+    expect(request).toHaveBeenCalledTimes(1);
+
+    await show();
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(isWakeLockActive()).toBe(true);
+  });
+
+  it('is taken back for the holder still left after another let go', async () => {
+    const { requestWakeLock, releaseWakeLock, isWakeLockActive } = await freshModule();
+    await requestWakeLock('field-test');
+    await requestWakeLock('voice');
+    await releaseWakeLock('voice');
+
+    hide();
+    await show();
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(isWakeLockActive()).toBe(true);
+  });
+
+  it('is not taken back once every holder has let go', async () => {
+    const { requestWakeLock, releaseWakeLock, isWakeLockActive } = await freshModule();
+    await requestWakeLock('voice');
+    await releaseWakeLock('voice');
+
+    hide();
+    await show();
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(isWakeLockActive()).toBe(false);
+  });
+});
