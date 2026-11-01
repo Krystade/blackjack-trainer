@@ -1,5 +1,9 @@
 # TODO — working list
 
+> **Frozen 2026-10-06; historical.** Live work: `docs/NEXT-TEST.md` (the next test run) and
+> `docs/BACKLOG.md` (open items). Items below were closed in place on 2026-10-31 where the
+> audit found them done; the rest is a record, not a queue.
+
 The list Claude maintains between sessions. It holds what is in flight and what is next, and
 records **how** each item gets done, how we know it worked, and what it depends on.
 `BACKLOG.md` is still where training-feature ideas get ranked; this file is the four
@@ -14,7 +18,7 @@ operating goals and the work under them.
 - A claim about the phone is settled by the phone. Desk results are labelled as desk results.
 - Items are updated in the same commit as the work, never afterwards from memory.
 
-Last updated: 2026-10-06. Session handoff: `docs/HANDOFF.md`. Plan for the next drive and two weeks: `docs/research/2026-10-05-roadmap.md`.
+Last updated: 2026-10-06. Live work now: `docs/NEXT-TEST.md` and `docs/BACKLOG.md`. Plan for the next drive and two weeks: `docs/research/2026-10-05-roadmap.md`.
 
 ---
 
@@ -25,7 +29,7 @@ Last updated: 2026-10-06. Session handoff: `docs/HANDOFF.md`. Plan for the next 
 | G1 | Phone alone, **no Bluetooth**: sound from the **loud speaker**, voice answers accepted | **Fixed** (`8195254`, `7826a3e`, `79405cd`). Once the mic has opened, clips and tones play through Web Audio and the open mic is deaf until a line really ends. All drill lines are recorded (`d4e6145`). Left over: settlement lines with amounts, and push-to-talk |
 | G2 | **Bluetooth on**: sound through the **car speakers**, voice answers accepted | Car output proven with `<audio>`. **Web Audio over Bluetooth with the mic open is untested.** It's the first step of the "In the car — Bluetooth ON" kit. Which mic is used: the "Bluetooth: phone mic?" kit (`a23e887`), not yet run |
 | G3 | Voice recognition that holds up at **freeway noise** | Quiet room 10/10; never measured in motion. The **Words at speed** kit (`f209d54`) measures it. False accepts tightened (`cf9bf33`). If the road number is poor, the next build is Vosk (`docs/research/2026-10-05-constrained-recognizers.md`) |
-| G4 | Ongoing UX/UI improvement | UX audit fixes shipped (`2343d33`, `b93282d`, `20339f0`). Open question for Jack: the 44px mute strip at the top of every screen |
+| G4 | Ongoing UX/UI improvement | UX audit fixes shipped (`2343d33`, `b93282d`, `20339f0`). The 44px mute strip question is settled: strip dropped, disc in each top bar's seat (`bc05bc0`) |
 
 ---
 
@@ -74,7 +78,7 @@ Last updated: 2026-10-06. Session handoff: `docs/HANDOFF.md`. Plan for the next 
     - Done when: a unit test fires two calls back to back and only the second chain plays.
   - Ask Jack whether the local checkout still has these files. If not, rebuild them from
     the descriptions above.
-- [ ] **Flaky `voice-aliases.spec.ts:119`.** The fake recogniser never fires
+- [x] (done: the fake fires `onaudiostart`, `e2e/voice-aliases.spec.ts:139-150`) **Flaky `voice-aliases.spec.ts:119`.** The fake recogniser never fires
   `onaudiostart`, so every session waits out `AUDIOSTART_GRACE_MS` (1500ms). Under full-suite
   load that pushes it over the timeout.
   - Method: make the e2e fake fire `onaudiostart` right after `onstart`, as Safari does.
@@ -95,9 +99,9 @@ Last updated: 2026-10-06. Session handoff: `docs/HANDOFF.md`. Plan for the next 
     lines written since the kit started.
   - Recordings stay in memory until "Save recordings" (share sheet or download). They are
     never committed.
-- [ ] Jack runs the **desk kit**. Then read the log and update G1/G2/G3 below with what it
+- [x] (done: results recorded below) Jack runs the **desk kit**. Then read the log and update G1/G2/G3 below with what it
   settled.
-- [ ] Jack runs the **car kits**: Bluetooth on first (that's how he drives), then off.
+- [-] (superseded: Bluetooth ON runs recorded below; the next run is the Route kits in `docs/NEXT-TEST.md`) Jack runs the **car kits**: Bluetooth on first (that's how he drives), then off.
 
 ## Results — CAR, Bluetooth ON, **PARKED**, 2026-10-06 18:36 (build 7791d25)
 
@@ -667,7 +671,7 @@ One unblinded answer per step, so treat these as leads, not settled facts.
   - Done when: Jack uses it on a drive and the note box has no layout complaints.
 - [ ] **Listening status line.** Show "heard X → not a command" briefly, then clear it.
   Point at teaching that word as an alias when it repeats.
-- [ ] **Layout regression guard.** One spec visits every screen at 375×812 and 390×844 and
+- [x] (done: `e2e/layout-guard.spec.ts`) **Layout regression guard.** One spec visits every screen at 375×812 and 390×844 and
   asserts that primary actions are in the viewport and no text is truncated
   (`scrollWidth > clientWidth` on buttons).
 
