@@ -21,7 +21,7 @@ import {
 } from '../habits/progressStore';
 import type { PlannedSegment } from './plan';
 import { addTally, begin, finishSegment, newSession, pause, resume } from './session';
-import { GUIDED_KEY, loadGuided, normalizeGuidedStore, readSession, recordFinished, saveActive } from './store';
+import { GUIDED_KEY, HISTORY_KEPT, loadGuided, normalizeGuidedStore, readSession, recordFinished, saveActive } from './store';
 import { tallyDelta, tallySignature } from './tally';
 
 const ev = (correct = true): GradedEvent => ({
@@ -100,6 +100,80 @@ describe('guided store', () => {
     map.clear();
     expect(importAll(blob).ok).toBe(true);
     expect(loadGuided().completed).toBe(1);
+  });
+});
+
+/**
+ * readSession sanitises the resume point the Home screen and GuidedCard read.
+ * Each row breaks one field of an otherwise valid stored session; a stored
+ * index past the plan, for one, used to resume onto plan[undefined].
+ */
+describe('readSession guards', () => {
+  const valid = (): Record<string, unknown> =>
+    JSON.parse(
+      JSON.stringify(addTally(begin(newSession(15, true, PLAN, now, '2026-10-22')), { answers: 3, right: 2 })),
+    ) as Record<string, unknown>;
+
+  it('reads a valid stored session back unchanged', () => {
+    expect(readSession(valid())).toEqual(valid());
+  });
+
+  const rows: { name: string; edit: (s: Record<string, unknown>) => void; check: (s: ReturnType<typeof readSession>) => void }[] = [
+    { name: 'index past the plan is clamped to the last segment', edit: (s) => (s.index = 99), check: (r) => expect(r!.index).toBe(PLAN.length - 1) },
+    { name: 'a negative index reads as 0', edit: (s) => (s.index = -1), check: (r) => expect(r!.index).toBe(0) },
+    { name: 'a NaN index reads as 0', edit: (s) => (s.index = NaN), check: (r) => expect(r!.index).toBe(0) },
+    { name: 'a fractional index is floored', edit: (s) => (s.index = 1.7), check: (r) => expect(r!.index).toBe(1) },
+    { name: 'an unknown phase is no session', edit: (s) => (s.phase = 'bogus'), check: (r) => expect(r).toBeNull() },
+    {
+      name: 'right is capped at answers',
+      edit: (s) => ((s.progress as { right: number }[])[0]!.right = 9),
+      check: (r) => expect(r!.progress[0]).toMatchObject({ answers: 3, right: 3 }),
+    },
+    { name: "drive 'yes' is not true", edit: (s) => (s.drive = 'yes'), check: (r) => expect(r!.drive).toBe(false) },
+    { name: 'an unknown outcome is dropped', edit: (s) => (s.outcome = 'won'), check: (r) => expect('outcome' in r!).toBe(false) },
+    { name: 'a known outcome is kept', edit: (s) => (s.outcome = 'ended'), check: (r) => expect(r!.outcome).toBe('ended') },
+  ];
+  for (const row of rows) {
+    it(row.name, () => {
+      const stored = valid();
+      row.edit(stored);
+      const r = readSession(stored);
+      row.check(r);
+      if (r) expect(r.plan[r.index]).toBeDefined();
+    });
+  }
+});
+
+describe('normalizeGuidedStore guards', () => {
+  const record = (over: Record<string, unknown> = {}) => ({
+    at: 1,
+    preset: 15,
+    drive: false,
+    rows: [{ id: 'warmup', answers: 4, right: 3 }],
+    ...over,
+  });
+
+  it('drops history rows for segments that do not exist, and caps right at answers', () => {
+    const store = normalizeGuidedStore({
+      version: 1,
+      active: null,
+      history: [record({ rows: [{ id: 'nope', answers: 2, right: 2 }, { id: 'count', answers: 3, right: 8 }] })],
+      completed: 1,
+    });
+    expect(store.history[0]!.rows).toEqual([{ id: 'count', answers: 3, right: 3 }]);
+  });
+
+  it('drops a record with an unknown preset, and keeps only the newest HISTORY_KEPT', () => {
+    const store = normalizeGuidedStore({
+      version: 1,
+      active: null,
+      history: [record({ preset: 7 }), ...Array.from({ length: HISTORY_KEPT + 5 }, (_, i) => record({ at: i + 1 }))],
+      completed: 2.7,
+    });
+    expect(store.history).toHaveLength(HISTORY_KEPT);
+    expect(store.history.every((h) => h.preset === 15)).toBe(true);
+    expect(store.history[0]!.at).toBe(1);
+    expect(store.completed).toBe(2);
   });
 });
 
