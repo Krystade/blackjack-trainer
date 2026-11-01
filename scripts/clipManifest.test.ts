@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
@@ -67,6 +68,26 @@ describe('a generator run merges', () => {
       merged: { 'Hit.': 'hit.mp3', 'Stand.': 'stand.mp3', 'Say hit.': 'say-hit.mp3' },
       kept: ['Say hit.'],
     });
+  });
+
+  it('gives a re-recorded clip a new URL only when its bytes changed (A43)', () => {
+    // sw.js serves clips cache-first by URL: new bytes under an old name would
+    // never reach a phone that already cached it.
+    const out = run(
+      [
+        "files={'queen.mp3':b'A','king.abcd1234.mp3':b'K'}",
+        'cf=lambda base,data,cur: g.content_filename(base,data,cur,files.get)',
+        "print(json.dumps([cf('queen.mp3',b'A','queen.mp3'),cf('queen.mp3',b'B','queen.mp3'),cf('ace.mp3',b'X',None),cf('king.mp3',b'K','king.abcd1234.mp3'),cf('jack.mp3',b'J','jack.mp3')]))",
+      ].join('\n'),
+    );
+    const sha8 = (s: string) => createHash('sha256').update(s).digest('hex').slice(0, 8);
+    expect(JSON.parse(out)).toEqual([
+      'queen.mp3',
+      `queen.${sha8('B')}.mp3`,
+      'ace.mp3',
+      'king.abcd1234.mp3',
+      `jack.${sha8('J')}.mp3`,
+    ]);
   });
 
   it('keeps the voices a run did not touch in index.json, and the default', () => {

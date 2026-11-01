@@ -63,7 +63,7 @@ Usage:
     python scripts/generate-audio-clips.py --engine elevenlabs --voice <voiceId>
 
 Output layout (multi-voice):
-    public/clips/<voiceId>/<slug>.mp3
+    public/clips/<voiceId>/<slug>.mp3             (or <slug>.<hash8>.mp3, below)
     public/clips/<voiceId>/manifest.json   { "clips": { "<text>": "<slug>.mp3", ... } }
     public/clips/index.json                { "voices": [{"id","label"}, ...], "default": "<id>" }
 
@@ -75,12 +75,24 @@ checks lines per voice) and every other voice from the index.
 scripts/clipManifest.test.ts holds the other half: every shipped manifest key
 must be in build_vocabulary(), so a line recorded by hand without being
 derived fails there rather than lingering as a kept orphan.
+
+Re-recorded clips get a new URL (audit A43). public/sw.js serves clips
+cache-first under their URL, so a phone that cached queen.mp3 would keep the
+old recording for ever if new bytes were written under the same name. So when
+a clip is synthesised again (--force) and its bytes differ from the file the
+existing manifest names, it is written as <slug>.<sha256[:8]>.mp3 and the
+manifest points there; the phone fetches it as a new asset. Identical bytes
+keep the current name, a clip with no manifest entry yet takes the plain
+<slug>.mp3, and clips that are not re-synthesised are never renamed, so the
+~1093 shipped clips per voice keep their URLs and nothing is re-downloaded.
+The superseded file stays on disk; delete it by hand once the new one ships.
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import json
 import re
 import sys
@@ -391,6 +403,21 @@ def merge_manifest(
     return merged, kept
 
 
+def content_filename(base: str, data: bytes, current: str | None, read_file) -> str:
+    """Filename for freshly synthesised bytes (A43). `base` is the plain
+    <slug>.mp3, `current` the name the existing manifest gives this text (or
+    None) and read_file(name) its bytes, or None when the file is gone.
+    Same bytes as the current file -> keep its name; no manifest entry -> base;
+    different or missing bytes -> <slug>.<sha256[:8]>.mp3, a URL no phone
+    has cached."""
+    if current is None:
+        return base
+    if read_file(current) == data:
+        return current
+    stem = base[: -len(".mp3")]
+    return f"{stem}.{hashlib.sha256(data).hexdigest()[:8]}.mp3"
+
+
 def read_manifest(path: Path) -> dict[str, str]:
     """The clips map of an existing manifest.json, or {} when there is none."""
     try:
@@ -572,16 +599,35 @@ async def main_async(args: argparse.Namespace) -> int:
         voice_dir = out_root / voice
         voice_dir.mkdir(parents=True, exist_ok=True)
         failures: list[str] = []
+        manifest_path = voice_dir / "manifest.json"
+        previous = read_manifest(manifest_path)
+        # This voice's names: the shipped name wherever there is one (A43).
+        names = {t: previous.get(t, f) for t, f in manifest.items()}
+
+        def read_file(name: str, d: Path = voice_dir) -> bytes | None:
+            try:
+                return (d / name).read_bytes()
+            except FileNotFoundError:
+                return None
 
         async def worker(text: str, voice_dir: Path = voice_dir, voice: str = voice) -> None:
-            path = voice_dir / manifest[text]
-            if path.exists() and not args.force:
+            current = previous.get(text)
+            if current is not None and (voice_dir / current).exists() and not args.force:
                 return
+            if current is None and (voice_dir / manifest[text]).exists() and not args.force:
+                return
+            tmp = voice_dir / (".tmp-" + manifest[text])
             async with sem:
                 try:
-                    await synth_one(args.engine, text, path, voice, args.model_dir)
+                    await synth_one(args.engine, text, tmp, voice, args.model_dir)
                 except Exception as e:  # noqa: BLE001 - report and continue
                     failures.append(f"{text!r}: {e}")
+                    tmp.unlink(missing_ok=True)
+                    return
+            data = tmp.read_bytes()
+            name = content_filename(manifest[text], data, current, read_file)
+            tmp.replace(voice_dir / name)
+            names[text] = name
 
         await asyncio.gather(*(worker(t) for t in vocab))
 
@@ -592,9 +638,8 @@ async def main_async(args: argparse.Namespace) -> int:
                 print(f"  {f}", file=sys.stderr)
             continue
 
-        manifest_path = voice_dir / "manifest.json"
         merged, kept = merge_manifest(
-            manifest, read_manifest(manifest_path), lambda f, d=voice_dir: (d / f).exists()
+            names, previous, lambda f, d=voice_dir: (d / f).exists()
         )
         if kept:
             print(f"[{voice}] kept {len(kept)} recorded clip(s) outside the vocabulary "
