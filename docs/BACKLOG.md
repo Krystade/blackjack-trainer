@@ -11,13 +11,20 @@ shipped as a third choice unless the operator asks to drop it.
 
 ---
 
-## Status — 2026-09-14
+## Status — 2026-10-31
 
-**Nothing is open and actionable.** Everything on this page is shipped, declined by the
-operator, or parked behind something outside the repo. The last genuinely-open item, RV3
-(Fab 4 surrender deviations), shipped 2026-09-14.
+Rule: a commit that adds an item here not marked struck-through or ✅ updates this table.
 
-What remains, and why none of it is work waiting to be picked up:
+**Open:**
+
+| Item | Where | State |
+| ---- | ----- | ----- |
+| Tab-bar glyphs don't match each other | operator-sourced candidates, "Tab-bar glyphs" | Open since 2026-10-21 |
+| The build line still shows on Home | operator-sourced candidates, "The build line" | Open since 2026-10-21 |
+| Bet sizing by voice | voice drills, "Bet sizing by voice" | ⏳ Not built; Drive sessions exclude Bet sizing until it is |
+| Car controls: does the wheel work with voice off and recorded voice on? | voice drills, "Car controls" | OPEN; only a drive can close it |
+
+**Not open**, and why none of it is work waiting to be picked up:
 
 | Item | State | Why it is not actionable |
 | ---- | ----- | ------------------------ |
@@ -27,7 +34,6 @@ What remains, and why none of it is work waiting to be picked up:
 | ET2 / ET4 / ET6 | ❌ Dropped | Operator, 2026-07-31 |
 | V5-3 · Feedback timing | ❌ Not a candidate | The literature genuinely conflicts; recorded so it is not re-opened |
 | R9 · Spot-reading | 🟡 Slice shipped | The valuable half (messy cards) is in; the rest is niche — park until demand |
-| Car controls | ✅ Closed | Every question the 2026-09-11 drive opened has been answered |
 | Per-deck index tables | 🚫 Blocked by a standing rule | Needs Wong's *Professional Blackjack* Table A4, which this project does not have. Do NOT approximate from memory |
 
 The one standing constraint worth re-reading before touching strategy data: **never add index
@@ -176,7 +182,7 @@ ship.
   a gap, and now proven rather than assumed. Card utterances are the only ones with no
   terminal punctuation, which puts them on the cascade's comma-item path with their own
   `-item` clips; `clipCoverage.test.ts` walks every dealt card and every flashed group at
-  all three detail levels against the shipped manifests. All resolve. The item clips had
+  both detail levels (full, rank) against the shipped manifests. All resolve. The item clips had
   in fact existed all along — nothing had ever checked, which is why the entry sat here.
 - **Tab-bar glyphs don't match each other** (redesign diagnosis, tell 6; still open
   2026-10-21). `TabBar.tsx:28-31` mixes four unrelated text glyphs — `◆` Home, `♠` Play,
