@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mergeSettings } from './persist';
+import { mergeSettings, _setStorage, loadSettings, saveSettings, SETTINGS_KEY } from './persist';
 
 /**
  * RETIRED SETTINGS, AND WHAT A STORED BLOB THAT STILL HAS THEM BECOMES.
@@ -21,6 +21,26 @@ describe('settings retired in the cull', () => {
     expect('pushToTalkMs' in s.drill!).toBe(false);
     for (const k of ['chimes', 'cardDetail', 'handStyle', 'outputRoute']) {
       expect(k in s.audio!, `audio.${k} survived the load`).toBe(false);
+    }
+  });
+
+  it('drops the drill settings retired on 2026-10-14 through a load and save', () => {
+    // 6f74cc6 removed the types but not the stored values, so an install that
+    // once saved them carried both keys through every later save.
+    const map = new Map<string, string>();
+    _setStorage({ getItem: (k) => map.get(k) ?? null, setItem: (k, v) => { map.set(k, v); } });
+    try {
+      map.set(SETTINGS_KEY, JSON.stringify({
+        version: 1,
+        drill: { flashByFrequency: true, masteryDistractionFreq: 'relentless', wheelMode: 'answer' },
+      }));
+      saveSettings(loadSettings());
+      const written = JSON.parse(map.get(SETTINGS_KEY)!) as { drill: Record<string, unknown> };
+      expect('flashByFrequency' in written.drill).toBe(false);
+      expect('masteryDistractionFreq' in written.drill).toBe(false);
+      expect(written.drill.wheelMode).toBe('answer');
+    } finally {
+      _setStorage(null);
     }
   });
 

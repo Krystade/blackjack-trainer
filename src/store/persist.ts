@@ -88,8 +88,12 @@ function isVersion1Object(parsed: unknown): parsed is Record<string, unknown> {
  * ui/useVoiceControl.ts. `outputRoute` went when both of its non-default
  * values were proved not to move sound off the earpiece. The rest were cut in
  * the 2026-10-05 Settings cull.
+ *
+ * 2026-10-14 (6f74cc6): `flashByFrequency` and `masteryDistractionFreq` went
+ * with frequency weighting and mastery distractions; that commit removed the
+ * types but not the stored values, so they are listed here.
  */
-const RETIRED_DRILL_KEYS = ['pushToTalkMs'] as const;
+const RETIRED_DRILL_KEYS = ['pushToTalkMs', 'flashByFrequency', 'masteryDistractionFreq'] as const;
 const RETIRED_AUDIO_KEYS = [
   'micCueOn',
   'voiceAlternatives',
