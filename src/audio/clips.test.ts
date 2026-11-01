@@ -419,6 +419,21 @@ describe('hasClips', () => {
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes('guy/manifest.json'))).toBe(true);
   });
 
+  it('fetches the answer-echo clips ahead of the first answer, once each', async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes('index.json')) {
+        return { ok: true, json: async () => ({ voices: [{ id: 'aria', label: 'Aria' }], default: 'aria' }) };
+      }
+      if (url.endsWith('.mp3')) return { ok: true, arrayBuffer: async () => new ArrayBuffer(8) };
+      return { ok: true, json: async () => ({ clips: { 'Stand.': 'stand.mp3', 'Dealer shows six.': 'dealer-shows-six.mp3' } }) };
+    });
+    (globalThis as any).fetch = fetchMock;
+    await prewarmClips();
+    await prewarmClips();
+    const mp3s = fetchMock.mock.calls.map(([u]) => String(u)).filter((u) => u.endsWith('.mp3'));
+    expect(mp3s.sort()).toEqual(['/clips/aria/dealer-shows-six.mp3', '/clips/aria/stand.mp3']);
+  });
+
   /** Prewarming is fire-and-forget: a failure must leave live TTS working, not
    * reject into whatever effect called it. */
   it('resolves quietly when there is nothing to prewarm', async () => {

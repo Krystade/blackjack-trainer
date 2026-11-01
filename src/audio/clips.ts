@@ -343,7 +343,8 @@ async function resolveDefaultVoiceId(): Promise<string | null> {
 export async function prewarmClips(): Promise<void> {
   const voiceId = currentClipVoice || (await resolveDefaultVoiceId());
   if (!voiceId) return;
-  await loadVoiceManifest(voiceId);
+  const manifest = await loadVoiceManifest(voiceId);
+  warmClipTexts(voiceId, manifest, WARM_CLIP_TEXTS);
 }
 
 /** Sync (cache-only) resolution of "which voice manifest applies right now",
@@ -881,22 +882,98 @@ const NOTHING_PLAYED: ClipPlayResult = { played: false, remainder: null };
  * path with the mic open, 2026-10-05: "they sounded identical".
  */
 const decodedClips = new DecodedClipCache<AudioBuffer>();
-// Decoded buffers were made by the context that is being replaced.
-onAudioContextReplaced(() => decodedClips.clear());
+// Decoded buffers were made by the context that is being replaced. The bytes
+// survive it, so the lines warmed below are decoded again for the new one
+// rather than fetched again -- the context IS replaced when the mic first
+// opens, which is the moment a drive's first answers are being echoed.
+onAudioContextReplaced(() => {
+  decodedClips.clear();
+  setTimeout(redecodeWarmed, 0);
+});
+
+/**
+ * The fetched mp3 bytes, by URL, so a decode for a new context does not go
+ * back to the network or the service worker. Bounded by count, oldest first:
+ * a clip is ~16 KB, so the cap is a few MB.
+ */
+const CLIP_BYTES_MAX = 300;
+const clipBytes = new Map<string, Promise<ArrayBuffer>>();
+
+function fetchClipBytes(url: string): Promise<ArrayBuffer> {
+  let p = clipBytes.get(url);
+  if (p) return p;
+  p = fetch(url).then((r) => {
+    if (!r.ok) throw new Error(`http-${r.status}`);
+    return r.arrayBuffer();
+  });
+  clipBytes.set(url, p);
+  p.catch(() => {
+    if (clipBytes.get(url) === p) clipBytes.delete(url);
+  });
+  while (clipBytes.size > CLIP_BYTES_MAX) {
+    const oldest = clipBytes.keys().next().value as string;
+    if (warmedUrls.has(oldest)) {
+      // Warmed lines are kept; move them to the back instead.
+      const kept = clipBytes.get(oldest)!;
+      clipBytes.delete(oldest);
+      clipBytes.set(oldest, kept);
+      if (clipBytes.keys().next().value === oldest) break;
+      continue;
+    }
+    clipBytes.delete(oldest);
+  }
+  return p;
+}
 
 function decodeClip(ctx: AudioContext, url: string): Promise<AudioBuffer> {
   let p = decodedClips.get(url);
   if (!p) {
-    p = fetch(url)
-      .then((r) => {
-        if (!r.ok) throw new Error(`http-${r.status}`);
-        return r.arrayBuffer();
-      })
-      .then((bytes) => ctx.decodeAudioData(bytes));
+    // decodeAudioData detaches what it is given, so it gets a copy.
+    p = fetchClipBytes(url).then((bytes) => ctx.decodeAudioData(bytes.slice(0)));
     // A failed decode is dropped by the cache itself (D19).
     decodedClips.set(url, p);
   }
   return p;
+}
+
+/**
+ * THE LINES EVERY ANSWER IS ECHOED WITH, FETCHED BEFORE THEY ARE NEEDED.
+ *
+ * A clip is fetched and decoded the first time it is said, and on the drives
+ * of 2026-10-30 that first time cost 60 to 130 ms between choosing the clip
+ * and hearing it -- and once, for "Stand." just after the mic opened, a full
+ * second. These are the short lines said straight after an answer, where a gap
+ * reads as the app not having heard.
+ */
+export const WARM_CLIP_TEXTS: readonly string[] = [
+  'Hit.',
+  'Stand.',
+  'Double.',
+  'Split.',
+  'Surrender.',
+  'Correct.',
+  ...['two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'ace'].map((c) => `Dealer shows ${c}.`),
+];
+const warmedUrls = new Set<string>();
+
+function redecodeWarmed(): void {
+  const ctx = liveAudioContextNow();
+  if (!ctx) return;
+  for (const url of warmedUrls) void decodeClip(ctx, url).catch(() => {});
+}
+
+function warmClipTexts(voiceId: string, manifest: ClipManifest, texts: readonly string[]): void {
+  const base = clipsBaseUrl();
+  for (const text of texts) {
+    const files = segmentForClips(text, manifest);
+    if (!files) continue;
+    for (const f of files) {
+      const url = `${base}clips/${voiceId}/${f}`;
+      warmedUrls.add(url);
+      void fetchClipBytes(url).catch(() => {});
+    }
+  }
+  redecodeWarmed();
 }
 
 /**
@@ -1344,6 +1421,8 @@ export function _resetClipsForTest(): void {
   voiceManifestPromises.clear();
   voiceManifestCache.clear();
   decodedClips.clear();
+  clipBytes.clear();
+  warmedUrls.clear();
   if (activeChain) {
     clearActiveWatchdog(activeChain);
   }
