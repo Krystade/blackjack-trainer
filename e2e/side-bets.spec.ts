@@ -372,11 +372,11 @@ test.describe('the casino stats card', () => {
     // it stops on its budget, so it is marked partial.
     await expect(page.getByTestId('gs-status')).toContainText('Stopped at the test round budget.', { timeout: 60_000 });
     await expect(line).toHaveText(
-      'Best with a side bet: none — nothing here wins: the best method back-counts and still loses (−$56 ±$35/h). ' +
-        "Seated play with Over 13 still loses (−$77 ±$11/h), so it isn't worth sitting for. Partial run.",
+      'Best with a side bet: none — the best method back-counts (about break-even, −$12 ±$34/h), so Over 13 is not added to it. ' +
+        "Seated play with Over 13 still loses (−$60 ±$29/h), so it isn't worth sitting for. Partial run.",
     );
     // A figure and its interval never wrap apart.
-    await expect(line.locator('.cas-sb-fig')).toHaveText(['−$56 ±$35/h', '−$77 ±$11/h']);
+    await expect(line.locator('.cas-sb-fig')).toHaveText(['−$12 ±$34/h', '−$60 ±$29/h']);
     await expect(line.locator('.cas-sb-fig').first()).toHaveCSS('white-space', 'nowrap');
     await line.scrollIntoViewIfNeeded();
     await page.screenshot({ path: `e2e/screenshots/side-cardroom-line-${info.project.name}.png` });

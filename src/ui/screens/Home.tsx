@@ -154,7 +154,6 @@ export function Home({ onNavigate, activeProfile, settings, onSettingsChange }: 
 
       {/* Wave N: the streak card, above everything else. */}
       <StreakCard settings={settings} onOpen={() => onNavigate('progress')} />
-      <BackupNudge />
 
       {/* Wave L (lane v): one tap runs a guided routine (its own component). */}
       <GuidedCard settings={settings} activeProfile={activeProfile} onSettingsChange={onSettingsChange} onNavigate={onNavigate} />
@@ -165,6 +164,9 @@ export function Home({ onNavigate, activeProfile, settings, onSettingsChange }: 
         onStart={openStep}
         drive={drive ? { label: drive.label, onDrive: startDrive } : undefined}
       />
+
+      {/* Below the ladder: above it, it pushed Start under the fold at 320x693. */}
+      <BackupNudge />
 
       <section className="readiness" aria-label="Readiness">
         <div className="readiness-figures">
