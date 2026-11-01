@@ -16,7 +16,7 @@ import {
 import type { VariantGrade, VariantItem, VariantTally } from '../../../drills/variantDrill';
 import { narrateVariantCorrection, narrateVariantPrompt, variantOpener } from '../../../audio/narrateVariant';
 import { narrateActionNotAsked, narrateAnswerEcho } from '../../../audio/narrate';
-import { autoAdvanceDelayMs, spokenPauseFor } from '../../../drills/answerPause';
+import { autoAdvanceDelayMs, spokenPauseFor } from '../../../drills/answerHold';
 import { useAudio } from '../../../audio/useAudio';
 import { cancelSpeech, isE2eAudioMode, speak } from '../../../audio/speech';
 import { speechOptsFrom } from '../../../audio/speechOpts';

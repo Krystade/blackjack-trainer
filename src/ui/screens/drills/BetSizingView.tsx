@@ -37,7 +37,7 @@ import {
   narrateBetVerdict,
   proposeBet,
 } from '../../../drills/wheelProposition';
-import { autoAdvanceDelayMs, spokenPauseFor } from '../../../drills/answerPause';
+import { autoAdvanceDelayMs, spokenPauseFor } from '../../../drills/answerHold';
 import { cancelSpeech, speak } from '../../../audio/speech';
 import { speechOptsFrom } from '../../../audio/speechOpts';
 import { useEyesFreeToggle } from '../../eyesFreeSession';

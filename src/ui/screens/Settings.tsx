@@ -468,7 +468,8 @@ export function Settings({ settings, onNavigate, onSettingsChange, backTo }: Set
             disabled={audioDisabled}
           />
           <div className="settings-note-row u-note">
-            Thinking time in an eyes-free drill before the answer is said.
+            Thinking time in an eyes-free drill before the answer is said. Hand
+            drills also keep each verdict up at least this long.
           </div>
           <div className="settings-row">
             <button

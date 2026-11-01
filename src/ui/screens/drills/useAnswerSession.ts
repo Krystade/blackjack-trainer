@@ -6,7 +6,7 @@ import type { Card, Rank } from '../../../engine/cards';
 import type { CellTally } from '../../../store/cellStats';
 import { useAudio } from '../../../audio/useAudio';
 import { narrateCorrection } from '../../../audio/narrate';
-import { autoAdvanceDelayMs, spokenPauseFor } from '../../../drills/answerPause';
+import { autoAdvanceDelayMs, spokenPauseFor } from '../../../drills/answerHold';
 import { detectVoiceSupport, VOICE_ACTIONS } from '../../../audio/voiceRecognition';
 import type { VoiceAction } from '../../../audio/voiceRecognition';
 import { cancelSpeech, speak } from '../../../audio/speech';
@@ -289,7 +289,7 @@ export function useAnswerSession(settings: Settings, context: string) {
 
   // `spokenMs` is how long the correction will occupy the speaker. The next
   // prompt speaks with `interrupt: true`, so advancing on the configured
-  // pause alone cut the explanation off mid-sentence -- see answerPause.ts.
+  // pause alone cut the explanation off mid-sentence -- see drills/answerHold.ts.
   const scheduleAutoAdvance = (spokenMs: number, next: () => void) => {
     clearAdvanceTimer();
     const runId = runIdRef.current;

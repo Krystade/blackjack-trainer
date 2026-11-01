@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { autoAdvanceDelayMs, spokenPauseFor, POST_CORRECTION_BEAT_MS } from './answerPause';
+import { autoAdvanceDelayMs, spokenPauseFor, POST_CORRECTION_BEAT_MS } from './answerHold';
 
 /**
  * The bug this exists to prevent, reported from real use: "during the

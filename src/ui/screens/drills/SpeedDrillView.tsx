@@ -30,7 +30,7 @@ import { HandDeckControls } from './HandDeckControls';
 import { HandDeckGate } from './HandDeckGate';
 import { handDeckFor } from './handDeckFor';
 import { narrateSpeedPrompt, narrateYesNoVerdict } from '../../../drills/wheelProposition';
-import { autoAdvanceDelayMs, spokenPauseFor } from '../../../drills/answerPause';
+import { autoAdvanceDelayMs, spokenPauseFor } from '../../../drills/answerHold';
 import { useAudio } from '../../../audio/useAudio';
 import { cancelSpeech, speak } from '../../../audio/speech';
 import { speechOptsFrom } from '../../../audio/speechOpts';

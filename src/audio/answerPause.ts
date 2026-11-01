@@ -4,6 +4,10 @@ import type { AudioSettings } from '../store/types';
 /**
  * How long to wait between asking a question out loud and giving the answer.
  *
+ * The count drills' THINKING time (Count, True count, Produce the TC). The
+ * same Answer pause setting is also the least time a hand drill holds a
+ * verdict, which is drills/answerHold.ts and a different thing.
+ *
  * THE BUG THIS EXISTS TO FIX. Every eyes-free self-check did this:
  *
  *     speak(question);

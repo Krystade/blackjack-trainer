@@ -20,7 +20,7 @@ import type { AnswerChannel, SrDeck } from '../../../drills/spacedRepetition';
 import { SCREEN_CHANNEL, VOICE_CHANNEL } from '../../../drills/spacedRepetition';
 import { formatReviewPlain } from '../../../drills/srStatus';
 import { signed } from '../../../drills/signed';
-import { autoAdvanceDelayMs, spokenPauseFor } from '../../../drills/answerPause';
+import { autoAdvanceDelayMs, spokenPauseFor } from '../../../drills/answerHold';
 import { NumPad } from '../../components/NumPad';
 import { ResultStrip } from '../../components/ResultStrip';
 import { PlayingCard } from '../../components/PlayingCard';

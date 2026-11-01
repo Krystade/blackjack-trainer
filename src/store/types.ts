@@ -299,7 +299,9 @@ export interface AudioSettings {
    */
   routeStrategy?: 'auto' | 'web-audio' | 'play-and-record' | 'speaker-sink';
   voiceURI: string; // 'default' or a SpeechSynthesisVoice.voiceURI
-  answerPauseMs: number; // 0..5000, the eyes-free self-check pause
+  // 0..5000. The eyes-free self-check's thinking time (audio/answerPause.ts),
+  // and the least time a hand drill holds a verdict (drills/answerHold.ts).
+  answerPauseMs: number;
   // Eyes-free ZonePad presentation: false (default) shows the five labeled
   // zones so the layout can be learned before it's used blind. true dims
   // the pad back to transparent-but-tappable, for genuine hands-on-wheel /

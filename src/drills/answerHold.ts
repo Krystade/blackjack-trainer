@@ -3,6 +3,18 @@ import { estimateSpeechMs } from '../audio/speech';
 /**
  * How long to hold a graded answer on screen before drawing the next one.
  *
+ * NOT THE SAME THING AS audio/answerPause.ts, though both read the one
+ * Settings > Answer pause value. That module is the THINKING time an
+ * eyes-free count drill leaves between asking and saying the answer. This one
+ * is the least time a hand drill (Flashcards, Deviation quiz, Mixed, Speed,
+ * Bet sizing, Index test, Variant) keeps a verdict up on its timed correction
+ * screen. It was named answerPause.ts too, until audit finding A117.
+ *
+ * Why the hand drills still read the slider: it is the setting's original
+ * meaning (below), the default 3 s is the pace Jack has driven with, and the
+ * e2e specs that hold a verdict open set it. Splitting it into two settings
+ * is a product call for Jack, not a rename; the Settings note says both.
+ *
  * `answerPauseMs` was written for a SILENT pause -- long enough to read a
  * correction, chosen when the only feedback was visual. Once the app started
  * reading corrections aloud, that same delay began firing while it was still
