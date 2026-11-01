@@ -93,25 +93,9 @@ export function isWheelPress(action: string): boolean {
 }
 
 /**
- * What each action does, in words a driver would use. The car check prints
- * these, so "what is this button called and what will it do" has exactly one
- * answer in the codebase.
- */
-export const MEDIA_SESSION_LABEL: Record<MediaSessionAction, string> = {
-  play: 'Play. Never moves the drill — the car sends this by itself; it only re-plays a lapsed hold.',
-  pause: 'Pause. Ignored — the car sends this by itself.',
-  stop: 'Stop. Ignored — the car sends this by itself.',
-  previoustrack: 'Skip back. Goes BACK: repeat, minus one, “I missed it”.',
-  nexttrack: 'Skip forward. Goes FORWARD: start, answer, plus one, “I had it”.',
-  seekbackward: 'Seek back. Same as Skip back.',
-  seekforward: 'Seek forward. Same as Skip forward.',
-  seekto: 'Seek to. Ignored — it carries a position, which means nothing here.',
-};
-
-/**
  * When set, EVERY action reports its name here instead of doing its job.
  *
- * Armed by the car check and by the field test's wheel steps. The point of it is that a
+ * Armed by the field test's wheel steps. The point of it is that a
  * car's physical buttons and the Media Session names are related by a mapping
  * only the head unit knows: a ring selector with five directions plus volume
  * and call keys emits some unknown subset of eight action names, and the only

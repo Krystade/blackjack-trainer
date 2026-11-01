@@ -15,7 +15,7 @@ import { PRIVATE_FIELDS, PUBLIC_FIELDS, fieldClass } from '../src/diag/diagPriva
  */
 const OPAQUE: Record<string, string> = {
   'src/diag/fieldTest.ts|answer|extra': 'a FieldTestStep subset: step ids and response ids the app defines',
-  'src/diag/driveChecks.ts|*|evidence': 'drive-check evidence: numbers, statuses and step names built in driveChecks/carCheckCatalog',
+  'src/diag/driveChecks.ts|*|evidence': 'drive-check evidence: numbers, statuses and step names built in driveChecks',
   'src/ui/screens/TestKit.tsx|kit-answer|extra': 'tallies and counts passed by each kit step (element, webaudio, probes, count, overall)',
   'src/ui/screens/TestKit.tsx|kit-phone-summary|flat': "the phone-mic kit's verdict lines, app text keyed by check id",
 };

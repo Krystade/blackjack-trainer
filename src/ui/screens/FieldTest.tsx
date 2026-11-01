@@ -74,7 +74,7 @@ import {
 } from '../../audio/audioContext';
 import { requestWakeLock, releaseWakeLock } from '../../audio/wakeLock';
 import { setClipsEnabled, setClipVoice, prewarmClips } from '../../audio/clips';
-import { measureWithWebAudio, listAudioInputs } from '../../diag/carCheckCatalog';
+import { measureWithWebAudio, listAudioInputs } from '../../diag/audioInputs';
 import { bandFor, adviceFor } from '../../diag/ambientNoise';
 import { useVoiceControl } from '../useVoiceControl';
 import { setVoiceOn } from '../voiceSession';

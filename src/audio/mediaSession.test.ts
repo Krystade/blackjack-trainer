@@ -11,7 +11,6 @@ import {
   setPlaybackState,
   setMediaSessionProbe,
   MEDIA_SESSION_ACTIONS,
-  MEDIA_SESSION_LABEL,
   _resetMediaSessionForTest,
 } from './mediaSession';
 
@@ -336,12 +335,6 @@ describe('initMediaSession', () => {
       setMediaSessionProbe(null);
       actions.get('previoustrack')!();
       expect(repeated).toBe(1);
-    });
-
-    it('names a label for every action it can report, so none prints raw', () => {
-      for (const action of MEDIA_SESSION_ACTIONS) {
-        expect(MEDIA_SESSION_LABEL[action], action).toBeTruthy();
-      }
     });
   });
 
