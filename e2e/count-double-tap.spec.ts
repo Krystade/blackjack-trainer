@@ -8,10 +8,26 @@ import { readStats, withProfile, withSettings } from './helpers';
  * so these specs switch it back on at its real length.
  */
 
-async function realBounceGuard(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    (window as unknown as { __e2eAnswerBounceMs: number }).__e2eAnswerBounceMs = 250;
+async function realBounceGuard(page: Page, ms = 250): Promise<void> {
+  await page.addInitScript((guard) => {
+    (window as unknown as { __e2eAnswerBounceMs: number }).__e2eAnswerBounceMs = guard;
+  }, ms);
+}
+
+/**
+ * Records, in the page, when each tap reaches it. The gap the bounce guard
+ * sees is the one between these, so the runner's own latency (two CDP round
+ * trips under a loaded run) does not count against the test. pointerdown,
+ * not click: a tap on a disabled button (the next question's empty OK) fires
+ * no click at all.
+ */
+async function recordTaps(page: Page): Promise<() => Promise<number[]>> {
+  await page.evaluate(() => {
+    const w = window as unknown as { __tapAt: number[] };
+    w.__tapAt = [];
+    window.addEventListener('pointerdown', (e) => w.__tapAt.push(e.timeStamp), { capture: true });
   });
+  return () => page.evaluate(() => (window as unknown as { __tapAt: number[] }).__tapAt);
 }
 
 async function openDrill(page: Page, name: string): Promise<void> {
@@ -22,19 +38,27 @@ async function openDrill(page: Page, name: string): Promise<void> {
 }
 
 test('true count drill: a double-tapped OK grades one answer, not a phantom 0 on the next question', async ({ page }) => {
-  await realBounceGuard(page);
+  // A69: a longer guard than the real 250 ms, so the second of two real
+  // mouse clicks lands inside it on a loaded run as well as an idle one.
+  // What is tested is one answer from a double tap, not the guard's length.
+  // (Two things stop the phantom here: the guard, and the next question's
+  // OK being disabled until a digit is typed. Either one alone passes this.)
+  const GUARD_MS = 1000;
+  await realBounceGuard(page, GUARD_MS);
   await withSettings(page, { audio: { enabled: false } });
   await openDrill(page, 'True count drill');
   await page.getByRole('button', { name: 'Start', exact: true }).click();
   await expect(page.locator('.numpad')).toBeVisible();
-  await page.waitForTimeout(400);
+  // Past the guard, so the first tap is an answer.
+  await page.waitForTimeout(GUARD_MS + 200);
   await page.locator('.numpad-btn', { hasText: /^1$/ }).click();
   const ok = page.getByRole('button', { name: 'OK', exact: true });
   const box = (await ok.boundingBox())!;
-  const t0 = Date.now();
+  const taps = await recordTaps(page);
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-  expect(Date.now() - t0, 'the two taps must land inside the guard to test it').toBeLessThan(250);
+  const [first, second] = await taps();
+  expect(second! - first!, 'the two taps must land inside the guard to test it').toBeLessThan(GUARD_MS);
 
   await page.waitForTimeout(300);
   const stats = await readStats(page);

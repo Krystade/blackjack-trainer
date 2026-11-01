@@ -65,13 +65,11 @@ test('after a miss, the seconds spent reading the correction are not answer time
   await page.goto('/?e2e=1');
   await openFlashcards(page);
   const stand = page.locator('.action-bar button.action-btn', { hasText: 'Stand' });
-  // Answer Stand until one is a miss; the card dealt under it is the subject.
-  let missed = false;
-  for (let i = 0; i < 30 && !missed; i++) {
-    await page.waitForTimeout(300);
-    missed = (await answerAndReadStrip(page, stand)) === 'miss';
-  }
-  expect(missed, '30 answers of Stand and none was a miss').toBe(true);
+  // A deliberate miss: the wrong play for the hand on screen (no retry loop on
+  // unseeded cards). The card dealt under it is the subject.
+  const right = await shownHandRightPlay(page);
+  const wrong = page.locator('.action-bar button.action-btn', { hasText: right === 'Hit' ? 'Stand' : 'Hit' });
+  expect(await answerAndReadStrip(page, wrong)).toBe('miss');
   const before = ((await readStats(page))!.latencyHistory as unknown[]).length;
   // Read the correction for the grace, then answer: 4.2s after the deal.
   await page.waitForTimeout(4200);
