@@ -1,3 +1,5 @@
+import { IndexByCountList } from '../components/IndexByCount';
+import { askedIndexSet } from '../../drills/deviationQuiz';
 import { Fragment, Suspense, startTransition, useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { TabSettingsButton } from '../components/TabSettingsButton';
@@ -221,6 +223,7 @@ export function Charts({
   // #23: the indexes the trainer GRADES with -- strategyRulesFor, not the bare
   // rules, because the Fab 4 are a profile choice and need surrender on.
   const indexes = useMemo(() => indexList(strategyRulesFor(activeProfile)), [activeProfile]);
+  const [indexOrder, setIndexOrder] = useState<'set' | 'count'>('set');
   // The list's entries that sit on a surrender cell (see surrenderComesFirst).
   const surrenderFirst = useMemo(() => {
     const hardRows = rowsBySection.find((s) => s.id === 'HARD')?.rows ?? [];
@@ -608,7 +611,22 @@ export function Charts({
                 otherwise play the chart.
               </span>
             </h2>
-            {INDEX_GROUPS.map((group) => {
+            {/* Owner 2026-11-06: study them by the count they change at. */}
+            <div className="charts-modes index-order" role="group" aria-label="Index order">
+              {(['set', 'count'] as const).map((o) => (
+                <button
+                  key={o}
+                  type="button"
+                  className="charts-mode-btn"
+                  aria-pressed={indexOrder === o}
+                  onClick={() => setIndexOrder(o)}
+                >
+                  {o === 'set' ? 'By set' : 'By count'}
+                </button>
+              ))}
+            </div>
+            {indexOrder === 'count' && <IndexByCountList devs={askedIndexSet(strategyRulesFor(activeProfile))} />}
+            {indexOrder === 'set' && INDEX_GROUPS.map((group) => {
               const entries = indexes.entries.filter((e) => e.group === group.id);
               if (entries.length === 0) return null;
               return (

@@ -103,16 +103,16 @@ export interface AnswerFeedback {
 /* Deviation quiz filter                                             */
 /* ---------------------------------------------------------------- */
 
-export function quizFilterArg(quizIndex: DeviationId | 'all'): DeviationId | undefined {
-  return quizIndex === 'all' ? undefined : quizIndex;
+export function quizFilterArg(quizIndex: DeviationId | 'all' | 'path'): DeviationId | undefined {
+  return quizIndex === 'all' || quizIndex === 'path' ? undefined : quizIndex;
 }
 
 /**
  * Get the active quiz filter, falling back to 'all' if the saved index is
  * inactive in the current ruleset.
  */
-export function getActiveQuizFilter(quizIndex: DeviationId | 'all', activeProfile: Profile): DeviationId | 'all' {
-  if (quizIndex === 'all') return 'all';
+export function getActiveQuizFilter(quizIndex: DeviationId | 'all' | 'path', activeProfile: Profile): DeviationId | 'all' | 'path' {
+  if (quizIndex === 'all' || quizIndex === 'path') return quizIndex;
   const rules = strategyRulesFor(activeProfile);
   if (!isIndexActive(quizIndex, rules)) {
     return 'all';

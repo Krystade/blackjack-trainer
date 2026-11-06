@@ -72,7 +72,7 @@ const PLAY_TEXT: Record<Deviation['action'], string> = {
   'take-insurance': 'Take insurance',
 };
 
-function toEntry(dev: Deviation): IndexEntry {
+export function toEntry(dev: Deviation): IndexEntry {
   const at = indexPlayAt(dev);
   const family: IndexFamily = at === 'take-insurance' ? 'insurance' : at;
   let hand: string;

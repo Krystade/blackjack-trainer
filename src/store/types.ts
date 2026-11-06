@@ -117,7 +117,8 @@ export interface Settings {
     countIntervalMs: number;
     countLengthCards: number;
     countManual: boolean;
-    quizIndex: DeviationId | 'all';
+    /** 'path' (owner 2026-11-06): learn the indices a count-group at a time (drills/indexPath.ts). */
+    quizIndex: DeviationId | 'all' | 'path';
     // Starting per-card pace (ms) for the count drill's TIMED CHALLENGE
     // (speed-ramp) mode -- distinct from countIntervalMs, which paces the
     // ordinary constant-speed auto/eyes-free flash. The ramp decays from

@@ -1,8 +1,12 @@
+import { pathState, pickPathId } from '../../../drills/indexPath';
+import { IndexPathStatus } from '../../components/IndexByCount';
 import { SrBadge } from '../../components/SrBadge';
 import { useEffect, useRef, useState } from 'react';
 import { strategyRulesFor } from '../../../store/profiles';
 import type { Profile, Settings } from '../../../store/types';
 import type { DeviationId } from '../../../engine/deviations';
+type QuizFilter = DeviationId | 'all' | 'path';
+import { loadStats } from '../../../store/persist';
 import { indexSetFor } from '../../../engine/deviations';
 import type { GradedEvent } from '../../../engine/grade';
 import { indexPickerText } from '../../../drills/withCount';
@@ -142,22 +146,29 @@ export function DeviationQuizView({
   // E2 (drills/learningRedeal.ts): a missed index is asked again 3-6 items
   // on (pool - 1 when fewer than four can be asked), in a review too.
   const learning = useLearningRedeal();
+  /** Owner 2026-11-06: where the learning path stands, from the saved answers. */
+  const currentPath = () => pathState(askedIndexSet(strategyRulesFor(activeProfile)), loadStats().indexRecent);
   /** The indexes a draw may ask: the review's, the pinned one, or every asked index. */
-  const quizPoolIds = (filter: DeviationId | 'all'): string[] =>
+  const quizPoolIds = (filter: QuizFilter): string[] =>
     review.active
       ? review.pool(lastIndexRef.current)
-      : filter === 'all'
+      : filter === 'all' || filter === 'path'
         ? askedIndexSet(strategyRulesFor(activeProfile)).map((d) => d.id)
         : [filter];
-  const drawItem = (filter: DeviationId | 'all', distractorPct: number): QuizItem | null => {
+  const drawItem = (filter: QuizFilter, distractorPct: number): QuizItem | null => {
     const drawn = drawQuizFor(filter, distractorPct);
     // A distractor has no index: it is one more item between, nothing else.
     if (drawn) learning.dealt(drawn.deviationId ?? '');
     return drawn;
   };
-  const drawQuizFor = (filter: DeviationId | 'all', distractorPct: number): QuizItem | null => {
+  const drawQuizFor = (filter: QuizFilter, distractorPct: number): QuizItem | null => {
     const poolIds = quizPoolIds(filter);
     const plan = learning.plan(poolIds);
+    // Owner 2026-11-06: the learning path picks its own index, no fakes.
+    if (filter === 'path' && !review.active && !('redeal' in plan)) {
+      const id = pickPathId(currentPath(), Math.random, plan.exclude);
+      return drawQuizItem(randomSeed(), id, strategyRulesFor(activeProfile), 0, srDeckRef.current, Date.now());
+    }
     // A due re-deal is the real index, never a fake near it.
     if ('redeal' in plan) {
       return drawQuizItem(randomSeed(), plan.redeal as DeviationId, strategyRulesFor(activeProfile), 0, srDeckRef.current, Date.now());
@@ -219,7 +230,7 @@ export function DeviationQuizView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item, eyesFree, voiceOn]);
 
-  const next = (filter: DeviationId | 'all' = activeFilter, distractorPct: number = settings.drill.quizDistractorPct) => {
+  const next = (filter: QuizFilter = activeFilter, distractorPct: number = settings.drill.quizDistractorPct) => {
     runIdRef.current += 1;
     session.resetAnswerRefs();
     session.clearAdvanceTimer();
@@ -249,7 +260,7 @@ export function DeviationQuizView({
     onReviewDone?.();
   };
 
-  const changeIndex = (quizIndex: DeviationId | 'all') => {
+  const changeIndex = (quizIndex: QuizFilter) => {
     const nextSettings: Settings = { ...settings, drill: { ...settings.drill, quizIndex } };
     saveSettings(nextSettings);
     onSettingsChange(nextSettings);
@@ -537,8 +548,8 @@ export function DeviationQuizView({
   );
 
   // W2-7: the asked index, as the summary line names it.
-  const pinned = activeFilter === 'all' ? undefined : indexList.find((d) => d.id === activeFilter);
-  const indexName = pinned ? indexPickerText(pinned) : 'All indices';
+  const pinned = activeFilter === 'all' || activeFilter === 'path' ? undefined : indexList.find((d) => d.id === activeFilter);
+  const indexName = pinned ? indexPickerText(pinned) : activeFilter === 'path' ? 'Learn by count' : 'All indices';
 
   if (review.done) {
     return (
@@ -583,7 +594,7 @@ export function DeviationQuizView({
             className="quiz-index-select"
             value={activeFilter}
             onChange={(e) => {
-              changeIndex(e.target.value as DeviationId | 'all');
+              changeIndex(e.target.value as QuizFilter);
               // A <select> keeps focus after a choice, and it legitimately
               // swallows every key (typing jumps between options), so leaving
               // it focused killed keyboard drilling until the user clicked
@@ -592,6 +603,7 @@ export function DeviationQuizView({
               blurAfterChange(e.target);
             }}
           >
+            <option value="path">Learn by count (a group at a time)</option>
             <option value="all">All indices</option>
             {indexList.map((d) => (
               <option key={d.id} value={d.id} disabled={!d.active}>
@@ -602,6 +614,9 @@ export function DeviationQuizView({
           </select>
         </label>
         </ControlsSummary>
+        )}
+        {!review.active && activeFilter === 'path' && (
+          <IndexPathStatus path={currentPath()} rules={strategyRulesFor(activeProfile)} />
         )}
 
         <DrillModeControls
