@@ -4868,3 +4868,13 @@ body::before {
     font-size: var(--fs-lg);
   }
 }
+
+/* Owner 2026-11-06: the Count drill's Options, in groups. */
+.drill-options-group {
+  margin: var(--space-3) 0 var(--space-1);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}

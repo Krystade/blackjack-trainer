@@ -2379,6 +2379,8 @@ export function CountDrillView({
             Countdown (one deck with a card held back: name its tag)
           </label>
 
+          {/* Owner 2026-11-06: Options in four groups. */}
+          <h3 className="drill-options-group" data-testid="count-options-pace">Pace</h3>
           {!countdownMode && !tableOn && (
               <div className="settings-row">
                 <span className="settings-label">Group size</span>
@@ -2464,27 +2466,94 @@ export function CountDrillView({
             </>
           )}
 
-          {!countdownMode && eyesFree && settings.audio.enabled && (
-            <label className="count-toggle">
-              <input
-                type="checkbox"
-                checked={strictMode}
-                onChange={(e) => setStrictMode(e.target.checked)}
-              />
-              Strict mode (enter the answer; graded)
-            </label>
+          {/* ET7: adversarial dealer-pace pressure. Only meaningful for the
+              ordinary auto-flash count drill (Timed Challenge owns its own
+              pacing; manual/eyes-free are self-paced), so it's noted as such. */}
+          <label className="count-toggle">
+            <input
+              type="checkbox"
+              checked={settings.drill.pacePressure}
+              onChange={(e) => updateDrill({ pacePressure: e.target.checked })}
+            />
+            Pace pressure (sudden fast bursts, like a rushing dealer)
+          </label>
+          {!countFluent && settings.drill.pacePressure && (
+            <div className="settings-row settings-note-row">
+              Advanced — get fluent at the plain count drill first. It still works.
+            </div>
           )}
-          {!countdownMode && !timedChallenge && eyesFree && settings.audio.enabled && !strictMode && (
+          {settings.drill.pacePressure && (settings.drill.countManual || timedChallenge) && (
+            <div className="settings-row settings-note-row">
+              Pace pressure only works with Next card on Auto, and is off in a timed challenge.
+            </div>
+          )}
+
+          <h3 className="drill-options-group" data-testid="count-options-shoe">Shoe</h3>
+          {/* R8/CM#1 (docs/BACKLOG.md): adversarial same-sign shoe bias. Same
+              scope as distractions -- the ordinary count drill only; Countdown
+              builds its own shoe and Timed Challenge forces 'none' so a harder
+              shoe never contaminates the speed-tier grading. */}
+          {!countdownMode && !timedChallenge && (
+            <>
+              <div className="settings-row">
+                <span className="settings-label">Count bias</span>
+                <Segmented
+                  options={[
+                    { value: 'none', label: 'None' },
+                    { value: 'negative', label: 'Neg-first' },
+                    { value: 'positive', label: 'Pos-first' },
+                    { value: 'big', label: 'Big' },
+                  ]}
+                  value={settings.drill.countBias}
+                  onChange={(v) => updateDrill({ countBias: v })}
+                />
+              </div>
+              {settings.drill.countBias === 'big' && (
+                <div className="settings-row settings-note-row">
+                  Each run leans one way or the other, so the count runs big early, up or down.
+                </div>
+              )}
+              {(settings.drill.countBias === 'negative' || settings.drill.countBias === 'positive') && (
+                <div className="settings-row settings-note-row">
+                  Leans the {settings.drill.countBias === 'negative' ? 'high' : 'low'} cards toward the start, so the
+                  count tends to run {settings.drill.countBias === 'negative' ? 'down' : 'up'} early. It can end up,
+                  down or level, a third each.
+                </div>
+              )}
+            </>
+          )}
+          {!countdownMode && timedChallenge && settings.drill.countBias !== 'none' && (
+            <div className="settings-row settings-note-row">
+              Count bias is off in a timed challenge.
+            </div>
+          )}
+
+          {/* R9 / red-team #7: "messy" card presentation trains the visual-
+              recognition half of counting. Applies to every count-drill mode's
+              flashed cards (and the Pair Cancellation drill). */}
+          <label className="count-toggle">
+            <input
+              type="checkbox"
+              checked={settings.drill.messyCards}
+              onChange={(e) => updateDrill({ messyCards: e.target.checked })}
+            />
+            Messy cards (tilted and offset, as on a real table)
+          </label>
+
+          {/* G1 (L-1): a beginner aid, screen only. Not offered eyes-free,
+              where nothing on screen is being read. */}
+          {!eyesFree && (
             <label className="count-toggle">
               <input
                 type="checkbox"
-                checked={practice}
-                onChange={(e) => setPractice(e.target.checked)}
+                checked={settings.drill.countShowHiLo === true}
+                onChange={(e) => updateDrill({ countShowHiLo: e.target.checked })}
               />
-              Practice only (no answer needed, nothing recorded)
+              Show Hi-Lo values (+1, 0 or &minus;1 under each card, and the count after each card at the end)
             </label>
           )}
 
+          <h3 className="drill-options-group" data-testid="count-options-interruptions">Interruptions</h3>
           {/* D1 part 2 (docs/BACKLOG.md, distraction training): only meaningful
               for the standard count drill's flashing phase -- excluded for
               Countdown mode (tag-guess, not a running-count answer) and for
@@ -2573,90 +2642,26 @@ export function CountDrillView({
             </div>
           )}
 
-          {/* R8/CM#1 (docs/BACKLOG.md): adversarial same-sign shoe bias. Same
-              scope as distractions -- the ordinary count drill only; Countdown
-              builds its own shoe and Timed Challenge forces 'none' so a harder
-              shoe never contaminates the speed-tier grading. */}
-          {!countdownMode && !timedChallenge && (
-            <>
-              <div className="settings-row">
-                <span className="settings-label">Count bias</span>
-                <Segmented
-                  options={[
-                    { value: 'none', label: 'None' },
-                    { value: 'negative', label: 'Neg-first' },
-                    { value: 'positive', label: 'Pos-first' },
-                    { value: 'big', label: 'Big' },
-                  ]}
-                  value={settings.drill.countBias}
-                  onChange={(v) => updateDrill({ countBias: v })}
-                />
-              </div>
-              {settings.drill.countBias === 'big' && (
-                <div className="settings-row settings-note-row">
-                  Each run leans one way or the other, so the count runs big early, up or down.
-                </div>
-              )}
-              {(settings.drill.countBias === 'negative' || settings.drill.countBias === 'positive') && (
-                <div className="settings-row settings-note-row">
-                  Leans the {settings.drill.countBias === 'negative' ? 'high' : 'low'} cards toward the start, so the
-                  count tends to run {settings.drill.countBias === 'negative' ? 'down' : 'up'} early. It can end up,
-                  down or level, a third each.
-                </div>
-              )}
-            </>
-          )}
-          {!countdownMode && timedChallenge && settings.drill.countBias !== 'none' && (
-            <div className="settings-row settings-note-row">
-              Count bias is off in a timed challenge.
-            </div>
-          )}
-
-          {/* R9 / red-team #7: "messy" card presentation trains the visual-
-              recognition half of counting. Applies to every count-drill mode's
-              flashed cards (and the Pair Cancellation drill). */}
-          <label className="count-toggle">
-            <input
-              type="checkbox"
-              checked={settings.drill.messyCards}
-              onChange={(e) => updateDrill({ messyCards: e.target.checked })}
-            />
-            Messy cards (tilted and offset, as on a real table)
-          </label>
-
-          {/* G1 (L-1): a beginner aid, screen only. Not offered eyes-free,
-              where nothing on screen is being read. */}
-          {!eyesFree && (
+          {!countdownMode && eyesFree && settings.audio.enabled && <h3 className="drill-options-group" data-testid="count-options-audio">Audio</h3>}
+          {!countdownMode && eyesFree && settings.audio.enabled && (
             <label className="count-toggle">
               <input
                 type="checkbox"
-                checked={settings.drill.countShowHiLo === true}
-                onChange={(e) => updateDrill({ countShowHiLo: e.target.checked })}
+                checked={strictMode}
+                onChange={(e) => setStrictMode(e.target.checked)}
               />
-              Show Hi-Lo values (+1, 0 or &minus;1 under each card, and the count after each card at the end)
+              Strict mode (enter the answer; graded)
             </label>
           )}
-
-          {/* ET7: adversarial dealer-pace pressure. Only meaningful for the
-              ordinary auto-flash count drill (Timed Challenge owns its own
-              pacing; manual/eyes-free are self-paced), so it's noted as such. */}
-          <label className="count-toggle">
-            <input
-              type="checkbox"
-              checked={settings.drill.pacePressure}
-              onChange={(e) => updateDrill({ pacePressure: e.target.checked })}
-            />
-            Pace pressure (sudden fast bursts, like a rushing dealer)
-          </label>
-          {!countFluent && settings.drill.pacePressure && (
-            <div className="settings-row settings-note-row">
-              Advanced — get fluent at the plain count drill first. It still works.
-            </div>
-          )}
-          {settings.drill.pacePressure && (settings.drill.countManual || timedChallenge) && (
-            <div className="settings-row settings-note-row">
-              Pace pressure only works with Next card on Auto, and is off in a timed challenge.
-            </div>
+          {!countdownMode && !timedChallenge && eyesFree && settings.audio.enabled && !strictMode && (
+            <label className="count-toggle">
+              <input
+                type="checkbox"
+                checked={practice}
+                onChange={(e) => setPractice(e.target.checked)}
+              />
+              Practice only (no answer needed, nothing recorded)
+            </label>
           )}
 
             </div>
