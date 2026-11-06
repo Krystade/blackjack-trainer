@@ -1,3 +1,4 @@
+import type { CountDrillBias } from './countDrill';
 import { mulberry32, playDepths } from '../engine/cards';
 import { trueCount } from '../engine/count';
 import type { TcRounding } from '../engine/count';
@@ -71,14 +72,24 @@ export function makeTrueCountQuestion(
      * quarters, so 0.75 joins the depths asked. Absent: half decks only.
      */
     shoeDecks?: number;
+    /** Owner 2026-11-06: the shared counting weighting (settings.drill.countBias). */
+    bias?: CountDrillBias;
   },
 ): TrueCountQuestion {
   const rng = mulberry32(seed ?? Date.now());
   const maxDecks = opts?.maxDecks ?? DEFAULT_MAX_DECKS;
   const minDecks = Math.min(maxDecks, Math.max(DEFAULT_MIN_DECKS, opts?.minDecks ?? DEFAULT_MIN_DECKS));
 
-  // Running count: integer uniform in [RC_MIN, RC_MAX]
-  const runningCount = RC_MIN + Math.floor(rng() * (RC_MAX - RC_MIN + 1));
+  // Running count: integer uniform in [RC_MIN, RC_MAX] -- or, weighted
+  // (owner 2026-11-06), only the down side, the up side, or the far ends.
+  const bias = opts?.bias ?? 'none';
+  const [lo, hi] = bias === 'negative' ? [RC_MIN, 0] : bias === 'positive' ? [0, RC_MAX] : [RC_MIN, RC_MAX];
+  let runningCount = lo + Math.floor(rng() * (hi - lo + 1));
+  if (bias === 'big') {
+    const span = Math.min(-RC_MIN, RC_MAX);
+    const far = Math.ceil(span / 2) + Math.floor(rng() * (span - Math.ceil(span / 2) + 1));
+    runningCount = rng() < 0.5 ? -far : far;
+  }
 
   // Decks remaining: half-deck steps from minDecks up to maxDecks inclusive,
   // and (C20) 0.75 where Play divides by it.

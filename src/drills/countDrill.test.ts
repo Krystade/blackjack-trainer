@@ -228,3 +228,14 @@ describe('no rank twice in a row (owner 2026-11-06)', () => {
     for (let i = 1; i < cards.length; i++) expect(cards[i]!.rank).not.toBe(cards[i - 1]!.rank);
   });
 });
+
+describe("'big' weighting (owner 2026-11-06)", () => {
+  it('leans some runs down and some up', () => {
+    const early = Array.from({ length: 60 }, (_, s) => {
+      const { groups } = makeCountDrill(104, 1, s + 1, 'big');
+      return groups.slice(0, 40).reduce((sum, g) => sum + hiLoTag(g[0]!.rank), 0);
+    });
+    expect(early.some((c) => c >= 4)).toBe(true);
+    expect(early.some((c) => c <= -4)).toBe(true);
+  });
+});

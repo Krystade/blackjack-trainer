@@ -1,3 +1,4 @@
+import { CountWeighting } from './CountWeighting';
 import { useEffect, useRef, useState } from 'react';
 import { sayMomentAtPause } from '../../../habits/moment';
 import type { Profile, Settings } from '../../../store/types';
@@ -122,6 +123,7 @@ export function ProduceTcDrillView({
       randomSeed(),
       totalDecks,
       activeProfile.tcRounding,
+      settings.drill.countBias,
     ),
   );
 
@@ -360,6 +362,7 @@ export function ProduceTcDrillView({
         randomSeed(),
         totalDecks,
         activeProfile.tcRounding,
+        settings.drill.countBias,
       ),
     );
     setShownIndex(0);
@@ -535,6 +538,7 @@ export function ProduceTcDrillView({
 
       {phase === 'setup' && (
         <div className="count-setup">
+          <CountWeighting settings={settings} onSettingsChange={onSettingsChange} />
           <label className="count-toggle">
             <input
               type="checkbox"

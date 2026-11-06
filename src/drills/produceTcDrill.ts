@@ -1,4 +1,5 @@
 import { makeCountDrill } from './countDrill';
+import type { CountDrillBias } from './countDrill';
 import type { CountDrillRound } from './countDrill';
 import { trueCount, tcBand, tcWithinEye, EYE_DECK_ERROR } from '../engine/count';
 import type { TcRounding } from '../engine/count';
@@ -62,8 +63,9 @@ export function makeProduceTcRound(
   seed?: number,
   totalDecks: number = DEFAULT_TOTAL_DECKS,
   rounding?: TcRounding,
+  bias: CountDrillBias = 'none',
 ): ProduceTcRound {
-  const round = makeCountDrill(cards, groupSize, seed);
+  const round = makeCountDrill(cards, groupSize, seed, bias);
   // A second draw for the tray depth (0.5 .. totalDecks), seeded off a
   // transformed value so the depth doesn't track the card sequence.
   const rng = mulberry32(((seed ?? Date.now()) ^ 0x9e3779b9) >>> 0);

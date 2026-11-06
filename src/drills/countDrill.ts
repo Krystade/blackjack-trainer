@@ -22,7 +22,8 @@ export interface CountDrillRound {
  * of the front half's other cards trade places with biased cards from the
  * back half. A lean, never a block.
  */
-export type CountDrillBias = 'none' | 'negative' | 'positive';
+/** Owner 2026-11-06: 'big' leans each run one way or the other, at random -- big counts either way. */
+export type CountDrillBias = 'none' | 'negative' | 'positive' | 'big';
 
 /**
  * Generate a count drill round with the specified number of cards, grouped by groupSize.
@@ -55,13 +56,14 @@ export function makeCountDrill(
     // Its own stream, so the unbiased run for a seed is unchanged.
     const rng = mulberry32((seed ?? Date.now()) ^ 0x2c1b3c6d);
     const decks = Math.ceil(cards / 52) + 1;
+    const lean: 'negative' | 'positive' = bias === 'big' ? (rng() < 0.5 ? 'negative' : 'positive') : bias;
     allCards = biasRun(
       allCards,
       () => {
         const fresh = new Shoe({ decks, seed: Math.floor(rng() * 0x100000000) });
         return Array.from({ length: cards }, () => fresh.draw());
       },
-      bias,
+      lean,
       rng,
     );
   }
@@ -116,7 +118,7 @@ export const BIAS_MAX_SLICES = 400;
 export function biasRun(
   first: readonly Card[],
   slice: () => Card[],
-  bias: Exclude<CountDrillBias, 'none'>,
+  bias: 'negative' | 'positive',
   rng: () => number,
 ): Card[] {
   const target = Math.floor(rng() * 3) - 1;

@@ -2579,12 +2579,18 @@ export function CountDrillView({
                     { value: 'none', label: 'None' },
                     { value: 'negative', label: 'Neg-first' },
                     { value: 'positive', label: 'Pos-first' },
+                    { value: 'big', label: 'Big' },
                   ]}
                   value={settings.drill.countBias}
                   onChange={(v) => updateDrill({ countBias: v })}
                 />
               </div>
-              {settings.drill.countBias !== 'none' && (
+              {settings.drill.countBias === 'big' && (
+                <div className="settings-row settings-note-row">
+                  Each run leans one way or the other, so the count runs big early, up or down.
+                </div>
+              )}
+              {(settings.drill.countBias === 'negative' || settings.drill.countBias === 'positive') && (
                 <div className="settings-row settings-note-row">
                   Leans the {settings.drill.countBias === 'negative' ? 'high' : 'low'} cards toward the start, so the
                   count tends to run {settings.drill.countBias === 'negative' ? 'down' : 'up'} early. It can end up,

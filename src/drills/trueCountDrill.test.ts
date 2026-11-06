@@ -205,3 +205,21 @@ describe('C20: the quarter-deck divisor on 1- and 2-deck shoes', () => {
     expect(n).toBeGreaterThan(plain * 1.5);
   });
 });
+
+describe('weighting (owner 2026-11-06)', () => {
+  const rcs = (bias: 'none' | 'negative' | 'positive' | 'big') =>
+    Array.from({ length: 400 }, (_, i) => makeTrueCountQuestion(i + 1, { bias }).runningCount);
+  it('down asks only counts at or below zero, up only at or above', () => {
+    expect(rcs('negative').every((rc) => rc <= 0)).toBe(true);
+    expect(rcs('positive').every((rc) => rc >= 0)).toBe(true);
+  });
+  it('big asks only the far ends, both ways', () => {
+    const big = rcs('big');
+    expect(big.every((rc) => Math.abs(rc) >= 8)).toBe(true);
+    expect(big.some((rc) => rc > 0) && big.some((rc) => rc < 0)).toBe(true);
+  });
+  it('random still reaches both sides and zero', () => {
+    const r = rcs('none');
+    expect(r.some((rc) => rc < 0) && r.some((rc) => rc > 0) && r.includes(0)).toBe(true);
+  });
+});

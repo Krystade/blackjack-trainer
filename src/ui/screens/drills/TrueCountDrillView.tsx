@@ -1,3 +1,4 @@
+import { CountWeighting } from './CountWeighting';
 import { useEffect, useRef, useState } from 'react';
 import { sayMomentAtPause } from '../../../habits/moment';
 import type { Profile, Settings } from '../../../store/types';
@@ -361,6 +362,7 @@ export function TrueCountDrillView({
       shoeDecks: activeProfile.rules.decks,
       rounding: activeProfile.tcRounding,
       history: loadStats().trueCount.history,
+      bias: settings.drill.countBias,
     });
     setQuestion(q);
     setHonorCheck(false);
@@ -694,6 +696,7 @@ export function TrueCountDrillView({
 
       {phase === 'setup' && (
         <div className="count-setup">
+          <CountWeighting settings={settings} onSettingsChange={onSettingsChange} />
           <Stepper
             label="Max decks remaining"
             value={maxDecks}
