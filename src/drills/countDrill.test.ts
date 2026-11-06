@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { Card, Rank } from '../engine/cards';
 import { hiLoTag } from '../engine/count';
-import { runningCountThrough, makeCountDrill } from './countDrill';
+import { runningCountThrough, makeCountDrill, separateRepeats } from './countDrill';
 
 /** Builds a minimal Card for a given rank -- suit is irrelevant to hiLoTag. */
 function card(rank: Rank): Card {
@@ -206,5 +206,25 @@ describe('makeCountDrill shoe size (#44: a whole-deck run must not always end at
       (r) => Math.max(...rankCounts(r).values()) > 1,
     );
     expect(repeats).toBe(true);
+  });
+});
+
+describe('no rank twice in a row (owner 2026-11-06)', () => {
+  it('a one-card-at-a-time run never shows the same rank back to back', () => {
+    for (let seed = 1; seed <= 300; seed++) {
+      for (const bias of ['none', 'negative', 'positive'] as const) {
+        const { groups } = makeCountDrill(104, 1, seed, bias);
+        const ranks = groups.map((g) => g[0]!.rank);
+        for (let i = 1; i < ranks.length; i++) expect(ranks[i], `seed ${seed} ${bias} at ${i}`).not.toBe(ranks[i - 1]);
+      }
+    }
+  });
+
+  it('separateRepeats only reorders: same cards, same count', () => {
+    const cards = ['5', '5', '5', 'K', 'K', '2', '9', '9'].map((rank, i) => ({ rank, suit: 'shdc'[i % 4] })) as Card[];
+    const before = cards.map((c) => c.rank + c.suit).sort();
+    separateRepeats(cards, () => 0.3);
+    expect(cards.map((c) => c.rank + c.suit).sort()).toEqual(before);
+    for (let i = 1; i < cards.length; i++) expect(cards[i]!.rank).not.toBe(cards[i - 1]!.rank);
   });
 });

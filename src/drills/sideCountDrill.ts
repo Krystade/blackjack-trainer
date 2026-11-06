@@ -1,5 +1,6 @@
 import type { Card } from '../engine/cards';
 import { mulberry32, Shoe, snapDecksRemaining } from '../engine/cards';
+import { separateRepeats } from './countDrill';
 import { hiLoTag, trueCount } from '../engine/count';
 import { RANK_INDEX, SUIT_INDEX } from '../engine/sideBets/comp';
 import type { SideCountDef } from '../engine/sideBets/counts';
@@ -134,6 +135,8 @@ function attempt(spec: SideRunSpec, shoeSeed: number, endAt: number, n: number):
 
   const all: Card[] = [];
   for (let i = 0; i < n; i++) all.push(shoe.draw());
+  // Owner 2026-11-06: never the same rank twice in a row, one card at a time.
+  if (spec.groupSize === 1) separateRepeats(all, mulberry32(shoeSeed ^ 0x5eed1e55));
   const groups: Card[][] = [];
   for (let i = 0; i < all.length; i += spec.groupSize) groups.push(all.slice(i, i + spec.groupSize));
 

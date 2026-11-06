@@ -66,6 +66,10 @@ export function makeCountDrill(
     );
   }
 
+  // Owner 2026-11-06: one card at a time, the same rank twice in a row looks
+  // like the flash froze. Reordered only, so the count is unchanged.
+  if (groupSize === 1) separateRepeats(allCards, mulberry32((seed ?? Date.now()) ^ 0x5eed1e55));
+
   // Group the cards
   const groups: Card[][] = [];
   for (let i = 0; i < allCards.length; i += groupSize) {
@@ -177,7 +181,35 @@ export function makeCountdown(seed?: number): CountdownRound {
   }
 
   const hidden = allCards.pop()!;
+  separateRepeats(allCards, mulberry32((seed ?? Date.now()) ^ 0x5eed1e55));
   const shown = allCards;
 
   return { shown, hidden };
+}
+
+/**
+ * Owner 2026-11-06: reorders `cards` in place so no two neighbours share a
+ * rank, by swapping each repeat with a card further on (or, failing that,
+ * earlier) that fits both places. The multiset -- and so the count -- is
+ * unchanged. A run that cannot be separated (all one rank) is left as is.
+ */
+export function separateRepeats(cards: Card[], rng: () => number): void {
+  const n = cards.length;
+  const rankAt = (k: number) => cards[k]?.rank;
+  const fits = (rank: string | undefined, k: number, skip: number) =>
+    (k - 1 === skip || rankAt(k - 1) !== rank) && (k + 1 === skip || rankAt(k + 1) !== rank);
+  for (let i = 1; i < n; i++) {
+    if (rankAt(i) !== rankAt(i - 1)) continue;
+    const candidates: number[] = [];
+    for (let j = 0; j < n; j++) {
+      if (j === i || rankAt(j) === rankAt(i)) continue;
+      // cards[j] must fit at i, and cards[i] must fit at j.
+      if (fits(rankAt(j), i, j) && fits(rankAt(i), j, i)) candidates.push(j);
+    }
+    if (candidates.length === 0) continue;
+    const later = candidates.filter((j) => j > i);
+    const pool = later.length > 0 ? later : candidates;
+    const j = pool[Math.floor(rng() * pool.length)]!;
+    [cards[i], cards[j]] = [cards[j]!, cards[i]!];
+  }
 }
