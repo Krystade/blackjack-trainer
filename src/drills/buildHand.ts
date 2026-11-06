@@ -146,24 +146,27 @@ export function multiCardHard(total: number, rng: () => number): Card[] | null {
   if (total < MULTI_CARD_TOTALS.min || total > MULTI_CARD_TOTALS.max) return null;
   const u = rng();
   const n = u < 0.6 ? 3 : u < 0.9 ? 4 : 5;
-  // Values 1 (ace) to 10, ten-values four times as likely, as in a shoe.
-  const draw = () => {
-    const r = Math.floor(rng() * 13);
-    return r >= 9 ? 10 : r + 1;
-  };
-  for (let attempt = 0; attempt < 200; attempt++) {
-    const vals = Array.from({ length: n - 1 }, draw);
-    const last = total - vals.reduce((a, b) => a + b, 0);
-    if (last < 1 || last > 10) continue;
-    vals.push(last);
-    // Hard: an ace counted 11 would bust the hand (total + 10 > 21), always
-    // true from 12 up -- so nothing to check but the range above.
-    return vals.map((v) => ({
-      rank: v === 1 ? 'A' : v === 10 ? (TEN_FACES[Math.floor(rng() * TEN_FACES.length)] ?? '10') : (String(v) as Rank),
-      suit: SUITS[Math.floor(rng() * SUITS.length)] ?? 's',
-    }));
+  // Built card by card within the range that still lets the rest fit (each
+  // later card 1-10), ten-values weighted four to one as in a shoe.
+  const vals: number[] = [];
+  let left = total;
+  for (let k = 0; k < n - 1; k++) {
+    const after = n - 1 - k;
+    const lo = Math.max(1, left - 10 * after);
+    const hi = Math.min(10, left - after);
+    const opts: number[] = [];
+    for (let v = lo; v <= hi; v++) for (let w = 0; w < (v === 10 ? 4 : 1); w++) opts.push(v);
+    const v = opts[Math.floor(rng() * opts.length)]!;
+    vals.push(v);
+    left -= v;
   }
-  return null;
+  vals.push(left);
+  // Hard: an ace counted 11 would bust the hand (total + 10 > 21), always
+  // true from 12 up.
+  return vals.map((v) => ({
+    rank: v === 1 ? 'A' : v === 10 ? (TEN_FACES[Math.floor(rng() * TEN_FACES.length)] ?? '10') : (String(v) as Rank),
+    suit: SUITS[Math.floor(rng() * SUITS.length)] ?? 's',
+  }));
 }
 
 /** MULTI_CARD_RATE of the time, a multi-card version of hard `total`; else null. */
