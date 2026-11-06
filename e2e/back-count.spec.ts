@@ -24,7 +24,7 @@ const SETTINGS = {
   dealSpeedMs: 0,
   audio: { enabled: true, verbosity: 'full' },
 };
-/** No bots configured: a player Out watches a table of three anyway. */
+/** No bots configured: Out, you watch the dealer alone (owner 2026-11-06). */
 const TABLE = { betSpreadOn: true, countCheckEvery: 0, seats: { bots: 0 } };
 
 const speech = (page: Page) => page.evaluate(() => (window as unknown as { __speechLog?: string[] }).__speechLog ?? []);
@@ -46,7 +46,7 @@ async function openTable(page: Page, profile: Record<string, unknown>, seed = 7)
   await page.getByRole('button', { name: 'Play', exact: true }).click();
 }
 
-test('every table has the toggle, In; Out deals the rounds to three bots at the same table, and stays Out', async ({ page }) => {
+test('every table has the toggle, In; Out deals the rounds at the same table, and stays Out', async ({ page }) => {
   // Exit 0: getting out at the fresh shoe's TC 0 is right. Entry +5: staying out is.
   await openTable(page, { wongExitTc: 0, wongInTc: 5 });
   await expectIn(page, true);
@@ -68,8 +68,8 @@ test('every table has the toggle, In; Out deals the rounds to three bots at the 
     await expect(page.locator('.message-sat-out')).toHaveText('Out — no bet.');
     await expect(page.getByTestId('player-watching')).toBeVisible();
     await expect(page.locator('.player-hand')).toHaveCount(0);
-    // 0 bots configured, three dealt to.
-    await expect(page.locator('.bot-seat')).toHaveCount(3);
+    // Owner 2026-11-06: the players are the same In or Out -- 0 set, none dealt to.
+    await expect(page.locator('.bot-seat')).toHaveCount(0);
     // The same table: no shuffle, no new shoe.
     await expect(page.locator('.message-shuffle')).toHaveCount(0);
     // Right every time: no strip.
@@ -199,7 +199,7 @@ test('old data: a stored backCount: true starts the table Out, and reads as "Sta
   await expectIn(page, false);
   await dealBtn(page).click();
   await expect(page.locator('.message-sat-out')).toHaveText('Out — no bet.');
-  await expect(page.locator('.bot-seat')).toHaveCount(3);
+  await expect(page.locator('.bot-seat')).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Play settings' }).click();
   const sheet = page.getByRole('dialog', { name: 'Play settings' });

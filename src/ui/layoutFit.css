@@ -144,3 +144,7 @@
 .home-screen .home-head .home-profile-chip {
   min-width: 4rem;
 }
+/* At 320 the title gives way first, so the profile name stays whole. */
+@media (max-width: 359px) {
+  .home-screen .home-head .home-profile-chip { flex-shrink: 0; }
+}
