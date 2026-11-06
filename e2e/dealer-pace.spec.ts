@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings, withProfile, withStats, readStats, resolveInsurance, statsTab } from './helpers';
+import { withSettings, withProfile, withStats, readStats, resolveInsurance, statsTab, openProfileFromPlay } from './helpers';
 
 /**
  * F5 (W2-17): Play decisions are timed, Stats > Play shows the table's median
@@ -178,12 +178,12 @@ test('Stats > Play shows the median of the table decision times, not the drills'
   }
 });
 
-test('the Play sheet switches the clock on and sets its length (default 4 s)', async ({ page }) => {
+test('the profile switches the clock on and sets its length (default 4 s)', async ({ page }) => {
   await withSettings(page, { feedbackMode: 'test', dealSpeedMs: 0 });
   await withProfile(page);
   await openPlay(page);
-  await page.getByTestId('tab-gear-play').click();
-  const sheet = page.getByRole('dialog', { name: 'Play settings' });
+  // Owner 2026-11-06: in the profile's Shoe and dealer, no longer Play's gear.
+  const { editor: sheet, done } = await openProfileFromPlay(page);
   const stepper = sheet.locator('.settings-row', { hasText: 'Dealer pace' }).filter({ has: page.locator('.stepper') });
   await expect(stepper.locator('.stepper-value')).toHaveText('4s');
   await expect(stepper.locator('.stepper-btn').last()).toBeDisabled(); // off: nothing to set yet
@@ -195,7 +195,7 @@ test('the Play sheet switches the clock on and sets its length (default 4 s)', a
     await stepper.evaluate((el) => el.scrollIntoView({ block: 'center' }));
     await page.screenshot({ path: `${SHOTS}/f5-play-sheet-375x812.png` });
   }
-  await sheet.getByRole('button', { name: 'Done', exact: true }).click();
+  await done();
   await page.getByRole('button', { name: 'Deal', exact: true }).click();
   await resolveInsurance(page, false);
   await expect(page.getByTestId('dealer-pace')).toHaveAttribute('aria-label', 'Dealer pace, 5 seconds');

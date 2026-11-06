@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withProfile, withSettings, playRoundByAdvice } from './helpers';
+import { withProfile, withSettings, playRoundByAdvice, openProfileFromPlay } from './helpers';
 
 /**
  * #33: the gear in the topbar of Play, Drills and Charts opens a sheet of that
@@ -65,20 +65,19 @@ test('profile options are held until the sheet closes, then deal a new shoe', as
 
   await page.getByRole('button', { name: 'Play settings' }).click();
   const sheet = page.getByRole('dialog', { name: 'Play settings' });
-  await sheet.getByRole('checkbox', { name: 'Grade with deviations' }).uncheck();
   const ask = sheet.locator('.count-ask-row');
   await ask.getByRole('button', { name: 'Both', exact: true }).click();
   await expect(ask.getByRole('button', { name: 'Both', exact: true })).toHaveClass(/segmented-btn-active/);
-  const cut = sheet.locator('.settings-row', { hasText: 'Cut card' });
-  await expect(cut.locator('.stepper-value')).toHaveText('1.5 decks behind');
-  await cut.getByRole('button', { name: '+', exact: true }).click();
-  await sheet.getByRole('checkbox', { name: 'Vary ±0.5 decks' }).check();
+  const players = sheet.locator('.settings-row', { hasText: 'Players with you' });
+  const playersBefore = Number(await players.locator('.stepper-value').textContent());
+  await players.getByRole('button', { name: '+', exact: true }).click();
+  await sheet.locator('.settings-row', { hasText: 'Deck estimation' }).getByRole('button', { name: 'Quarter' }).click();
   await expect(sheet.getByTestId('tab-sheet-when')).toContainText('A new shoe is dealt when you close this');
 
   // Nothing written, and the table untouched, while the sheet is open.
   const before = await storedProfile(page);
   expect(before.countCheckAsk).toBeUndefined();
-  expect(before.gradeDeviations).toBeUndefined();
+  expect(before.playDepth).toBeUndefined();
   await expect(roundStat(page)).toHaveText('Round 1');
 
   await sheet.getByRole('button', { name: 'Done', exact: true }).click();
@@ -86,18 +85,15 @@ test('profile options are held until the sheet closes, then deal a new shoe', as
 
   const after = await storedProfile(page);
   expect(after.countCheckAsk).toBe('both');
-  expect(after.gradeDeviations).toBe(false);
-  expect(after.cutDecks).toBe(1.75);
-  expect(after.cutVary).toBe(true);
-  expect(after.penetration as number).toBeCloseTo(1 - 1.75 / 6, 5);
+  expect(after.playDepth).toBe('quarter');
+  expect((after.seats as { bots: number }).bots).toBe(playersBefore + 1);
   // A new table: the round counter starts again.
   await expect(roundStat(page)).toHaveText('Round 0');
 
   // Reopened, the sheet shows what was saved.
   await page.getByRole('button', { name: 'Play settings' }).click();
-  await expect(sheet.getByRole('checkbox', { name: 'Grade with deviations' })).not.toBeChecked();
-  await expect(sheet.locator('.settings-row', { hasText: 'Cut card' }).locator('.stepper-value')).toHaveText(
-    '1.75 decks behind',
+  await expect(sheet.locator('.settings-row', { hasText: 'Players with you' }).locator('.stepper-value')).toHaveText(
+    String(playersBefore + 1),
   );
 });
 
@@ -107,11 +103,9 @@ test('closing the Play sheet with nothing changed keeps the shoe in play', async
   await page.getByRole('button', { name: 'Play settings' }).click();
   const sheet = page.getByRole('dialog', { name: 'Play settings' });
   // A change made and undone is no change.
-  await sheet.getByRole('checkbox', { name: 'Vary ±0.5 decks' }).check();
-  await sheet.getByRole('checkbox', { name: 'Vary ±0.5 decks' }).uncheck();
-  const cut = sheet.locator('.settings-row', { hasText: 'Cut card' });
-  await cut.getByRole('button', { name: '+', exact: true }).click();
-  await cut.getByRole('button', { name: '−', exact: true }).click();
+  const players = sheet.locator('.settings-row', { hasText: 'Players with you' });
+  await players.getByRole('button', { name: '+', exact: true }).click();
+  await players.getByRole('button', { name: '−', exact: true }).click();
   await sheet.getByRole('checkbox', { name: 'Losing shoe' }).check();
   await sheet.getByRole('checkbox', { name: 'Losing shoe' }).uncheck();
   await expect(sheet.getByTestId('tab-sheet-when')).not.toContainText('Changed');
@@ -229,26 +223,25 @@ test('Settings opened from Home still says Back to Home', async ({ page }) => {
   await expect(page.locator('.settings-back-btn')).toHaveText('Back to Home');
 });
 
-test('the bet spread can be switched on from the Play gear (s06)', async ({ page }) => {
+test('owner 2026-11-06: the Play gear is shortcuts only; the rest says it is in the profile', async ({ page }) => {
   await openTable(page);
-  // Wave J toggle rework: the In/Out toggle is on every table, spread or not.
-  await expect(page.getByRole('group', { name: 'In or out' })).toBeVisible();
   await page.getByRole('button', { name: 'Play settings' }).click();
   const sheet = page.getByRole('dialog', { name: 'Play settings' });
-  await expect(sheet.locator('.settings-row', { hasText: 'Get out at TC' })).toHaveCount(0);
-  await sheet.getByRole('checkbox', { name: 'Vary bets with the count' }).check();
-  await expect(sheet.locator('.settings-row', { hasText: 'Get out at TC' })).toBeVisible();
-  await expect(sheet.getByTestId('tab-sheet-when')).toContainText('A new shoe is dealt when you close this');
-  await sheet.getByRole('button', { name: 'Done', exact: true }).click();
-  expect((await storedProfile(page)).betSpreadOn).toBe(true);
-  await expect(page.getByRole('group', { name: 'In or out' })).toBeVisible();
+  for (const gone of ['Vary bets with the count', 'Grade with deviations', 'Dealer pace clock', 'Vary ±0.5 decks']) {
+    await expect(sheet.getByRole('checkbox', { name: gone })).toHaveCount(0);
+  }
+  await expect(sheet.getByRole('group', { name: 'Dealer mistakes' })).toHaveCount(0);
+  await expect(sheet.getByTestId('play-sheet-more')).toContainText('in the profile');
+  for (const kept of ['Feedback', 'Deal speed', 'Players with you', 'Deck estimation']) {
+    await expect(sheet.locator('.settings-row', { hasText: kept }).first()).toBeVisible();
+  }
 });
 
 test('D-R1: the Wong exit point is a stepper under the bet spread, -2 by default, -5..0', async ({ page }) => {
   await withProfile(page, { countCheckEvery: 5, betSpreadOn: true });
   await openTable(page);
-  await page.getByRole('button', { name: 'Play settings' }).click();
-  const sheet = page.getByRole('dialog', { name: 'Play settings' });
+  // Owner 2026-11-06: in the profile now, under the bet ramp.
+  const { editor: sheet, done } = await openProfileFromPlay(page);
   const row = sheet.locator('.settings-row', { hasText: 'Get out at TC' });
   await expect(row.locator('.stepper-value')).toHaveText('−2 or lower');
   await expect(sheet.getByTestId('wong-exit-note')).toHaveText('In, above −2 staying in is right, even where the ramp bets its minimum.');
@@ -257,8 +250,7 @@ test('D-R1: the Wong exit point is a stepper under the bet spread, -2 by default
   await expect(row.locator('.stepper-value')).toHaveText('0 or lower');
   await expect(row.getByRole('button', { name: '+' })).toBeDisabled();
   await row.getByRole('button', { name: '−' }).click();
-  await expect(sheet.getByTestId('tab-sheet-when')).toContainText('A new shoe is dealt when you close this');
-  await sheet.getByRole('button', { name: 'Done', exact: true }).click();
+  await done();
   expect((await storedProfile(page)).wongExitTc).toBe(-1);
 });
 

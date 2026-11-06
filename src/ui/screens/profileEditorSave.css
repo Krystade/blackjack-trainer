@@ -27,3 +27,14 @@
 .profile-delete-section {
   border-bottom: 0;
 }
+
+/* Owner 2026-11-06: the editor's two halves. */
+.profile-half {
+  margin: var(--space-4) 0 var(--space-1);
+  padding: 0 var(--space-4);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}

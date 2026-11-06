@@ -3,18 +3,15 @@ import type { Profile, Settings } from '../../store/types';
 import type { RuleSet } from '../../engine/ruleset';
 import { getActiveProfile } from '../../store/profiles';
 import { SHOT_CLOCK_OPTIONS, shotClockLabel } from '../../drills/shotClock';
-import { Segmented, Stepper, Toggle } from '../screens/Settings';
+import { Segmented, Toggle } from '../screens/Settings';
 import { useTabSettings, type TabSettingsContextValue } from '../tabSettingsContext';
 import { TabSettingsSheet } from './TabSettingsSheet';
 import { GearIcon } from './icons';
 import { ResetBankrollRow } from './ResetBankrollRow';
-import { BetSpreadControl, CountCheckControls, CutCardControl, DeviationsControl } from './ProfilePlayControls';
+import { CountCheckControls } from './ProfilePlayControls';
+import { DealSpeedControl, LosingShoeControl, PlayDepthControl, PlayersControl } from './TableControls';
 import { playOptionsDiffer } from '../profileOptions';
 import { setProfileLaunch } from '../profileLaunch';
-import { DEALER_PACE_MAX_SEC, DEALER_PACE_MIN_SEC, dealerPaceSec } from '../dealerPace';
-import { dealerMistakesPatch, dealerMistakesSetting } from '../dealerErrorCopy';
-import type { DealerMistakesMode } from '../../engine/dealerErrors';
-import type { PlayDepth } from '../../engine/game';
 
 /**
  * #33: the gear in the topbar of Play, Drills and Charts, opening a sheet of
@@ -135,56 +132,7 @@ function PlaySheet({ title, ctx, onClosed }: SheetProps) {
       <p className="settings-note">
         <strong>Training</strong> corrects as you go. <strong>Test</strong> scores at the end.
       </p>
-      <Stepper
-        label="Deal speed"
-        value={settings.dealSpeedMs}
-        min={0}
-        max={1000}
-        step={100}
-        format={(v) => `${v}ms`}
-        onChange={(v) => update({ dealSpeedMs: v })}
-      />
-      {/* F5 (W2-17): read live, like deal speed -- no new shoe. */}
-      <Toggle
-        label="Dealer pace clock"
-        checked={settings.dealerPaceOn === true}
-        onChange={(v) => update({ dealerPaceOn: v })}
-      />
-      <Stepper
-        label="Dealer pace"
-        value={dealerPaceSec(settings)}
-        min={DEALER_PACE_MIN_SEC}
-        max={DEALER_PACE_MAX_SEC}
-        step={1}
-        format={(v) => `${v}s`}
-        disabled={settings.dealerPaceOn !== true}
-        onChange={(v) => update({ dealerPaceSec: v })}
-      />
-      <p className="settings-note">
-        A bar runs down over each decision. Running out never plays the hand; the report counts slow
-        decisions. Off eyes-free.
-      </p>
-      {/* G2 (L-8): read live too -- rounds dealt from now on. Wave I: a rate. */}
-      <div className="settings-row" role="group" aria-labelledby="dealer-mistakes-label">
-        <span className="settings-label" id="dealer-mistakes-label">
-          Dealer mistakes
-        </span>
-        <Segmented<DealerMistakesMode>
-          options={[
-            { value: 'off', label: 'Off' },
-            { value: 'occasional', label: 'Occasional' },
-            { value: 'training', label: 'Training' },
-          ]}
-          value={dealerMistakesSetting(settings)}
-          onChange={(v) => update(dealerMistakesPatch(v))}
-        />
-      </div>
-      <p className="settings-note">
-        Now and then the dealer pays a hand wrong: <strong>Occasional</strong> about one round in 30,{' '}
-        <strong>Training</strong> about one in 5. Tap Foul before the next deal to call it. Scored apart
-        from your play accuracy. Off eyes-free.
-      </p>
-
+      <DealSpeedControl settings={settings} update={update} />
       <h3 className="tab-sheet-group">New shoe</h3>
       <p
         className={`tab-sheet-when${pending ? ' tab-sheet-when-pending' : ''}`}
@@ -195,46 +143,13 @@ function PlaySheet({ title, ctx, onClosed }: SheetProps) {
           ? 'Changed. A new shoe is dealt when you close this.'
           : `Saved to the ${base.name} profile. Changing one deals a new shoe when you close this.`}
       </p>
-      {/* Owner 2026-11-06: set here, and the same In or Out. */}
-      <Stepper
-        label="Players with you"
-        value={view.seats.bots}
-        min={0}
-        max={5}
-        step={1}
-        onChange={(v) =>
-          edit({
-            seats: { ...view.seats, bots: v as Profile['seats']['bots'], playerPosition: Math.min(view.seats.playerPosition, v) },
-          })
-        }
-      />
-      <p className="settings-note">The same whether you&rsquo;re In or Out.</p>
-      <div className="settings-row">
-        <span className="settings-label">Deck estimation</span>
-        <Segmented
-          options={[
-            { value: 'whole', label: 'Whole' },
-            { value: 'half', label: 'Half' },
-            { value: 'quarter', label: 'Quarter' },
-          ]}
-          value={view.playDepth ?? 'half'}
-          onChange={(v) => edit({ playDepth: v as PlayDepth })}
-        />
-      </div>
-      <p className="settings-note">
-        The decks-left step Play divides by for the true count, deviations and bets. Only Play uses it.
-      </p>
-      <BetSpreadControl profile={view} onChange={edit} />
-      <DeviationsControl profile={view} onChange={edit} />
+      <PlayersControl profile={view} onChange={edit} />
+      <PlayDepthControl profile={view} onChange={edit} />
       <CountCheckControls profile={view} onChange={edit} />
-      <CutCardControl profile={view} onChange={edit} />
-      <Toggle
-        label="Losing shoe"
-        checked={settings.losingShoe === true}
-        onChange={(v) => update({ losingShoe: v })}
-      />
-      <p className="settings-note">
-        Deals a rigged run of losing hands, graded on your bet ramp. Plays solo.
+      <LosingShoeControl settings={settings} update={update} />
+      {/* Owner 2026-11-06: the rest lives in the profile only. */}
+      <p className="settings-note" data-testid="play-sheet-more">
+        Dealer pace, dealer mistakes, the cut card, the bet ramp and deviations are in the profile.
       </p>
       <ResetBankrollRow onReset={() => setBankrollReset(true)} />
 

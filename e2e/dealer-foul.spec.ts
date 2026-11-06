@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings, withProfile, readStats, playRoundByAdvice, statsTab } from './helpers';
+import { withSettings, withProfile, readStats, playRoundByAdvice, statsTab, openProfileFromPlay } from './helpers';
 
 /**
  * G2 (L-8): Play's dealer mistakes and the Foul call, on seeded shoes.
@@ -170,12 +170,12 @@ test('Foul on a correct payout is graded wrong and changes nothing', async ({ pa
   await expect(page.getByTestId('report-dealer-errors')).toHaveText('Dealer errors caught 0/0 · 1 false call');
 });
 
-test('the Play sheet turns Dealer mistakes on; off by default', async ({ page }) => {
+test('the profile turns Dealer mistakes on; off by default', async ({ page }) => {
   await withSettings(page, { feedbackMode: 'test', dealSpeedMs: 0 });
   await withProfile(page);
   await openPlay(page, 167);
-  await page.getByTestId('tab-gear-play').click();
-  const sheet = page.getByRole('dialog', { name: 'Play settings' });
+  // Owner 2026-11-06: in the profile's Shoe and dealer, no longer Play's gear.
+  const { editor: sheet, done } = await openProfileFromPlay(page);
   // Wave I: a three-way selector (Off / Occasional / Training) replaced the toggle.
   const group = sheet.getByRole('group', { name: 'Dealer mistakes' });
   const occasional = group.getByRole('button', { name: 'Occasional', exact: true });
@@ -187,7 +187,7 @@ test('the Play sheet turns Dealer mistakes on; off by default', async ({ page })
     await group.evaluate((el) => el.scrollIntoView({ block: 'center' }));
     await page.screenshot({ path: `${SHOTS}/g2-play-sheet-375x812.png` });
   }
-  await sheet.getByRole('button', { name: 'Done', exact: true }).click();
+  await done();
   // Read live: the very next round can carry the seed's overpay.
   await dealAndPlay(page);
   await expect(page.locator('.round-banner')).toHaveAttribute('data-net', '2');

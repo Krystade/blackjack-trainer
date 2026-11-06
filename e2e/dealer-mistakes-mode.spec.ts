@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings, withProfile, readStats, playRoundByAdvice, statsTab } from './helpers';
+import { withSettings, withProfile, readStats, playRoundByAdvice, statsTab, openProfileFromPlay } from './helpers';
 
 /**
  * Wave I: Dealer mistakes is Off / Occasional (about 1 round in 30) /
@@ -56,9 +56,9 @@ test('the selector: Off by default, Training saved and dealt live, the sheet scr
   await withSettings(page, { feedbackMode: 'test', dealSpeedMs: 0 });
   await withProfile(page);
   await openPlay(page);
-  await page.getByTestId('tab-gear-play').click();
-  const sheet = page.getByRole('dialog', { name: 'Play settings' });
-  const group = sheet.getByRole('group', { name: 'Dealer mistakes' });
+  // Owner 2026-11-06: in the profile's Shoe and dealer, no longer Play's gear.
+  const { editor: sheet, done } = await openProfileFromPlay(page);
+  const group = page.locator('.profile-editor-screen').getByRole('group', { name: 'Dealer mistakes' });
   const option = (name: string) => group.getByRole('button', { name, exact: true });
   await expect(option('Off')).toHaveAttribute('aria-pressed', 'true');
   await expect(option('Occasional')).toHaveAttribute('aria-pressed', 'false');
@@ -82,14 +82,14 @@ test('the selector: Off by default, Training saved and dealt live, the sheet scr
   await group.evaluate((el) => el.scrollIntoView({ block: 'center' }));
   await page.screenshot({ path: `${SHOTS}/dm-play-sheet-training-375x812.png` });
 
-  await sheet.getByRole('button', { name: 'Done', exact: true }).click();
+  await done();
   await dealAndPlay(page);
   await expectSeedRound(page);
   await expect(page.locator('.round-banner')).toHaveAttribute('data-net', '2');
   await expect(foul(page)).toBeVisible();
 
   // Back to Off: the choice is saved, and the G2 boolean follows it.
-  await page.getByTestId('tab-gear-play').click();
+  await openProfileFromPlay(page);
   await option('Off').click();
   await expect.poll(async () => (await savedSettings(page)).dealerMistakesMode).toBe('off');
   expect((await savedSettings(page)).dealerMistakes).toBe(false);
@@ -99,11 +99,11 @@ test('a G2 save (dealerMistakes: true) opens as Occasional, and pays the seed ro
   await withSettings(page, { feedbackMode: 'test', dealSpeedMs: 0, dealerMistakes: true });
   await withProfile(page);
   await openPlay(page);
-  await page.getByTestId('tab-gear-play').click();
-  const sheet = page.getByRole('dialog', { name: 'Play settings' });
+  // Owner 2026-11-06: in the profile's Shoe and dealer, no longer Play's gear.
+  const { editor: sheet, done } = await openProfileFromPlay(page);
   const group = sheet.getByRole('group', { name: 'Dealer mistakes' });
   await expect(group.getByRole('button', { name: 'Occasional', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await sheet.getByRole('button', { name: 'Done', exact: true }).click();
+  await done();
   await dealAndPlay(page);
   await expectSeedRound(page);
   // Occasional's chance is under the seed's first draw: paid right.

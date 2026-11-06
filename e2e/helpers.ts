@@ -550,3 +550,23 @@ export async function dealPastHeldCount(page: Page): Promise<void> {
   const held = page.getByTestId('count-held-deal');
   if (await held.isVisible()) await held.click();
 }
+
+/**
+ * Owner 2026-11-06 (settings overhaul): dealer pace, dealer mistakes, the cut
+ * card, the ramp toggle and deviations left Play's gear for the profile. From
+ * Play, open the active profile (its sections are open under ?e2e=1); `done`
+ * saves it and comes back to Play.
+ */
+export async function openProfileFromPlay(page: Page): Promise<{ editor: Locator; done: () => Promise<void> }> {
+  await page.getByTestId('tab-gear-play').click();
+  await page.getByRole('dialog', { name: 'Play settings' }).getByRole('button', { name: 'Edit profile and bet ramp', exact: true }).click();
+  const editor = page.locator('.profile-editor-screen');
+  await editor.waitFor();
+  return {
+    editor,
+    done: async () => {
+      await editor.getByRole('button', { name: 'Save', exact: true }).click();
+      await page.locator('.profile-editor-screen').waitFor({ state: 'detached' });
+    },
+  };
+}

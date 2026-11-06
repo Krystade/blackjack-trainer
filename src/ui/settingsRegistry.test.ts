@@ -5,6 +5,7 @@ import settingsScreen from './screens/Settings.tsx?raw';
 import profileEditor from './screens/ProfileEditor.tsx?raw';
 import playControls from './components/ProfilePlayControls.tsx?raw';
 import tabSheets from './components/TabSettingsButton.tsx?raw';
+import tableControls from './components/TableControls.tsx?raw';
 
 const FILES: Record<string, string> = {
   '../store/types.ts': types,
@@ -12,6 +13,7 @@ const FILES: Record<string, string> = {
   './screens/ProfileEditor.tsx': profileEditor,
   './components/ProfilePlayControls.tsx': playControls,
   './components/TabSettingsButton.tsx': tabSheets,
+  './components/TableControls.tsx': tableControls,
 };
 const src = (f: string) => FILES[f]!;
 
@@ -36,22 +38,16 @@ function fields(block: RegExp): string[] {
 
 const HOME_FILES: Record<string, string[]> = {
   app: ['./screens/Settings.tsx'],
-  system: ['./screens/ProfileEditor.tsx', './components/ProfilePlayControls.tsx'],
-  table: ['./screens/ProfileEditor.tsx', './components/ProfilePlayControls.tsx'],
+  system: ['./screens/ProfileEditor.tsx', './components/ProfilePlayControls.tsx', './components/TableControls.tsx'],
+  table: ['./screens/ProfileEditor.tsx', './components/ProfilePlayControls.tsx', './components/TableControls.tsx'],
 };
-const SHORTCUT_FILES = ['./components/TabSettingsButton.tsx', './components/ProfilePlayControls.tsx'];
+const SHORTCUT_FILES = ['./components/TabSettingsButton.tsx', './components/ProfilePlayControls.tsx', './components/TableControls.tsx'];
 
 /**
  * Today's drift, to be emptied by step 2 (the Settings/profile split): these
  * settings are drawn ONLY in a gear sheet, with no control at their home yet.
  */
-const NOT_YET_AT_HOME = new Set([
-  'profile.seats.bots:Players with you',
-  'settings.dealSpeedMs',
-  'settings.dealerPaceOn',
-  'settings.dealerPaceSec',
-  'settings.losingShoe',
-]);
+const NOT_YET_AT_HOME = new Set<string>([]);
 
 describe('settings registry (owner 2026-11-06)', () => {
   const paths = SETTINGS_REGISTRY.map((e) => e.path);

@@ -405,8 +405,8 @@ test('profile editor seats: "Your seat" is clamped to the bot count and persists
   await expect(seat.locator('.stepper-value')).toHaveText('Seat 1 of 1');
   await expect(seat.getByRole('button', { name: '+' })).toBeDisabled();
 
-  await bump(page, 'Bot players', 2);
-  await expect(stepper(page, 'Bot players').locator('.stepper-value')).toHaveText('2');
+  await bump(page, 'Players with you', 2);
+  await expect(stepper(page, 'Players with you').locator('.stepper-value')).toHaveText('2');
 
   // Bot mistakes reads as a word at zero and a percentage above it, which is
   // the difference between "these bots are a reference" and "these bots will

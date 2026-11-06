@@ -178,7 +178,7 @@ test('seats config round-trip: editing the active profile\'s Seats section reach
   await handsRow.getByRole('button', { name: '2', exact: true }).click();
   await expect(handsRow.getByRole('button', { name: '2', exact: true })).toHaveClass(/segmented-btn-active/);
 
-  const botsRow = page.locator('.settings-row', { hasText: 'Bot players' });
+  const botsRow = page.locator('.settings-row', { hasText: 'Players with you' });
   await botsRow.locator('.stepper-btn', { hasText: '+' }).click(); // 0 -> 1
   await botsRow.locator('.stepper-btn', { hasText: '+' }).click(); // 1 -> 2
   await expect(botsRow.locator('.stepper-value')).toHaveText('2');

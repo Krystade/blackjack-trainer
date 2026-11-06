@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings, withProfile, playRoundByAdvice, statsTab, sayOnceListening, resolveInsurance, openStats } from './helpers';
+import { withSettings, withProfile, playRoundByAdvice, statsTab, sayOnceListening, resolveInsurance, openStats, openProfileFromPlay } from './helpers';
 
 /**
  * Wave J toggle rework: back-counting is the table's In/Out toggle. It sits
@@ -201,20 +201,19 @@ test('old data: a stored backCount: true starts the table Out, and reads as "Sta
   await expect(page.locator('.message-sat-out')).toHaveText('Out — no bet.');
   await expect(page.locator('.bot-seat')).toHaveCount(0);
 
-  await page.getByRole('button', { name: 'Play settings' }).click();
-  const sheet = page.getByRole('dialog', { name: 'Play settings' });
+  // Owner 2026-11-06: in the profile now, under the bet ramp.
+  const { editor: sheet } = await openProfileFromPlay(page);
   await expect(sheet.getByRole('checkbox', { name: 'Start each shoe out' })).toBeChecked();
   await expect(sheet.getByRole('checkbox', { name: 'Back-count' })).toHaveCount(0);
 });
 
-test('the gear sheet: "Start each shoe out" and the entry point (review S3a)', async ({ page }) => {
+test('the profile: "Start each shoe out" and the entry point (review S3a)', async ({ page }) => {
   await withSettings(page, SETTINGS);
   await withProfile(page, { betSpreadOn: true, countCheckEvery: 0, backCount: true });
   await page.goto('/?seed=7&e2e=1');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
 
-  await page.getByRole('button', { name: 'Play settings' }).click();
-  const sheet = page.getByRole('dialog', { name: 'Play settings' });
+  let { editor: sheet, done } = await openProfileFromPlay(page);
   const box = sheet.getByRole('checkbox', { name: 'Start each shoe out' });
   await expect(box).toBeChecked();
   await box.uncheck();
@@ -225,16 +224,16 @@ test('the gear sheet: "Start each shoe out" and the entry point (review S3a)', a
   await row.getByRole('button', { name: '+' }).click();
   await expect(row.locator('.stepper-value')).toHaveText('+2');
   await expect(sheet.locator('.settings-row', { hasText: 'Get out at TC' })).toBeVisible();
-  await sheet.getByRole('button', { name: 'Done', exact: true }).click();
+  await done();
 
   // Off overrides the old field, which is cleared.
   let stored = await page.evaluate(() => JSON.parse(window.localStorage.getItem('bjtrainer.profiles.v1') ?? '[]')[0]);
   expect(stored).toMatchObject({ startShoeOut: false, wongInTc: 2 });
   expect('backCount' in stored).toBe(false);
 
-  await page.getByRole('button', { name: 'Play settings' }).click();
+  ({ editor: sheet, done } = await openProfileFromPlay(page));
   await sheet.getByRole('checkbox', { name: 'Start each shoe out' }).check();
-  await sheet.getByRole('button', { name: 'Done', exact: true }).click();
+  await done();
   stored = await page.evaluate(() => JSON.parse(window.localStorage.getItem('bjtrainer.profiles.v1') ?? '[]')[0]);
   expect(stored).toMatchObject({ startShoeOut: true, wongInTc: 2 });
 });

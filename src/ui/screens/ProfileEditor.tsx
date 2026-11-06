@@ -8,7 +8,7 @@ import { isFloorRow, spreadTcText, stepMinTc } from '../spreadRows';
 import { CollapsibleSection } from '../components/CollapsibleSection';
 import { SideBetControl } from '../components/SideBetControl';
 import type { Screen } from '../App';
-import type { Profile } from '../../store/types';
+import type { Profile, Settings } from '../../store/types';
 import type { SpreadRow } from '../../engine/game';
 import type { RuleSet } from '../../engine/ruleset';
 import {
@@ -31,6 +31,8 @@ import {
   WongExitControl,
 } from '../components/ProfilePlayControls';
 import { syncPenetration } from '../profileOptions';
+import { DealSpeedControl, DealerControls, LosingShoeControl, PlayDepthControl } from '../components/TableControls';
+import { useTabSettings } from '../tabSettingsContext';
 
 interface ProfileEditorProps {
   onNavigate: (screen: Screen) => void;
@@ -325,6 +327,9 @@ function ProfileEditForm({
   // Cancel itself is the decision to discard, so it does not ask again.
 
   const update = (patch: Partial<Profile>) => setDraft((d) => ({ ...d, ...patch }));
+  // Owner 2026-11-06: the app-wide table settings, saved as they change (like the Play gear).
+  const tab = useTabSettings();
+  const updateSettings = (patch: Partial<Settings>) => tab?.commitSettings({ ...tab.settings, ...patch });
   const updateRules = (patch: Partial<RuleSet>) =>
     setDraft((d) => ({ ...d, rules: { ...d.rules, ...patch } }));
   const updateCvcx = (patch: Partial<NonNullable<Profile['cvcx']>>) =>
@@ -392,6 +397,9 @@ function ProfileEditForm({
         </button>
         <div className="settings-heading">{isNew ? 'New profile' : 'Edit profile'}</div>
       </div>
+
+      {/* Owner 2026-11-06: two halves -- the game you practise at, then your own system. */}
+      <h2 className="profile-half">The table</h2>
 
       <CollapsibleSection
         title={<>Name</>}
@@ -481,7 +489,7 @@ function ProfileEditForm({
             />
           </div>
           <Stepper
-            label="Bot players"
+            label="Players with you"
             value={draft.seats.bots}
             min={0}
             max={5}
@@ -508,22 +516,36 @@ function ProfileEditForm({
           />
       </CollapsibleSection>
 
+      {/* Owner 2026-11-06: the shoe and the dealer. Dealer pace, mistakes and
+          the losing shoe are app-wide (every profile), the rest this profile's. */}
       <CollapsibleSection
-        title={<>Bankroll &amp; count</>}
+        title={<>Shoe and dealer</>}
         defaultOpen={false}
       >
-          <div
-            className={draft.betSpreadOn ? undefined : 'profile-ramp-anchor'}
-            ref={draft.betSpreadOn ? undefined : rampAnchor}
-            data-testid="profile-ramp-toggle"
-          >
-            <Toggle
-              label="Vary bets with the count"
-              checked={draft.betSpreadOn}
-              onChange={(v) => update({ betSpreadOn: v })}
-            />
-          </div>
+          {/* Wave B, B8: biased shoes for count practice; such sessions are
+              labelled and never carry their bankroll. */}
+          <Toggle
+            label="Hot shoe (practice)"
+            checked={draft.hotShoe === true}
+            onChange={(v) => update({ hotShoe: v })}
+          />
+          <p className="stats-detail">
+            Deals shoes that run to high counts on purpose: true counts of +2 to +5 come up almost
+            twice as often, so index plays and big bets get practice. These sessions are labelled
+            Hot shoe and don&rsquo;t change your bankroll.
+          </p>
+          {tab && <DealSpeedControl settings={tab.settings} update={updateSettings} />}
+          {tab && <DealerControls settings={tab.settings} update={updateSettings} />}
+          {tab && <LosingShoeControl settings={tab.settings} update={updateSettings} />}
+          {tab && <p className="stats-detail">Deal speed, dealer pace, dealer mistakes and the losing shoe apply to every profile.</p>}
+      </CollapsibleSection>
 
+      <h2 className="profile-half">My system</h2>
+
+      <CollapsibleSection
+        title={<>Counting</>}
+        defaultOpen={false}
+      >
           {/* V5-4 (docs/BACKLOG.md): a property of the COUNTER'S system, not the
               casino's table, so it lives here and not under Rules. Deliberately
               OUTSIDE the `betSpreadOn &&` ramp section: the convention governs
@@ -608,18 +630,29 @@ function ProfileEditForm({
               </>
             )}
           </p>
-          {/* Wave B, B8: biased shoes for count practice; such sessions are
-              labelled and never carry their bankroll. */}
-          <Toggle
-            label="Hot shoe (practice)"
-            checked={draft.hotShoe === true}
-            onChange={(v) => update({ hotShoe: v })}
-          />
-          <p className="stats-detail">
-            Deals shoes that run to high counts on purpose: true counts of +2 to +5 come up almost
-            twice as often, so index plays and big bets get practice. These sessions are labelled
-            Hot shoe and don&rsquo;t change your bankroll.
-          </p>
+          <PlayDepthControl profile={draft} onChange={update} />
+          {/* #3 and #34, beside the count-check frequency: the same controls
+              as Play's gear sheet, on the same profile fields. */}
+          <CountCheckControls profile={draft} onChange={update} />
+          <DeviationsControl profile={draft} onChange={update} />
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        title={<>Bankroll</>}
+        defaultOpen={false}
+      >
+          <div
+            className={draft.betSpreadOn ? undefined : 'profile-ramp-anchor'}
+            ref={draft.betSpreadOn ? undefined : rampAnchor}
+            data-testid="profile-ramp-toggle"
+          >
+            <Toggle
+              label="Vary bets with the count"
+              checked={draft.betSpreadOn}
+              onChange={(v) => update({ betSpreadOn: v })}
+            />
+          </div>
+
           <Stepper
             label="Starting bankroll"
             value={draft.bankrollStart}
@@ -633,10 +666,6 @@ function ProfileEditForm({
             value={draft.unitDollars}
             onChange={(v) => update({ unitDollars: v })}
           />
-          {/* #3 and #34, beside the count-check frequency: the same controls
-              as Play's gear sheet, on the same profile fields. */}
-          <CountCheckControls profile={draft} onChange={update} />
-          <DeviationsControl profile={draft} onChange={update} />
       </CollapsibleSection>
 
       {draft.betSpreadOn && (
