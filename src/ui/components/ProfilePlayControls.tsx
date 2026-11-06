@@ -12,7 +12,6 @@ import {
 } from '../profileOptions';
 import { signed } from '../../drills/signed';
 import {
-  BACK_COUNT_BOTS,
   WONG_EXIT_MAX,
   WONG_EXIT_MIN,
   WONG_IN_MAX,
@@ -208,7 +207,7 @@ export function BackCountControl({ profile, onChange }: ControlProps) {
           </>
         )}
         {startOut ? 'Every shoe starts with the toggle Out.' : 'The toggle stays where you put it, shoe to shoe.'}
-        {noBots && ` Out with no bots set, you watch a table of ${BACK_COUNT_BOTS}.`}
+        {noBots && ' With no other players set, Out you watch only the dealer.'}
       </p>
     </>
   );

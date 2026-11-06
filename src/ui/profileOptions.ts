@@ -112,6 +112,9 @@ export function playOptionsDiffer(a: Profile, b: Profile): boolean {
     // Wave J: and "start each shoe out" with the entry point, under that.
     startShoeOutOf(p),
     entryTcOf(p.wongInTc, p.wongExitTc),
+    // Owner 2026-11-06: the players at the table are set from Play's sheet.
+    p.seats?.bots ?? 0,
+    p.seats?.playerPosition ?? 0,
   ];
   return JSON.stringify(effective(a)) !== JSON.stringify(effective(b));
 }

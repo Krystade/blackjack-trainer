@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import type { Card, Rank } from './cards';
 import { Game, DEFAULT_SPREAD } from './game';
 import type { GameConfig, SeatConfig } from './game';
-import { BACK_COUNT_BOTS, DEFAULT_WONG_IN_TC, entryTcOf, sitInIsCorrect, startShoeOutOf, wongInTcOf } from './wong';
+import { DEFAULT_WONG_IN_TC, entryTcOf, sitInIsCorrect, startShoeOutOf, wongInTcOf } from './wong';
 
 /**
  * Wave J, toggle rework: the table's In/Out toggle. Deal deals the next round
@@ -155,15 +155,12 @@ describe('the toggle', () => {
     expect(g.isIn).toBe(true);
   });
 
-  it(`with no bots set, a player Out (or starting shoes out) watches ${BACK_COUNT_BOTS} bots; In, none`, () => {
+  it('owner 2026-11-06: with no bots set, Out is an empty table too: nobody is added', () => {
     const solo: SeatConfig = { bots: 0, playerHands: 1, playerPosition: 0, botMistakePct: 0 };
     const out = Game.withRiggedShoe(cfg({ seats: solo }), rig(...OUT_ROUND));
     out.sitOut();
-    expect(out.seats.filter((s) => s.kind === 'bot')).toHaveLength(BACK_COUNT_BOTS);
-
-    const startOut = Game.withRiggedShoe(cfg({ seats: solo, startShoeOut: true }), rig(...IN_ROUND));
-    startOut.startRound(1);
-    expect(startOut.seats.filter((s) => s.kind === 'bot')).toHaveLength(BACK_COUNT_BOTS);
+    expect(out.seats.filter((s) => s.kind === 'bot')).toHaveLength(0);
+    expect(out.dealerCards.length).toBeGreaterThanOrEqual(2);
 
     const inSolo = Game.withRiggedShoe(cfg({ seats: solo }), rig('10', '9', '10', '7'));
     inSolo.startRound(1);

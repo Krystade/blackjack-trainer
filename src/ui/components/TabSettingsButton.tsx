@@ -194,6 +194,20 @@ function PlaySheet({ title, ctx, onClosed }: SheetProps) {
           ? 'Changed. A new shoe is dealt when you close this.'
           : `Saved to the ${base.name} profile. Changing one deals a new shoe when you close this.`}
       </p>
+      {/* Owner 2026-11-06: set here, and the same In or Out. */}
+      <Stepper
+        label="Players with you"
+        value={view.seats.bots}
+        min={0}
+        max={5}
+        step={1}
+        onChange={(v) =>
+          edit({
+            seats: { ...view.seats, bots: v as Profile['seats']['bots'], playerPosition: Math.min(view.seats.playerPosition, v) },
+          })
+        }
+      />
+      <p className="settings-note">The same whether you&rsquo;re In or Out.</p>
       <BetSpreadControl profile={view} onChange={edit} />
       <DeviationsControl profile={view} onChange={edit} />
       <CountCheckControls profile={view} onChange={edit} />

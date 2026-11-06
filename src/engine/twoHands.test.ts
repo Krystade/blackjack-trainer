@@ -275,10 +275,10 @@ describe('the card reserve is sized for two hands', () => {
 
 describe('review S3b: back-counting with a ramp that spreads hands', () => {
   it('a watcher sits in with two hands at a two-hand count: the entry, then one bet decision on both', () => {
-    // Three bots on 20 (the 0-bot profile watches three), two player hands of 19, dealer 10/7.
+    // Three bots on 20 (seated: owner 2026-11-06, the table keeps what you set), two player hands of 19, dealer 10/7.
     // Pass 1: hand 1, hand 0, bots x3, up; pass 2 the same; hole.
     const cards = rig('10', '10', '10', '10', '10', '10', '9', '9', '10', '10', '10', '7');
-    const g = Game.withRiggedShoe(cfg({ backCount: true }), cards);
+    const g = Game.withRiggedShoe(cfg({ backCount: true, seats: { bots: 3, playerHands: 1, playerPosition: 0, botMistakePct: 0 } }), cards);
     expect(g.watching).toBe(true);
     g.runningCount = 24; // tc +4: enter (+1), two hands of 8
     g.startRound([8, 8]);

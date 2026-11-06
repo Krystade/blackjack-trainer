@@ -763,8 +763,9 @@ describe('wong-out / sit-out (R5)', () => {
   // (there must be someone to watch). Bots on 20, dealer 5/K draws a 5.
   const OUT_SOLO = ['10', '10', '10', '5', '10', '10', '10', 'K', '5'] as const;
 
-  it('a round out at a solo table: three bots to watch, no player hand, bankroll untouched, phase settled', () => {
-    const game = Game.withRiggedShoe(cfg(), rig(...OUT_SOLO));
+  it('a round out at a three-bot table: three bots to watch, no player hand, bankroll untouched, phase settled', () => {
+    // Owner 2026-11-06: the table keeps the players set, so the three are seated.
+    const game = Game.withRiggedShoe(cfg({ seats: { bots: 3, playerHands: 1, playerPosition: 0, botMistakePct: 0 } }), rig(...OUT_SOLO));
     const startBankroll = game.bankroll;
     game.sitOut();
 

@@ -505,9 +505,9 @@ export class Game {
    * count behind an empty table.
    */
   private get seatCfg(): SeatConfig {
-    const seats = this.cfg.seats ?? DEFAULT_SEATS;
-    if ((!this.toggleIn || this.startShoeOut) && seats.bots === 0) return { ...seats, bots: BACK_COUNT_BOTS };
-    return seats;
+    // Owner 2026-11-06: the table keeps the players you set, In or Out. It
+    // used to seat BACK_COUNT_BOTS whenever you were Out at an empty table.
+    return this.cfg.seats ?? DEFAULT_SEATS;
   }
 
   /** Wave J toggle rework: "start each shoe out" (or its legacy name, `backCount`). */
