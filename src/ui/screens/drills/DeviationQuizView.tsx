@@ -1,3 +1,4 @@
+import { SrBadge } from '../../components/SrBadge';
 import { useEffect, useRef, useState } from 'react';
 import { strategyRulesFor } from '../../../store/profiles';
 import type { Profile, Settings } from '../../../store/types';
@@ -633,6 +634,7 @@ export function DeviationQuizView({
       <div className="quiz-tc">TC {formatSigned(item.tc)}</div>
       {/* #26: the item's OWN context -- most indices are asked with
           surrender off, even at a table that offers it. */}
+      <SrBadge card={item.deviationId ? srDeckRef.current[item.deviationId] : undefined} now={Date.now()} />
       <RulesChip labels={quizRulesChip(item, strategyRulesFor(activeProfile))} />
 
       <DealtHand cards={item.cards} up={item.up} />

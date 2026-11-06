@@ -1,3 +1,4 @@
+import { SrBadge } from '../../components/SrBadge';
 import { useEffect, useRef, useState } from 'react';
 import { strategyRulesFor } from '../../../store/profiles';
 import type { Profile, Settings } from '../../../store/types';
@@ -588,6 +589,10 @@ export function MixedSessionView({
           before they had to work it out -- the judgment Mixed trains. */}
       <div className="quiz-tc">TC {formatSigned(currentTc)}</div>
       {/* #26: the rules this item is graded under, before the answer. */}
+      <SrBadge
+        card={current.type === 'quiz' ? (current.item.deviationId ? quizSrRef.current[current.item.deviationId] : undefined) : flashSrRef.current[current.card.cellId]}
+        now={Date.now()}
+      />
       <RulesChip
         labels={
           current.type === 'quiz'

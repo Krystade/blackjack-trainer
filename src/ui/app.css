@@ -4846,3 +4846,25 @@ body::before {
   color: var(--accent);
   font-weight: 600;
 }
+
+/* Owner 2026-11-06 (item 1): Flashcards used the space between the hand and
+   the bar for nothing. On a phone tall enough to spare it, the answers grow
+   into two rows that never move: Hit | Stand big on top, Double | Split |
+   Surrender below. A short phone (320x568) keeps the one-row bar. */
+@media (min-height: 700px) {
+  .flash-big-answers > .action-bar {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 0.4rem;
+  }
+  .flash-big-answers > .action-bar > .action-btn {
+    grid-column: span 2;
+    min-height: clamp(56px, 8svh, 72px);
+    font-size: var(--fs-md);
+  }
+  .flash-big-answers > .action-bar > .action-btn:nth-child(-n + 2) {
+    grid-column: span 3;
+    min-height: clamp(72px, 12svh, 104px);
+    font-size: var(--fs-lg, 1.25rem);
+  }
+}

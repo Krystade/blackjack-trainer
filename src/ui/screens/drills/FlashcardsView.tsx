@@ -1,3 +1,4 @@
+import { SrBadge, dueCount } from '../../components/SrBadge';
 import { useEffect, useRef, useState } from 'react';
 import type { FlashHandOver } from '../../drillLaunch';
 import type { Profile, Settings } from '../../../store/types';
@@ -625,7 +626,7 @@ export function FlashcardsView({
 
   return (
     <div
-      className="drill-screen"
+      className="drill-screen flash-big-answers"
       style={drillScreenStyle(session.padTop)}
       // ?e2e=1 only: the card's SR key, so a spec can see a re-deal (E2).
       data-item-key={isE2eAudioMode() ? card.cellId : undefined}
@@ -653,6 +654,10 @@ export function FlashcardsView({
               <HandDeckControls settings={settings} onChange={changeScopes} onCustomize={onCustomize} />
               <div className="flash-progress" data-testid="flash-progress">
                 {flashProgressLine(progressStats, scopesFrom(settings.drill))}
+                {(() => {
+                  const due = dueCount(srDeckRef.current, Date.now());
+                  return due > 0 ? <span className="flash-due" data-testid="flash-due"> · {due} due</span> : null;
+                })()}
               </div>
             </ControlsSummary>
             {goalMet && (
@@ -706,6 +711,7 @@ export function FlashcardsView({
           (#27) it was dealt as a fallback: then "No double" / "No surrender". */}
       {/* #53: a With-count card plays at this count. */}
       {card.tc !== undefined && <div className="quiz-tc">TC {formatSigned(card.tc)}</div>}
+      <SrBadge card={srDeckRef.current[card.cellId]} now={Date.now()} />
       <RulesChip labels={rulesChipLabels(flashCtx(card), activeProfile.rules, card)} />
 
       <div className="dealer-area">

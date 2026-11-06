@@ -1,3 +1,4 @@
+import { SrBadge } from '../../components/SrBadge';
 import { useEffect, useRef, useState } from 'react';
 import { sayMomentAtPause } from '../../../habits/moment';
 import type { Profile, Settings } from '../../../store/types';
@@ -330,6 +331,7 @@ export function IndexTestView({
         {indexTestPrompt(item)}
       </div>
 
+      <SrBadge card={srDeckRef.current[item.deviationId]} now={Date.now()} />
       {item.cards !== null ? (
         // Dealer and hand side by side: the keypad needs the height.
         <div className="index-test-table">
