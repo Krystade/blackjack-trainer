@@ -4,6 +4,7 @@ import type { EventSource, Category, MistakeClass } from '../engine/grade';
 import type { DeviationId } from '../engine/deviations';
 import type { RuleSet } from '../engine/ruleset';
 import type { TcRounding } from '../engine/count';
+import type { ManualPace } from '../drills/manualPace';
 import type { PlayDepth } from '../engine/game';
 import type { SpeedTier } from '../drills/countSpeed';
 import type { DistractionMode, DistractionFreq } from '../drills/distraction';
@@ -733,6 +734,8 @@ export interface Stats {
       // on every run recorded before the field shipped.
       manual?: boolean;
       meanTapMs?: number;
+      /** Owner 2026-11-06: a manual run's pace breakdown (drills/manualPace.ts). */
+      pace?: ManualPace;
       // C6: an eyes-free auto run is paced by speech, with countIntervalMs as
       // the GAP after each card, so `intervalMs` understates its pace.
       // `elapsedMs` is the measured time its cards took (speech + gaps,

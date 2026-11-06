@@ -92,3 +92,26 @@ test('time spent answering a checkpoint is not a tap gap', async ({ page }) => {
   expect(row.manual).toBe(true);
   expect(row.meanTapMs!).toBeLessThan(400);
 });
+
+test('owner 2026-11-06: a manual run shows a running clock, then its pace against your best', async ({ page }) => {
+  await withSettings(page, { drill: { countLengthCards: 10, countGroup: 1, countManual: true } });
+  await openCountDrill(page);
+  const clock = page.getByTestId('run-clock');
+  await expect(clock).toBeVisible();
+  const first = await clock.textContent();
+  await page.waitForTimeout(400);
+  expect(await clock.textContent(), 'the clock runs').not.toBe(first);
+  for (let i = 0; i < 12 && !(await ok(page).isVisible()); i++) {
+    await page.locator('.manual-tap-zone').click();
+    await page.waitForTimeout(60);
+  }
+  await submitZero(page);
+  const table = page.getByTestId('manual-pace');
+  await expect(table).toBeVisible();
+  for (const label of ['Average per card', 'Seconds per deck', 'Longest pause', 'Slowest 10%', 'Steadiness', 'First half']) {
+    await expect(table).toContainText(label);
+  }
+  await page.screenshot({ path: 'e2e/screenshots/manual-pace.png' });
+  const row = (await lastCountRow(page)) as CountRow & { pace?: { meanMs: number } };
+  expect(row.pace?.meanMs).toBe(row.meanTapMs);
+});

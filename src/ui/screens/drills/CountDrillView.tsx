@@ -1,3 +1,4 @@
+import { formatClock, manualPace, paceBests, type ManualPace, type PaceBestKey } from '../../../drills/manualPace';
 import { diag } from '../../../diag/diagnosticLog';
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { sayMomentAtPause } from '../../../habits/moment';
@@ -391,6 +392,8 @@ export function CountDrillView({
   // card by card in its loop, so pauses and interruptions are left out.
   const eyesFreeDealtMsRef = useRef(0);
   const tapGapsRef = useRef<number[]>([]);
+  // Owner 2026-11-06: a manual run's pace, and your earlier bests, for the result.
+  const [manualResult, setManualResult] = useState<{ pace: ManualPace; bests: Partial<Record<PaceBestKey, number>> } | null>(null);
   const lastCardAtRef = useRef<number | null>(null);
   /**
    * C-R2 (W11): the run is paused. Back on the wheel (or the Pause button)
@@ -1326,6 +1329,7 @@ export function CountDrillView({
     // #20: Timed Challenge ignores Next card, so it is never a manual run.
     runManualRef.current = settings.drill.countManual && !timedChallenge;
     tapGapsRef.current = [];
+    setManualResult(null);
     eyesFreeDealtMsRef.current = 0;
     lastCardAtRef.current = runManualRef.current ? performance.now() : null;
     setHonorCheck(false);
@@ -1518,6 +1522,8 @@ export function CountDrillView({
     // readers rank manual runs by `meanTapMs` only (countSpeed.ts).
     const manual = runManualRef.current;
     const meanTapMs = manual ? meanTapGapMs(tapGapsRef.current) : undefined;
+    const pace = manual && !countdownMode && !tableRun ? manualPace(tapGapsRef.current) : undefined;
+    setManualResult(pace ? { pace, bests: paceBests(stats.countDrill.history, cardsInRun) } : null);
     // C6: an eyes-free auto run records what its cards really took.
     const eyesFreeAuto = eyesFree && !manual && !countdownMode && eyesFreeDealtMsRef.current > 0;
     const updated = {
@@ -1531,6 +1537,7 @@ export function CountDrillView({
             intervalMs: manual ? (meanTapMs ?? 0) : settings.drill.countIntervalMs,
             correct,
             ...(manual ? { manual: true, ...(meanTapMs !== undefined ? { meanTapMs } : {}) } : {}),
+            ...(pace ? { pace } : {}),
             ...(eyesFreeAuto ? { eyesFree: true as const, elapsedMs: Math.round(eyesFreeDealtMsRef.current) } : {}),
             // C12: no number was given -- the operator's own verdict.
             ...(!answered ? { selfReport: true as const } : {}),
@@ -2694,7 +2701,12 @@ export function CountDrillView({
             </div>
           )}
           <div className="manual-tap-hint">
-            Tap for the next {tableRun ? 'round' : 'card'} &middot; {shownIndex + 1}/{groups.length}
+            Tap for the next {tableRun ? 'round' : 'card'} &middot; {shownIndex + 1}/{groups.length} &middot;{' '}
+            <RunClock elapsed={() => {
+              const done = tapGapsRef.current.reduce((a, b) => a + b, 0);
+              const live = pausedAtRef.current === null && lastCardAtRef.current !== null ? performance.now() - lastCardAtRef.current : 0;
+              return done + live;
+            }} />
           </div>
         </div>
       )}
@@ -2890,6 +2902,7 @@ export function CountDrillView({
           {/* L-3: the Home ladder rung this drill feeds. */}
           <RungProgressLine rung={DRILL_RUNG.count} />
           {checkpointBlock}
+          {manualResult && <ManualPaceTable pace={manualResult.pace} bests={manualResult.bests} counts={wasCorrect === true} />}
           {timedResult &&
             (() => {
               const spd = secondsPerDeck(timedResult.elapsedMs, timedResult.cardsShown);
@@ -2924,5 +2937,58 @@ export function CountDrillView({
         </div>
       )}
     </div>
+  );
+}
+
+/** Owner 2026-11-06: a small run clock beside the manual tap hint. */
+function RunClock({ elapsed }: { elapsed: () => number }) {
+  const [ms, setMs] = useState(() => elapsed());
+  useEffect(() => {
+    const id = window.setInterval(() => setMs(elapsed()), 100);
+    return () => window.clearInterval(id);
+  }, [elapsed]);
+  return (
+    <span className="run-clock" data-testid="run-clock">
+      {formatClock(ms)}
+    </span>
+  );
+}
+
+const sec = (ms: number) => `${(ms / 1000).toFixed(2)}s`;
+
+/** Owner 2026-11-06: a manual run's pace against your best at this length. */
+function ManualPaceTable({ pace, bests, counts }: { pace: ManualPace; bests: Partial<Record<PaceBestKey, number>>; counts: boolean }) {
+  const rows: { label: string; key?: PaceBestKey; value: number; show: (v: number) => string }[] = [
+    { label: 'Average per card', key: 'meanMs', value: pace.meanMs, show: sec },
+    { label: 'Seconds per deck', key: 'secondsPerDeck', value: pace.secondsPerDeck, show: (v) => `${v.toFixed(1)}s` },
+    { label: `Longest pause (card ${pace.maxAtCard})`, key: 'maxMs', value: pace.maxMs, show: sec },
+    { label: 'Slowest 10% of cards', key: 'p90Ms', value: pace.p90Ms, show: sec },
+    { label: 'Steadiness (spread)', key: 'sdMs', value: pace.sdMs, show: (v) => `±${sec(v)}` },
+    { label: 'First half / second half', value: pace.firstHalfMs, show: () => `${sec(pace.firstHalfMs)} / ${sec(pace.secondHalfMs)}` },
+  ];
+  return (
+    <table className="manual-pace" data-testid="manual-pace">
+      <thead>
+        <tr>
+          <th scope="col">Pace</th>
+          <th scope="col">This run</th>
+          <th scope="col">Best</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r) => {
+          const best = r.key ? bests[r.key] : undefined;
+          // Bests are kept from right counts only, so a wrong run never sets one.
+          const isBest = counts && r.key !== undefined && best !== undefined && r.value < best;
+          return (
+            <tr key={r.label} className={isBest ? 'manual-pace-new-best' : undefined}>
+              <th scope="row">{r.label}</th>
+              <td>{r.show(r.value)}</td>
+              <td>{r.key === undefined ? '' : best === undefined ? '—' : isBest ? 'new best' : r.show(best)}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
   );
 }

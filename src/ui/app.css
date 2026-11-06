@@ -4810,3 +4810,39 @@ body::before {
   z-index: 55;
   pointer-events: none;
 }
+
+/* Owner 2026-11-06: the manual count run clock -- small, beside the hint. */
+.run-clock {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-faint);
+}
+
+/* Owner 2026-11-06: a manual run's pace against your best. */
+.manual-pace {
+  width: 100%;
+  max-width: 22rem;
+  margin: var(--space-3, 0.75rem) auto 0;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+.manual-pace th,
+.manual-pace td {
+  padding: 0.3rem 0.4rem;
+  border-bottom: 1px solid var(--line);
+  text-align: right;
+}
+.manual-pace th[scope='row'],
+.manual-pace thead th:first-child {
+  text-align: left;
+  font-weight: 500;
+  color: var(--ink-soft, var(--ink));
+}
+.manual-pace thead th {
+  color: var(--ink-faint);
+  font-weight: 500;
+}
+.manual-pace-new-best td {
+  color: var(--accent);
+  font-weight: 600;
+}
