@@ -422,30 +422,35 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
           keeping the count, knowing the plays, and holding up under pressure
           are three different abilities you build in roughly that order. */}
       <div className="drills-nav">
+        {/* Owner 2026-11-06: in the order you learn them, the most used first in each group. */}
+        <h2 className="drills-group-title">Basic strategy</h2>
+        {entry('flash', 'Flashcards', 'Basic strategy, one hand at a time. It decides most of your hands.')}
+        {entry('mastery', 'Mastery challenge', 'Every basic-strategy hand once, with no mistakes. One miss starts the sweep over.')}
+        {entry('speed', 'Speed', 'Yes or no, against the clock: Surrender? Deviation here? Double? Split?')}
+        {entry('custom', 'Custom', 'Paint the chart cells you want, then drill just those in Flashcards, Mastery or Mixed.')}
+
         <h2 className="drills-group-title">Keeping the count</h2>
         {entry('count', 'Count drill', 'Keep the running count as cards are dealt. Every bet and play starts from it.')}
         {entry('paircancel', 'Pair cancellation', 'Read two cards as one net value and skip pairs that cancel, to keep up with a fast dealer.')}
         {entry('deckest', 'Deck estimation', 'Judge decks remaining from the discard tray. It is what you divide by.')}
         {entry('truecount', 'True count drill', 'Turn a running count and decks remaining into the true count, which sets your bet.')}
         {entry('producetc', 'Produce the true count', 'Count the cards, read the tray, give the true count: the whole job, as at the table.')}
-        {entry('sidecount', 'Side count', 'Keep a side bet’s own count, then say whether the bet is worth making.')}
 
-        <h2 className="drills-group-title">Knowing the plays</h2>
-        {entry('flash', 'Flashcards', 'Basic strategy, one hand at a time. It decides most of your hands.')}
+        <h2 className="drills-group-title">Deviations</h2>
         {entry('quiz', 'Deviation quiz', 'Index plays: when the true count says to leave basic strategy.')}
         {/* R2/R4: interleaving is a DESIRABLE difficulty -- it helps once the
             base skill is there and costs accuracy before it. Soft, like every
             other gate here (V3-4, operator's explicit choice): the mode still
             works, it just says what it is. */}
         {entry('mixed', 'Mixed', 'Basic-strategy and index hands shuffled together, so you learn when the count matters.', true)}
-        {entry('mastery', 'Mastery challenge', 'Every basic-strategy hand once, with no mistakes. One miss starts the sweep over.')}
-        {entry('custom', 'Custom', 'Paint the chart cells you want, then drill just those in Flashcards, Mastery or Mixed.')}
-        {entry('speed', 'Speed', 'Yes or no, against the clock: Surrender? Deviation here? Double? Split?')}
+
+        <h2 className="drills-group-title">Betting</h2>
+        {entry('betsizing', BET_SIZING_DRILL, BET_SIZING_PICKER, true)}
+
+        <h2 className="drills-group-title">Other games and rules</h2>
         {entry('rulesdiff', 'Rules differences', 'Only the plays that change between H17 and S17, 6 and 8 decks, or another game.')}
         {entry('variant', 'Variant hands', 'Free Bet, Spanish 21 and Blackjack Switch hands, graded on their own charts.')}
-
-        <h2 className="drills-group-title">Under pressure</h2>
-        {entry('betsizing', BET_SIZING_DRILL, BET_SIZING_PICKER, true)}
+        {entry('sidecount', 'Side count', 'Keep a side bet’s own count, then say whether the bet is worth making.')}
       </div>
       {/* Wave B2 #11 (B1): Drills is a tab-bar screen; Home is the tab bar's. */}
     </div>
