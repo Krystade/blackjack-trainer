@@ -1,8 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
 import { NOT_SETTINGS, SETTINGS_REGISTRY } from './settingsRegistry';
+import types from '../store/types.ts?raw';
+import settingsScreen from './screens/Settings.tsx?raw';
+import profileEditor from './screens/ProfileEditor.tsx?raw';
+import playControls from './components/ProfilePlayControls.tsx?raw';
+import tabSheets from './components/TabSettingsButton.tsx?raw';
 
-const src = (f: string) => readFileSync(new URL(f, import.meta.url), 'utf8');
+const FILES: Record<string, string> = {
+  '../store/types.ts': types,
+  './screens/Settings.tsx': settingsScreen,
+  './screens/ProfileEditor.tsx': profileEditor,
+  './components/ProfilePlayControls.tsx': playControls,
+  './components/TabSettingsButton.tsx': tabSheets,
+};
+const src = (f: string) => FILES[f]!;
 
 /** Field names declared in an interface (or a nested `drill: {` block) of types.ts. */
 function fields(block: RegExp): string[] {
