@@ -658,13 +658,25 @@ describe('#18: flashcards and the quiz deal hard totals uniformly over rank pair
   });
 
   it('a quiz 16 v 10 is 9+7 about half the time', () => {
+    // Owner 2026-11-06: a quarter are dealt as 3-5 cards; of the two-card
+    // ones, 9+7 is still half.
     let nineSeven = 0;
+    let two = 0;
+    let multi = 0;
     const N = 2000;
     for (let seed = 1; seed <= N; seed++) {
       const item = drawQuizItem(seed, '16v10');
+      if (item.cards!.length > 2) {
+        multi++;
+        expect(handValue(item.cards!)).toEqual({ total: 16, soft: false });
+        continue;
+      }
+      two++;
       if (lowValue(item.cards!) === 7) nineSeven++;
     }
-    expect(nineSeven / N).toBeGreaterThan(0.44);
-    expect(nineSeven / N).toBeLessThan(0.56);
+    expect(nineSeven / two).toBeGreaterThan(0.44);
+    expect(nineSeven / two).toBeLessThan(0.56);
+    expect(multi / N).toBeGreaterThan(0.2);
+    expect(multi / N).toBeLessThan(0.3);
   });
 });

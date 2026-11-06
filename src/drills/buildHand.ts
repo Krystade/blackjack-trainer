@@ -128,3 +128,47 @@ export function makeHardHand(total: number, rng?: () => number): [Card, Card] | 
   if (!rng) return options[0]!;
   return pickComposition(total, rng);
 }
+
+/**
+ * Owner 2026-11-06: a hard total can look like more than two cards -- 16 as
+ * 9,7 or 4,5,7 or 7,8,A or 2,2,2,9,A. One index question in four on a hard
+ * 12-16 hit/stand index is dealt as three to five cards. The total and the
+ * play are the same; reading the hand is the skill.
+ */
+export const MULTI_CARD_RATE = 0.25;
+export const MULTI_CARD_TOTALS = { min: 12, max: 16 } as const;
+
+/**
+ * A seeded 3-5 card HARD hand totalling `total` (an ace counts 1, which every
+ * hard 12+ forces). Three cards most often, five rarely. null off 12-16.
+ */
+export function multiCardHard(total: number, rng: () => number): Card[] | null {
+  if (total < MULTI_CARD_TOTALS.min || total > MULTI_CARD_TOTALS.max) return null;
+  const u = rng();
+  const n = u < 0.6 ? 3 : u < 0.9 ? 4 : 5;
+  // Values 1 (ace) to 10, ten-values four times as likely, as in a shoe.
+  const draw = () => {
+    const r = Math.floor(rng() * 13);
+    return r >= 9 ? 10 : r + 1;
+  };
+  for (let attempt = 0; attempt < 200; attempt++) {
+    const vals = Array.from({ length: n - 1 }, draw);
+    const last = total - vals.reduce((a, b) => a + b, 0);
+    if (last < 1 || last > 10) continue;
+    vals.push(last);
+    // Hard: an ace counted 11 would bust the hand (total + 10 > 21), always
+    // true from 12 up -- so nothing to check but the range above.
+    return vals.map((v) => ({
+      rank: v === 1 ? 'A' : v === 10 ? (TEN_FACES[Math.floor(rng() * TEN_FACES.length)] ?? '10') : (String(v) as Rank),
+      suit: SUITS[Math.floor(rng() * SUITS.length)] ?? 's',
+    }));
+  }
+  return null;
+}
+
+/** MULTI_CARD_RATE of the time, a multi-card version of hard `total`; else null. */
+export function maybeMultiCard(total: number, rng: () => number): Card[] | null {
+  if (total < MULTI_CARD_TOTALS.min || total > MULTI_CARD_TOTALS.max) return null;
+  if (rng() >= MULTI_CARD_RATE) return null;
+  return multiCardHard(total, rng);
+}

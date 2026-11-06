@@ -4865,6 +4865,6 @@ body::before {
   .flash-big-answers > .action-bar > .action-btn:nth-child(-n + 2) {
     grid-column: span 3;
     min-height: clamp(72px, 12svh, 104px);
-    font-size: var(--fs-lg, 1.25rem);
+    font-size: var(--fs-lg);
   }
 }

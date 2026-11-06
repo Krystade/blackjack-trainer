@@ -2,12 +2,14 @@ import type { Card, Rank } from '../engine/cards';
 import { mulberry32 } from '../engine/cards';
 import { basicPlay, correctPlay } from '../engine/strategy';
 import type { PlayContext } from '../engine/strategy';
-import { FULL_CTX, maybeFallback } from './fallbackHand';
+import { FULL_CTX, THREE_CARD_CTX, maybeFallback } from './fallbackHand';
+import { chartLookup } from '../engine/basicStrategy';
+import { handValue, isPair } from '../engine/hand';
 import { drawCountTc } from './withCount';
 import type { Action } from '../engine/deviations';
 import { DEFAULT_RULES } from '../engine/ruleset';
 import type { StrategyRules } from '../engine/ruleset';
-import { eitherOrder, makeHardHand } from './buildHand';
+import { eitherOrder, makeHardHand, maybeMultiCard } from './buildHand';
 import { weightedIndex } from './weightedDraw';
 import { srWeight } from './spacedRepetition';
 import { confusabilityWeight } from './confusability';
@@ -225,8 +227,12 @@ export function drawFlashcard(
   // #27: sometimes the hand is dealt so double/surrender is gone. Draws
   // nothing from the rng when off, so the rest of the draw is unchanged.
   const fallback = maybeFallback(cell.cards, cell.up, rules, rng, options.fallbacks === true);
-  const cards = fallback ? fallback.cards : cell.cards;
-  const ctx = fallback ? fallback.ctx : FULL_CTX;
+  // Owner 2026-11-06: a hard 12-16 the chart hits or stands is sometimes dealt
+  // as three to five cards. Same total, same play (H/S cells only, so no
+  // double or surrender is lost).
+  const multi = fallback ? null : multiCardFor(cell, rules, rng);
+  const cards = fallback ? fallback.cards : multi ?? cell.cards;
+  const ctx = fallback ? fallback.ctx : multi ? THREE_CARD_CTX : FULL_CTX;
 
   // #53: a count to play the hand at, biased toward its index. Drawn only
   // when on, after everything else, so the rest of the draw is unchanged.
@@ -245,4 +251,14 @@ export function drawFlashcard(
     ...(fallback ? { ctx } : {}),
     ...(tc !== undefined ? { tc } : {}),
   };
+}
+
+/** Owner 2026-11-06: the multi-card deal for a hard 12-16 H/S cell, or null. */
+function multiCardFor(cell: { cards: Card[]; up: Rank }, rules: StrategyRules, rng: () => number): Card[] | null {
+  if (isPair(cell.cards)) return null;
+  const hv = handValue(cell.cards);
+  if (hv.soft) return null;
+  const play = chartLookup(cell.cards, cell.up, rules);
+  if (play !== 'H' && play !== 'S') return null;
+  return maybeMultiCard(hv.total, rng);
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { hardCompositions, makeHardHand, pickComposition, rankPairsForTotal } from './buildHand';
+import { hardCompositions, makeHardHand, maybeMultiCard, multiCardHard, pickComposition, rankPairsForTotal } from './buildHand';
 import { mulberry32 } from '../engine/cards';
 import { handValue } from '../engine/hand';
 import { correctPlay } from '../engine/strategy';
@@ -203,5 +203,28 @@ describe('pickComposition (#18)', () => {
     for (let seed = 1; seed <= 50; seed++) {
       expect(makeHardHand(15, mulberry32(seed))).toEqual(pickComposition(15, mulberry32(seed)));
     }
+  });
+});
+
+describe('multi-card hard hands (owner 2026-11-06)', () => {
+  it('3 to 5 cards, hard, summing to the total, for 12-16 only', () => {
+    for (let total = 12; total <= 16; total++) {
+      const rng = mulberry32(total);
+      for (let i = 0; i < 300; i++) {
+        const hand = multiCardHard(total, rng)!;
+        expect(hand.length).toBeGreaterThanOrEqual(3);
+        expect(hand.length).toBeLessThanOrEqual(5);
+        expect(handValue(hand)).toEqual({ total, soft: false });
+      }
+    }
+    expect(multiCardHard(11, mulberry32(1))).toBeNull();
+    expect(multiCardHard(17, mulberry32(1))).toBeNull();
+  });
+  it('about one in four', () => {
+    const rng = mulberry32(7);
+    let n = 0;
+    for (let i = 0; i < 4000; i++) if (maybeMultiCard(16, rng)) n++;
+    expect(n / 4000).toBeGreaterThan(0.22);
+    expect(n / 4000).toBeLessThan(0.28);
   });
 });

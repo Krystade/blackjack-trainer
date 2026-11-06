@@ -7,13 +7,15 @@ import { indexSetFor } from '../engine/deviations';
 import { DEFAULT_RULES } from '../engine/ruleset';
 import { drillLegalActions, rulesChipLabels } from './legalActions';
 import type { StrategyRules } from '../engine/ruleset';
-import { eitherOrder, makeHardHand } from './buildHand';
+import { eitherOrder, makeHardHand, maybeMultiCard } from './buildHand';
+import { THREE_CARD_CTX } from './fallbackHand';
 import { weightedIndex } from './weightedDraw';
 import { srWeight } from './spacedRepetition';
 import type { SrDeck } from './spacedRepetition';
 
 export interface QuizItem {
-  cards: [Card, Card] | null; // null for insurance items
+  /** Two cards, or (owner 2026-11-06) three to five on a hard 12-16 hit/stand index; null for insurance. */
+  cards: Card[] | null;
   up: Rank;
   tc: number;
   // Omitted (undefined) for distractor items -- see drawQuizItem's
@@ -61,10 +63,19 @@ export function makeSoftHand(total: number): [Card, Card] {
 }
 
 /** The two cards an index is asked on: a ten pair, a soft hand, or a varied hard total. */
-function handFor(entry: Deviation, rng: () => number): [Card, Card] | null {
+function handFor(entry: Deviation, rng: () => number): Card[] | null {
   if (entry.kind === 'pair10') return makePair10Cards();
   if (entry.kind === 'soft') return eitherOrder(makeSoftHand(entry.total!), rng);
+  if (entry.kind === 'hard' && isHitStand(entry)) {
+    const multi = maybeMultiCard(entry.total!, rng);
+    if (multi) return multi;
+  }
   return makeHardHand(entry.total!, rng);
+}
+
+/** Owner 2026-11-06: only a hit/stand index survives a third card unchanged. */
+function isHitStand(entry: Deviation): boolean {
+  return entry.action === 'hit' || entry.action === 'stand';
 }
 
 /** ctx shared by every hard/pair10 quiz item AND every distractor built from
@@ -247,7 +258,7 @@ function shuffled<T>(arr: T[], rng: () => number): T[] {
  * from correctPlay/basicPlay, the same engine functions the quiz grader
  * (buildQuizEvent in Drills.tsx) uses.
  */
-function isBasicOnly(cards: [Card, Card], up: Rank, tc: number, rules: StrategyRules): { ok: boolean; action: Action } {
+function isBasicOnly(cards: Card[], up: Rank, tc: number, rules: StrategyRules): { ok: boolean; action: Action } {
   const withCount = correctPlay(cards, up, tc, QUIZ_CTX, rules);
   const basicOnly = basicPlay(cards, up, QUIZ_CTX, rules);
   /*
@@ -278,7 +289,7 @@ function isBasicOnly(cards: [Card, Card], up: Rank, tc: number, rules: StrategyR
   return { ok: withCount.action === basicOnly.action, action: basicOnly.action };
 }
 
-type Candidate = { cards: [Card, Card]; up: Rank; tc: number };
+type Candidate = { cards: Card[]; up: Rank; tc: number };
 
 /**
  * CLOSE distractor for a 'hard' kind entry: perturb exactly ONE dimension
@@ -644,7 +655,7 @@ export function drawQuizItem(
   const isDeviationSide = entry.dir === 'gte' ? tc >= entry.threshold : tc <= entry.threshold;
 
   // Construct cards and correct action
-  let cards: [Card, Card] | null;
+  let cards: Card[] | null;
   let correct: Action | 'take-insurance' | 'decline-insurance';
 
   if (entry.kind === 'insurance') {
@@ -665,16 +676,18 @@ export function drawQuizItem(
     // hard: construct a truly hard (non-pair, non-ace) hand with the specified total
     // V4-2: vary the composition. The index is on the TOTAL, so the cards
     // may change freely -- and must, or "16 v 10" is learned as one card pair.
-    const totalCards = makeHardHand(entry.total!, rng);
+    // Owner 2026-11-06: sometimes three to five cards (handFor).
+    const totalCards = handFor(entry, rng);
     if (!totalCards) {
       // Fallback: should not happen for valid entries
       throw new Error(`Cannot construct hard total ${entry.total}`);
     }
     cards = totalCards;
+    const ctxFor = cards.length > 2 ? THREE_CARD_CTX : entryCtx(entry);
     // canSurrender per entryCtx: false for a hard index (so basic surrender
     // cannot mask it), true for a surrender index (so the play it teaches is
     // reachable at all).
-    const advice = correctPlay(cards, entry.up!, tc, entryCtx(entry), rules);
+    const advice = correctPlay(cards, entry.up!, tc, ctxFor, rules);
     // Note: no special-casing for 11vA. Under h17 it's inactive, so the engine's
     // basic chart (HARD[11] = Dh) already yields 'double' at every tc; under
     // s17 it's active (vs A the S17 basic chart is H) so correctPlay(rules)

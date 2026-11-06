@@ -574,7 +574,7 @@ export function narrateFlashcardPrompt(cards: Card[], up: Rank): string {
   return `You have ${narrateHandPhrase(cards)}. ${narrateDealerUp(up)}`;
 }
 
-export function narrateQuizPrompt(cards: [Card, Card] | null, up: Rank, tc: number): string {
+export function narrateQuizPrompt(cards: Card[] | null, up: Rank, tc: number): string {
   if (cards === null) {
     return `${narrateDealerUp(up)} ${narrateInsuranceOffer()} True count ${narrateTc(tc)}.`;
   }

@@ -13,7 +13,7 @@ import type { StrategyRules } from '../engine/ruleset';
 import { correctPlay, insuranceCorrect } from '../engine/strategy';
 import type { GradedEvent } from '../engine/grade';
 import { actionCategory } from '../engine/grade';
-import { eitherOrder, makeHardHand, rankPairsForTotal } from './buildHand';
+import { eitherOrder, makeHardHand, maybeMultiCard, rankPairsForTotal } from './buildHand';
 import { askedIndexSet, entryCtx, makeSoftHand, makePair10Cards } from './deviationQuiz';
 import { srWeight } from './spacedRepetition';
 import type { SrDeck } from './spacedRepetition';
@@ -25,7 +25,7 @@ import { speakableCount } from '../audio/voiceNumber';
 
 export interface IndexTestItem {
   deviationId: DeviationId;
-  cards: [Card, Card] | null; // null for insurance
+  cards: Card[] | null; // null for insurance; (owner 2026-11-06) 3-5 cards on a hard 12-16 hit/stand index
   up: Rank;
   index: number;
   playAt: Action | 'take-insurance';
@@ -53,10 +53,14 @@ export function indexTestSet(rules: StrategyRules): Deviation[] {
   return askedIndexSet(rules);
 }
 
-function cardsFor(dev: Deviation, rng: () => number): [Card, Card] {
+function cardsFor(dev: Deviation, rng: () => number): Card[] {
   if (dev.kind === 'pair10') return makePair10Cards();
   // Wave M: the ace comes first or second, as at a real table.
   if (dev.kind === 'soft') return eitherOrder(makeSoftHand(dev.total!), rng);
+  if (dev.kind === 'hard' && (dev.action === 'hit' || dev.action === 'stand')) {
+    const multi = maybeMultiCard(dev.total!, rng);
+    if (multi) return multi;
+  }
   const cards = makeHardHand(dev.total!, rng);
   if (!cards) throw new Error(`indexTestItemFor: cannot construct hard total ${dev.total}`);
   return cards;
@@ -117,7 +121,7 @@ export function indexTestItemFor(dev: Deviation, rules: StrategyRules, rng: () =
   return itemOn(dev, rules, cardsFor(dev, rng));
 }
 
-function itemOn(dev: Deviation, rules: StrategyRules, cards: [Card, Card]): IndexTestItem {
+function itemOn(dev: Deviation, rules: StrategyRules, cards: Card[]): IndexTestItem {
   const index = publishedIndex(dev);
   const ctx = entryCtx(dev);
   return {

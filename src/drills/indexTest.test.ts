@@ -1,3 +1,4 @@
+import { handValue } from '../engine/hand';
 import { describe, it, expect } from 'vitest';
 import { mulberry32 } from '../engine/cards';
 import { correctPlay, insuranceCorrect } from '../engine/strategy';
@@ -183,6 +184,8 @@ describe('review N2: the Index test hands are enumerated, not sampled', () => {
         for (let seed = 0; seed < 400; seed++) {
           const item = indexTestItemFor(dev, rules, mulberry32(seed));
           if (dev.kind === 'insurance') expect(item.cards).toBeNull();
+          // Owner 2026-11-06: a 3-5 card hand is the same hard total, not one of the two-card set.
+          else if (item.cards!.length > 2) expect(handValue(item.cards!)).toEqual({ total: dev.total, soft: false });
           else expect(all.has(key(item.cards)), `${dev.id} seed ${seed}: ${key(item.cards)}`).toBe(true);
         }
       }
