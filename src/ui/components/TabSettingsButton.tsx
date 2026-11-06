@@ -14,6 +14,7 @@ import { setProfileLaunch } from '../profileLaunch';
 import { DEALER_PACE_MAX_SEC, DEALER_PACE_MIN_SEC, dealerPaceSec } from '../dealerPace';
 import { dealerMistakesPatch, dealerMistakesSetting } from '../dealerErrorCopy';
 import type { DealerMistakesMode } from '../../engine/dealerErrors';
+import type { PlayDepth } from '../../engine/game';
 
 /**
  * #33: the gear in the topbar of Play, Drills and Charts, opening a sheet of
@@ -208,6 +209,21 @@ function PlaySheet({ title, ctx, onClosed }: SheetProps) {
         }
       />
       <p className="settings-note">The same whether you&rsquo;re In or Out.</p>
+      <div className="settings-row">
+        <span className="settings-label">Deck estimation</span>
+        <Segmented
+          options={[
+            { value: 'whole', label: 'Whole' },
+            { value: 'half', label: 'Half' },
+            { value: 'quarter', label: 'Quarter' },
+          ]}
+          value={view.playDepth ?? 'half'}
+          onChange={(v) => edit({ playDepth: v as PlayDepth })}
+        />
+      </div>
+      <p className="settings-note">
+        The decks-left step Play divides by for the true count, deviations and bets. Only Play uses it.
+      </p>
       <BetSpreadControl profile={view} onChange={edit} />
       <DeviationsControl profile={view} onChange={edit} />
       <CountCheckControls profile={view} onChange={edit} />

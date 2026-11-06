@@ -26,6 +26,7 @@ export function playConfigFor(
     betSpreadOn: profile.betSpreadOn,
     ...(profile.coverBets === undefined ? {} : { coverBets: profile.coverBets }),
     ...(profile.tcRounding === undefined ? {} : { tcRounding: profile.tcRounding }),
+    ...(profile.playDepth === undefined ? {} : { playDepth: profile.playDepth }),
     spread: profile.spread,
     // D-R1: absent keeps the engine's -2.
     ...(profile.wongExitTc === undefined ? {} : { wongExitTc: profile.wongExitTc }),

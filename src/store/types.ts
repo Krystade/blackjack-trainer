@@ -4,6 +4,7 @@ import type { EventSource, Category, MistakeClass } from '../engine/grade';
 import type { DeviationId } from '../engine/deviations';
 import type { RuleSet } from '../engine/ruleset';
 import type { TcRounding } from '../engine/count';
+import type { PlayDepth } from '../engine/game';
 import type { SpeedTier } from '../drills/countSpeed';
 import type { DistractionMode, DistractionFreq } from '../drills/distraction';
 import type { CheckpointFreq } from '../drills/countCheckpoints';
@@ -481,6 +482,8 @@ export interface Profile {
    * good part of the Hi-Lo index set lives -- see engine/count.ts.
    */
   tcRounding?: TcRounding;
+  /** Owner 2026-11-06: Play's deck-estimation step. Absent = half. */
+  playDepth?: PlayDepth;
   /**
    * RV3: play the Fab 4 surrender indices instead of flat basic-strategy
    * surrender. OPTIONAL so profiles stored before this field load untouched,

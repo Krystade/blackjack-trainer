@@ -41,6 +41,21 @@ import {
 import { EMPTY_SIDE_TALLY, SideCounter, settleSide, sideExpected } from './sideBets/tableBet';
 import type { SideBetConfig, SideBetDecision, SideTally } from './sideBets/tableBet';
 
+/** Owner 2026-11-06: Play's deck-estimation step. */
+export type PlayDepth = 'whole' | 'half' | 'quarter';
+
+/** Decks remaining as Play divides by them, read at `depth`. */
+export function playDecksRemaining(shoe: { cardsRemaining: number; decksRemaining: number }, depth: PlayDepth | undefined): number {
+  if (depth === 'whole') return Math.max(1, Math.round(shoe.cardsRemaining / 52));
+  if (depth === 'quarter') return Math.max(0.5, Math.round(shoe.cardsRemaining / 13) / 4);
+  return shoe.decksRemaining;
+}
+
+/** How far a by-eye read at `depth` may be off: one step. */
+export function playDepthStep(depth: PlayDepth | undefined): number {
+  return depth === 'whole' ? 1 : depth === 'quarter' ? 0.25 : 0.5;
+}
+
 export interface SeatConfig {
   playerHands: 1 | 2 | 3;
   bots: 0 | 1 | 2 | 3 | 4 | 5;
@@ -97,6 +112,12 @@ export interface GameConfig {
   coverBets?: boolean;
   /** V5-4: the counter's true-count rounding convention; defaults to floor. */
   tcRounding?: TcRounding;
+  /**
+   * Owner 2026-11-06: how finely Play reads the discard tray when it divides.
+   * Absent = 'half' (the shoe's own snap, quarters in a 1-2 deck game's last
+   * deck), so every config before this field is unchanged.
+   */
+  playDepth?: PlayDepth;
   spread: SpreadRow[];
   /** D-R1: sit out only at true count <= this (engine/wong.ts). Absent = -2. */
   wongExitTc?: number;
@@ -539,7 +560,7 @@ export class Game {
   /** Wave L: the side count's true count now -- floored, as the triggers were simulated (SIDE_TC_ROUNDING). */
   get sideTrueCount(): number {
     const count = this.cfg.sideBet?.plan.count;
-    return count ? this.sideCounter.tc(count, this.shoe.decksRemaining) : this.trueCountNow;
+    return count ? this.sideCounter.tc(count, playDecksRemaining(this.shoe, this.cfg.playDepth)) : this.trueCountNow;
   }
 
   /** Wave L: one card shown at the table: Hi-Lo and the side count both see it. */
@@ -684,7 +705,7 @@ export class Game {
     // surface at the table reads this -- insurance, deviations, the bet ramp
     // and the wong decision -- so a counter whose system truncates was being
     // marked wrong on every negative-count index play.
-    return trueCount(this.runningCount, this.shoe.decksRemaining, this.cfg.tcRounding);
+    return trueCount(this.runningCount, playDecksRemaining(this.shoe, this.cfg.playDepth), this.cfg.tcRounding);
   }
 
   /**
@@ -1274,7 +1295,7 @@ export class Game {
       tcCorrect =
         tcGuess !== undefined &&
         // F7: the profile's rounding, as trueCountNow (the expected figure) uses.
-        tcWithinEye(tcGuess, this.runningCount, this.shoe.decksRemaining, undefined, this.cfg.tcRounding);
+        tcWithinEye(tcGuess, this.runningCount, playDecksRemaining(this.shoe, this.cfg.playDepth), playDepthStep(this.cfg.playDepth), this.cfg.tcRounding);
       this.events.push({
         source: 'table',
         kind: 'countCheck',
