@@ -147,6 +147,23 @@ export const FREEWAY_MS = 15 * 60_000;
 
 const m = (value: number, target: number, note?: string): Measure => ({ value, target, ...(note ? { note } : {}) });
 
+/**
+ * The fastest seconds-per-deck of any correct, non-self-reported count run of
+ * at least `minCards` cards (count drill or Timed Challenge); Infinity if none.
+ */
+export function fastestDeckSeconds(stats: Stats, minCards: number): number {
+  let best = Infinity;
+  for (const r of countRuns(stats)) {
+    if (!r.correct || r.cards < minCards) continue;
+    const perCard = countRunPerCardMs(r);
+    if (typeof perCard === 'number' && perCard > 0) best = Math.min(best, (perCard * 52) / 1000);
+  }
+  for (const r of stats.timedCount?.history ?? []) {
+    if (r.correct && r.cards >= minCards && r.secondsPerDeck > 0) best = Math.min(best, r.secondsPerDeck);
+  }
+  return best;
+}
+
 function totalActiveMs(p: ProgressState): number {
   return Object.values(p.days).reduce((a, d) => a + d.activeMs, 0);
 }
@@ -408,6 +425,20 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
         1,
       ),
   },
+  // Owner 2026-11-06: a 556 ms/card deck (28.9 s) earned nothing, because the
+  // only speed award wanted a full 312-card shoe. One deck at each speed tier.
+  ...([
+    ['deck-30', 'bronze', 'Deck in 30', 30, 'table-ready'],
+    ['deck-22', 'silver', 'Deck in 22', 22, 'pro'],
+    ['deck-12', 'gold', 'Deck in 12', 12, 'expert'],
+  ] as const).map(([id, tier, title, secs]) => ({
+    id,
+    title,
+    how: `Count a deck (52 cards or more) exactly at ${secs} s a deck or faster, in the count drill or a Timed Challenge.`,
+    tier,
+    group: 'Counting' as const,
+    measure: (c: AchievementContext) => m(fastestDeckSeconds(c.stats, 52) <= secs ? 1 : 0, 1),
+  })),
   ...tiered({ group: 'Counting' }, 'tc-run', [
     ['bronze', 10, 'True to form', '10 true-count conversions right in a row.'],
     ['silver', 25, 'Converter', '25 true-count conversions right in a row.'],

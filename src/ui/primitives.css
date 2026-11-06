@@ -281,7 +281,10 @@ body:has(.fieldtest-running) .fieldtest-screen {
  * it could only ever be eyeballed.
  */
 :root {
-  --safe-top: env(safe-area-inset-top, 0px);
+  /* Owner 2026-11-06: a little air below the status bar on a notched phone
+     (the top bar read as crowded/fuzzy against the clock). Scaled, so it is
+     still zero wherever there is no inset. */
+  --safe-top: calc(env(safe-area-inset-top, 0px) * 1.25);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   /* The global mute disc's size (see `.mute-btn`, and muteSeat.css for the
      seat each top bar keeps free for it). */

@@ -147,8 +147,10 @@ body:has(.charts-screen) .mute-btn {
   cursor: pointer;
 }
 
+@media (hover: hover) {
 .charts-back-btn:hover {
   background: var(--surface);
+}
 }
 
 .charts-heading {

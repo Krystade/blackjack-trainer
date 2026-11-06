@@ -152,6 +152,19 @@ const CASES: Record<string, [AchievementContext, AchievementContext]> = {
     ctx({ stats: { timedCount: { history: [timed(FULL_SHOE_CARDS, 31), timed(FULL_SHOE_CARDS - 1, 20), { ...timed(FULL_SHOE_CARDS, 20), correct: false }] } } }),
     ctx({ stats: { timedCount: { history: [timed(FULL_SHOE_CARDS, 30)] } } }),
   ],
+  // Owner 2026-11-06: the 556 ms manual deck (28.9 s) that earned nothing.
+  'deck-30': [
+    ctx({ stats: { countDrill: { history: [...runs(1, { cards: 51, manual: true, meanTapMs: 400 }), ...runs(1, { cards: 52, manual: true, meanTapMs: 600 }), ...runs(1, { cards: 52, manual: true, meanTapMs: 400, correct: false })] } } }),
+    ctx({ stats: { countDrill: { history: runs(1, { cards: 52, manual: true, meanTapMs: 556 }) } } }),
+  ],
+  'deck-22': [
+    ctx({ stats: { countDrill: { history: runs(1, { cards: 52, manual: true, meanTapMs: 556 }) } } }),
+    ctx({ stats: { timedCount: { history: [timed(52, 22)] } } }),
+  ],
+  'deck-12': [
+    ctx({ stats: { countDrill: { history: runs(1, { cards: 104, intervalMs: 240 }) } } }),
+    ctx({ stats: { countDrill: { history: runs(1, { cards: 104, intervalMs: 230 }) } } }),
+  ],
   'tc-run-10': [ctx({ stats: { trueCount: { history: [...tcRows([...Array(9).fill(true), false, ...Array(9).fill(true)]), ...tcRows(Array(5).fill(true)).map((r) => ({ ...r, selfReport: true }))] } } }), ctx({ stats: { trueCount: { history: tcRows(Array(10).fill(true)) } } })],
   'tc-run-25': [ctx({ stats: { trueCount: { history: tcRows(Array(24).fill(true)) } } }), ctx({ stats: { trueCount: { history: tcRows(Array(25).fill(true)) } } })],
   'tc-run-50': [ctx({ stats: { trueCount: { history: tcRows(Array(49).fill(true)) } } }), ctx({ stats: { trueCount: { history: tcRows(Array(50).fill(true)) } } })],
@@ -203,7 +216,7 @@ afterEach(() => {
 
 describe('achievements', () => {
   it('there are about fifty, with unique ids, and every one has a case below', () => {
-    expect(ACHIEVEMENTS.length).toBe(53);
+    expect(ACHIEVEMENTS.length).toBe(56);
     expect(new Set(ACHIEVEMENTS.map((a) => a.id)).size).toBe(ACHIEVEMENTS.length);
     // `<id>-timed` is a second case for the same achievement.
     expect([...new Set(Object.keys(CASES).map((k) => k.replace(/-timed$/, '')))].sort()).toEqual(ACHIEVEMENTS.map((a) => a.id).sort());

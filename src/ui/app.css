@@ -81,8 +81,10 @@ button {
   cursor: pointer;
 }
 
+@media (hover: hover) {
 .home-nav-btn:hover {
   background: var(--raised);
+}
 }
 
 .home-profile-chip {
@@ -102,8 +104,10 @@ button {
   overflow-wrap: anywhere;
 }
 
+@media (hover: hover) {
 .home-profile-chip:hover {
   background: var(--line);
+}
 }
 
 /* ---------- Placeholder ---------- */
@@ -465,8 +469,10 @@ button {
   cursor: pointer;
 }
 
+@media (hover: hover) {
 .fast-forward-btn:hover {
   background: var(--raised);
+}
 }
 
 .action-bar {
@@ -792,8 +798,10 @@ button {
   text-align: left;
 }
 
+@media (hover: hover) {
 .drills-nav-btn:hover {
   background: var(--raised);
+}
 }
 
 .drills-nav-desc {
@@ -2621,8 +2629,10 @@ button {
   cursor: pointer;
 }
 
+@media (hover: hover) {
 .deck-guess-btn:hover {
   background: var(--raised);
+}
 }
 
 /* Keyboard-typed guess (DeckEstimationView): highlights the grid option that
