@@ -65,8 +65,9 @@
 }
 
 /* A 320 phone (iOS Display Zoom on a mini, an SE) leaves the head ~244px
-   beside the mute seat: "Blackjack" alone, so the profile name stays whole. */
-@media (max-width: 359px) {
+   beside the mute seat: "Blackjack" alone, so the profile name stays whole.
+   Owner 2026-11-06: phones up to 430 too, now the Settings gear shares the row. */
+@media (max-width: 430px) {
   .home-title-tail {
     display: none;
   }
@@ -126,4 +127,20 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
+}
+
+/* Owner 2026-11-06: Settings beside the profile pill, both at the right. */
+.home-screen .home-profile-chip {
+  margin-left: auto;
+}
+.home-screen .home-head > .home-settings-btn {
+  flex: none;
+}
+.home-screen .home-head {
+  align-self: stretch;
+  box-sizing: border-box;
+  max-width: 100%;
+}
+.home-screen .home-head .home-profile-chip {
+  min-width: 4rem;
 }

@@ -1,3 +1,5 @@
+import '../components/tabSettingsSheet.css';
+import { GearIcon } from '../components/icons';
 import { BackupNudge } from '../components/BackupNudge';
 import type { Screen } from '../App';
 import type { Profile, Settings } from '../../store/types';
@@ -150,6 +152,11 @@ export function Home({ onNavigate, activeProfile, settings, onSettingsChange }: 
         >
           <span className="home-profile-chip-name">{activeProfile.name}</span>
         </button>
+        {/* Owner 2026-11-06: the main Settings (colours and the rest of the
+            global settings) at the top of Home, not under the fold. */}
+        <button type="button" className="tab-gear home-settings-btn" aria-label="Settings" title="Settings" onClick={() => onNavigate('settings')}>
+          <GearIcon />
+        </button>
       </header>
 
       {/* Wave N: the streak card, above everything else. */}
@@ -230,11 +237,6 @@ export function Home({ onNavigate, activeProfile, settings, onSettingsChange }: 
             Play a shoe
           </button>
         )}
-        {/* #32: Settings left the tab bar. The accessible name is exactly
-            "Settings" -- the glyph is decoration. */}
-        <button type="button" className="u-btn home-settings-btn" onClick={() => onNavigate('settings')}>
-          <span aria-hidden="true">⚙ </span>Settings
-        </button>
       </div>
 
       {/* The installed app can sit on a cached bundle without saying so. This
