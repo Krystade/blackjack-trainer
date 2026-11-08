@@ -1,13 +1,5 @@
-import { chipBreakdown, type ChipDenom } from '../chips';
+import { chipBreakdown, chipFaceLabel } from '../chips';
 import './chips.css';
-
-/** What a chip's face says: "1k", "100", "2½", "½". */
-export function chipFaceLabel(d: ChipDenom): string {
-  if (d === 1000) return '1k';
-  if (d === 2.5) return '2½';
-  if (d === 0.5) return '½';
-  return String(d);
-}
 
 /**
  * Track 3: `amount` dollars as a dealer would pay it -- one chip per

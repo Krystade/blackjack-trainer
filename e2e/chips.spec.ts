@@ -135,7 +135,7 @@ test('two hands and three players: the circles fit, never over a card, and the b
       expect(c.x + c.width).toBeLessThanOrEqual(375);
       for (const k of cards) {
         const overlap = c.x < k.r - 1 && c.x + c.width > k.l + 1 && c.y < k.b - 1 && c.y + c.height > k.t + 1;
-        expect(overlap, `circle ${i} over a card (seed ${seed})`).toBe(false);
+        expect(overlap, `circle ${i} ${JSON.stringify(c)} over card ${JSON.stringify(k)} (seed ${seed})`).toBe(false);
       }
     }
     const deal = (await page.getByRole('button', { name: 'Deal', exact: true }).boundingBox())!;

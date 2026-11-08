@@ -208,3 +208,25 @@
   color: var(--ink-dim);
   line-height: 1;
 }
+
+/* Two hands sharing the felt (tableCompact.css: side by side; feltWrap.css: a
+   row each) give the bet a narrow cell beside the label -- too narrow for
+   chips. The circle takes a row of its own under the cards instead, the
+   label beside the chips when there is room. */
+.table-screen.table-crowded .hands-row:has(> .player-hand + .player-hand) > .player-hand > .hand-bet.bet-circle,
+.table-screen .hands-row[data-wrap] .player-hand > .hand-bet.bet-circle {
+  grid-column: 1 / -1;
+  grid-row: 3;
+  justify-self: center;
+}
+
+.table-screen.table-crowded .hands-row:has(> .player-hand + .player-hand) .bet-circle-label,
+.table-screen .hands-row[data-wrap] .bet-circle-label {
+  flex-basis: auto;
+}
+
+/* A row each: a doubled card in the hand below is raised 18px and tilted
+   (its "turned sideways" look), so keep it clear of this hand's circle. */
+.table-screen .hands-row[data-wrap] .player-hand > .hand-bet.bet-circle {
+  margin-bottom: 10px;
+}

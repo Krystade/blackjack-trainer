@@ -9,6 +9,7 @@ import {
   shortDollars,
   showChipsNote,
   topDenom,
+  chipFaceLabel,
 } from './chips';
 
 /** Track 3 (U6): units in, dollars and chips out. */
@@ -78,6 +79,12 @@ describe('chipBreakdown', () => {
     expect(chipBreakdown(Number.NaN)).toEqual([]);
     expect(topDenom(0)).toBeNull();
     expect(topDenom(30)).toBe(25);
+  });
+});
+
+describe('chipFaceLabel', () => {
+  it('the value printed on each chip', () => {
+    expect([1000, 500, 100, 25, 5, 2.5, 1, 0.5].map((d) => chipFaceLabel(d as never))).toEqual(['1k', '500', '100', '25', '5', '2½', '1', '½']);
   });
 });
 

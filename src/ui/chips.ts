@@ -71,6 +71,14 @@ export function chipBreakdown(dollars: number): ChipCount[] {
   return out;
 }
 
+/** What a chip's face says: "1k", "100", "2½", "½". */
+export function chipFaceLabel(d: ChipDenom): string {
+  if (d === 1000) return '1k';
+  if (d === 2.5) return '2½';
+  if (d === 0.5) return '½';
+  return String(d);
+}
+
 /** The colour family a stack shows, by its highest chip: "100" for a black-topped stack. */
 export function topDenom(dollars: number): ChipDenom | null {
   return chipBreakdown(dollars)[0]?.denom ?? null;

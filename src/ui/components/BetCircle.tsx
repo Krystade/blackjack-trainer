@@ -26,10 +26,10 @@ export function BetCircle({ hand, unit }: { hand: Pick<PlayerHand, 'bet' | 'doub
       data-outcome={outcome}
       {...(c.paid > 0 ? { 'data-paid': c.paid } : {})}
     >
-      <span className="bet-circle-ring">{c.back > 0 && <ChipStack amount={c.back} size="sm" />}</span>
+      <span className="bet-circle-ring">{c.back > 0 && <ChipStack amount={c.back} />}</span>
       {c.paid > 0 && (
         <span className="bet-circle-paid" aria-hidden="true">
-          +<ChipStack amount={c.paid} size="sm" />
+          +<ChipStack amount={c.paid} />
         </span>
       )}
       <span className="bet-circle-label">{label}</span>
