@@ -50,6 +50,8 @@ async function enter(page: Page, n: number): Promise<void> {
  */
 async function dealRun(page: Page, perCardMs: number): Promise<number> {
   await page.getByRole('button', { name: 'Start', exact: true }).click();
+  // The lead-in is up before the clock moves (Easy first run starts a render later).
+  await expect(page.getByTestId('count-leadin')).toBeVisible();
   for (let i = 0; i < 3; i++) await page.clock.runFor(600);
   const progress = page.locator('.count-flash-progress');
   let rc = 0;
@@ -140,6 +142,8 @@ test('a grouped ramp run deals the step a card: two cards for 4000 ms at step 1'
   await openCount(page);
   await freeze(page);
   await page.getByRole('button', { name: 'Start', exact: true }).click();
+  // The lead-in is up before the clock moves (Easy first run starts a render later).
+  await expect(page.getByTestId('count-leadin')).toBeVisible();
   for (let i = 0; i < 3; i++) await page.clock.runFor(600);
   const progress = page.locator('.count-flash-progress');
   await expect(progress).toContainText('1 / 26');
@@ -178,6 +182,8 @@ test('Easy first run turns the ramp on and deals at its first step', async ({ pa
   await openCount(page);
   await freeze(page);
   await page.getByRole('button', { name: 'Easy first run', exact: true }).click();
+  // The lead-in is up before the clock moves (Easy first run starts a render later).
+  await expect(page.getByTestId('count-leadin')).toBeVisible();
   for (let i = 0; i < 3; i++) await page.clock.runFor(600);
   const progress = page.locator('.count-flash-progress');
   await expect(progress).toContainText('1 / 52');
