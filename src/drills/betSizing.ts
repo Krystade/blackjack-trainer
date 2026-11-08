@@ -161,11 +161,16 @@ export function betAnswerLabel(a: BetAnswer): string {
 }
 
 /** The result strip: "RC +7 ÷ 2.5 decks → TC +2 → 4u", with real minus signs. */
-export function betSizingWorking(s: BetSizingScenario, p: BetGradeProfile): string {
+export function betSizingWorking(
+  s: BetSizingScenario,
+  p: BetGradeProfile,
+  /** Track 3: Show chips appends dollars ("4u · $100"); default units alone. */
+  label: (a: BetAnswer) => string = betAnswerLabel,
+): string {
   const decks = scenarioDecksRemaining(s);
   const tc = scenarioTc(s, p.tcRounding);
   const depth = decks === 1 ? '1 deck' : `${decks} decks`;
-  return `RC ${signed(s.rc)} ÷ ${depth} → TC ${signed(tc)} → ${betAnswerLabel(correctBetAnswer(tc, p.spread, p.wongExitTc))}`;
+  return `RC ${signed(s.rc)} ÷ ${depth} → TC ${signed(tc)} → ${label(correctBetAnswer(tc, p.spread, p.wongExitTc))}`;
 }
 
 /** The Stats row for one answer (contract 1). */

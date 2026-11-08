@@ -382,6 +382,9 @@ const NOT_BACKED_UP: Record<string, string> = {
   'bjtrainer.voiceLocalProbe.v1': 'retired; deleted on load by dropRetiredKeys',
   'bjtrainer.fieldTestRun.v1': 'progress through a field-test leg, meaningless off the drive',
   'bjtrainer.fieldTestDraft.v1': 'an unsent note inside a field-test leg',
+  'bjtrainer.tableResume.v1':
+    'Track 3: the open Play shoe, 12 hours at most; restored stats and bankroll are a different table, so a restore must not resume it',
+  'bjtrainer.tableRound.v1': 'Track 3: the round in flight with the open shoe',
   'bjtrainer.reloadedFor': 'a one-shot guard against a reload loop',
   'bjtrainer.devicecheck.probe':
     'written and deleted inside one run of the device check, to find out whether this browser can store anything at all -- it holds no state to back up',

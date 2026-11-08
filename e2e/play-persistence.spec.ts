@@ -55,6 +55,14 @@ test('settled rounds are in Stats before End, with the bankroll they moved', asy
   await page.reload();
   await page.getByRole('button', { name: 'Play', exact: true }).click();
   await expect(bankroll).toHaveText(new RegExp(`^Bankroll: ${before}(?!\\d)`));
+  // Track 3 (2026-11-07, deliberately changed from "Round 0"): the shoe itself
+  // comes back too, at the round it was left on.
+  await expect(page.locator('.topbar-stat', { hasText: /^Round / })).toHaveText('Round 3');
+  // End is the way to a new shoe; the bankroll carries into it as before.
+  await page.locator('.end-btn').click();
+  await page.locator('.end-btn').click();
+  await page.locator('.tab-bar').getByRole('button', { name: 'Play', exact: true }).click();
+  await expect(bankroll).toHaveText(new RegExp(`^Bankroll: ${before}(?!\\d)`));
   await expect(page.locator('.topbar-stat', { hasText: /^Round / })).toHaveText('Round 0');
 });
 
@@ -100,14 +108,27 @@ test('R1: a shoe left without End is a session in Stats, and agrees with the ban
   await expect(page.locator('.session-row')).toContainText('4 rounds');
   await expect(page.getByText('No table sessions yet.')).toHaveCount(0);
 
-  // The next shoe is a session of its own: a second row, the first untouched.
+  // Track 3 (2026-11-07, deliberately changed from "a second row"): Play
+  // resumes the evicted shoe, so its rounds go on in the SAME row -- opening
+  // Play rewrites nothing, and the next round extends it.
   await page.locator('.tab-bar').getByRole('button', { name: 'Play', exact: true }).click();
+  await expect(page.locator('.topbar-stat', { hasText: /^Round / })).toHaveText('Round 4');
+  expect(await sessionsInStats(page)).toEqual(rows);
   await playRounds(page, 1);
   const after = await sessionsInStats(page);
-  expect(after).toHaveLength(2);
-  expect(after[0]).toEqual(rows[0]);
-  expect(after[1]).toMatchObject({ rounds: 1, provisional: true });
-  expect(after[1]!.id).not.toBe(rows[0]!.id);
+  expect(after).toHaveLength(1);
+  expect(after[0]).toMatchObject({ id: rows[0]!.id, rounds: 5, provisional: true });
+
+  // New shoe ends that session (final, not provisional) and the next is a row of its own.
+  await page.getByTestId('resumed-new-shoe').click();
+  await expect(page.locator('.topbar-stat', { hasText: /^Round / })).toHaveText('Round 0');
+  await playRounds(page, 1);
+  const next = await sessionsInStats(page);
+  expect(next).toHaveLength(2);
+  expect(next[0]).toMatchObject({ id: rows[0]!.id, rounds: 5 });
+  expect(next[0]!.provisional).toBeUndefined();
+  expect(next[1]).toMatchObject({ rounds: 1, provisional: true });
+  expect(next[1]!.id).not.toBe(rows[0]!.id);
 });
 
 test('End at round 0 returns Home with no report and no session written', async ({ page }) => {

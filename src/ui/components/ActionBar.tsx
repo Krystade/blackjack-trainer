@@ -4,6 +4,8 @@ import './inOutToggle.css';
 import './sideBetChip.css';
 import './handsChoice.css';
 import './drillActionLabels.css';
+import './chips.css';
+import { shortDollars, topDenom } from '../chips';
 
 /** One bet-entry row per player hand. Length 1 (solo, the v1/parity case) or
  * playerHands (Cycle-2 Task 8 multi-hand bet entry). */
@@ -27,6 +29,12 @@ export type ActionBarMode =
       hands: BetHandEntry[];
       /** Deal the next round -- with the player in or out, as the toggle says. */
       onDeal: () => void;
+      /**
+       * Track 3: Show chips -- bets in dollars at `unit` a unit, and between
+       * rounds the line saying what to pull back for the next bet. Absent: the
+       * units bar, markup unchanged.
+       */
+      money?: { unit: number; pullBack: string | null };
       /**
        * Wave J toggle rework: the In/Out toggle, beside Deal on every table.
        * It replaces Sit out and the watcher's Watch / Sit in pair: Out, the
@@ -99,6 +107,38 @@ function InOutToggle({ isIn, onSet, disabled }: { isIn: boolean; onSet: (isIn: b
   );
 }
 
+/** Track 3: one bet chip, in units or (Show chips) dollars in the bet's top chip colour. */
+function BetChip({ units, selected, disabled, money, onSelect }: {
+  units: number;
+  selected: boolean;
+  disabled?: boolean;
+  money?: { unit: number };
+  onSelect: () => void;
+}) {
+  const amount = money ? units * money.unit : 0;
+  return (
+    <button
+      type="button"
+      className={`chip-btn${selected ? ' chip-selected' : ''}${money ? ' chip-money' : ''}`}
+      disabled={disabled}
+      onClick={onSelect}
+      {...(money ? { 'data-chip': String(topDenom(amount)), 'data-units': units, 'aria-label': `${shortDollars(amount)}, ${units} unit${units === 1 ? '' : 's'}` } : {})}
+    >
+      {money ? shortDollars(amount) : units}
+    </button>
+  );
+}
+
+/** Track 3: between rounds with chips on, what to pull back (or add) for the next bet. */
+function PullBack({ mode }: { mode: Extract<ActionBarMode, { kind: 'bet' }> }) {
+  if (!mode.money?.pullBack) return null;
+  return (
+    <div className="bet-pullback" data-testid="bet-pullback">
+      {mode.money.pullBack}
+    </div>
+  );
+}
+
 /** The bottom row of the bet bar: the toggle, then Deal. */
 function DealRow({ mode }: { mode: Extract<ActionBarMode, { kind: 'bet' }> }) {
   return (
@@ -155,20 +195,20 @@ export function ActionBar({ mode }: ActionBarProps) {
     const single = mode.hands[0];
     return (
       <div className="action-bar action-bar-bet">
+        <PullBack mode={mode} />
         {mode.betSpreadOn && single && (
           // Review B1: the hands toggle ends the chip row rather than taking a
           // row of its own above it.
           <div className={`bet-chips${mode.handsChoice ? ' bet-chips-hands' : ''}`}>
             {BET_CHIPS.map((units) => (
-              <button
+              <BetChip
                 key={units}
-                type="button"
-                className={`chip-btn${single.selectedBet === units ? ' chip-selected' : ''}`}
+                units={units}
+                selected={single.selectedBet === units}
                 disabled={mode.disabled}
-                onClick={() => single.onSelectBet(units)}
-              >
-                {units}
-              </button>
+                money={mode.money}
+                onSelect={() => single.onSelectBet(units)}
+              />
             ))}
             {mode.handsChoice && (
               <HandsChoice hands={mode.handsChoice.hands} onHands={mode.handsChoice.onHands} disabled={mode.disabled} />
@@ -186,6 +226,7 @@ export function ActionBar({ mode }: ActionBarProps) {
   // Cycles through the same BET_CHIPS units the solo chip row offers.
   return (
     <div className="action-bar action-bar-bet action-bar-bet-multi">
+      <PullBack mode={mode} />
       {mode.betSpreadOn && (
         <div className="bet-hands">
           {mode.hands.map((hand, i) => {
@@ -205,7 +246,9 @@ export function ActionBar({ mode }: ActionBarProps) {
                   >
                     −
                   </button>
-                  <div className="bet-stepper-value">{hand.selectedBet}u</div>
+                  <div className="bet-stepper-value">
+                    {mode.money ? shortDollars(hand.selectedBet * mode.money.unit) : `${hand.selectedBet}u`}
+                  </div>
                   <button
                     type="button"
                     className="bet-step-btn"

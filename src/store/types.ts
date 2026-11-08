@@ -78,6 +78,13 @@ export interface Settings {
    * answers, normal 10 / 60, hard 20 / 120. Absent = normal.
    */
   habits?: { goal?: 'easy' | 'normal' | 'hard' };
+  /**
+   * Track 3 (2026-11-07): Play's bets and the Bet sizing drill in dollars and
+   * casino chips, at the profile's `unitDollars` (ui/chips.ts). A display
+   * choice, so it is a setting and toggling it never deals a new shoe.
+   * Absent = off: bets are learned in units.
+   */
+  showChips?: boolean;
   drill: {
     flashCategory: 'all' | 'hard' | 'soft' | 'pairs';
     // #13: multi-select scope for the hand drills (flashcards, mastery, Mixed,

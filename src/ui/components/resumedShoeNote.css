@@ -1,0 +1,49 @@
+/* Track 3: the resumed-shoe strip under the topbar. Quiet: information, not a warning. */
+.resumed-shoe-note {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.3rem max(0.75rem, env(safe-area-inset-left)) 0;
+  padding: 0.35rem 0.5rem 0.35rem 0.7rem;
+  border: 1px solid var(--accent-line);
+  border-radius: 10px;
+  background: var(--accent-wash);
+  color: var(--ink);
+  font-size: var(--fs-xs);
+}
+
+.resumed-shoe-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.resumed-shoe-cut {
+  color: var(--ink-dim);
+}
+
+.resumed-shoe-actions {
+  display: flex;
+  gap: 0.3rem;
+  flex-shrink: 0;
+}
+
+.resumed-shoe-btn {
+  min-height: 36px;
+  padding: 0 0.6rem;
+  border-radius: 8px;
+  border: 1px solid var(--accent-line);
+  background: transparent;
+  color: var(--accent);
+  font-weight: 700;
+  font-size: var(--fs-xs);
+  cursor: pointer;
+}
+
+.resumed-shoe-ok {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}

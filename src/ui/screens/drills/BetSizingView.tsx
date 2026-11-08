@@ -46,6 +46,8 @@ import { EyesFreeCheckbox } from './EyesFreeCheckbox';
 import { RungProgressLine } from './RungProgressLine';
 import { DRILL_RUNG } from './rungProgress';
 import './betProposition.css';
+import { chipMoney, dollars as chipDollars } from '../../chips';
+import { ChipStack } from '../../components/ChipStack';
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -91,6 +93,11 @@ export function BetSizingView({
   const floor = trayFloorDecks(activeProfile);
   const audio = useAudio(settings.audio);
   const options = betSizingOptions(activeProfile.spread);
+  // Track 3: Show chips -- each rung also in dollars at the profile's unit.
+  const chips = chipMoney(settings, activeProfile);
+  const verdictLabel = (a: BetAnswer): string => (chips && a !== 'sit' ? chipDollars(a * chips.unit) : betAnswerLabel(a));
+  const workingLabel = (a: BetAnswer): string =>
+    chips && a !== 'sit' ? `${betAnswerLabel(a)} · ${chipDollars(a * chips.unit)}` : betAnswerLabel(a);
   const [scenario, setScenario] = useState<BetSizingScenario>(() =>
     makeBetSizingScenario(randomSeed(), totalDecks, activeProfile.spread, floor, activeProfile.wongExitTc),
   );
@@ -160,7 +167,7 @@ export function BetSizingView({
       ok: row.ok,
       taken: proposal.proposed,
       correct: row.correct,
-      working: betSizingWorking(scenario, activeProfile),
+      working: betSizingWorking(scenario, activeProfile, workingLabel),
       saidYes,
       spoken,
     });
@@ -185,7 +192,7 @@ export function BetSizingView({
       ok,
       taken,
       correct: correctBetAnswer(tc, activeProfile.spread, activeProfile.wongExitTc),
-      working: betSizingWorking(scenario, activeProfile),
+      working: betSizingWorking(scenario, activeProfile, workingLabel),
     });
   };
 
@@ -297,11 +304,20 @@ export function BetSizingView({
           <button
             key={String(o)}
             type="button"
-            className={`bet-sizing-btn${feedback?.taken === o ? ' bet-sizing-btn--taken' : ''}`}
+            className={`bet-sizing-btn${feedback?.taken === o ? ' bet-sizing-btn--taken' : ''}${chips && o !== 'sit' ? ' bet-sizing-btn--chips' : ''}`}
             aria-pressed={feedback ? feedback.taken === o : undefined}
             onClick={() => answer(o)}
+            {...(chips && o !== 'sit' ? { 'data-dollars': o * chips.unit, 'aria-label': `${chipDollars(o * chips.unit)}, ${betAnswerLabel(o)}` } : {})}
           >
-            {betAnswerLabel(o)}
+            {chips && o !== 'sit' ? (
+              <>
+                <ChipStack amount={o * chips.unit} size="sm" />
+                <span className="bet-sizing-dollars">{chipDollars(o * chips.unit)}</span>
+                <span className="bet-sizing-units">{betAnswerLabel(o)}</span>
+              </>
+            ) : (
+              betAnswerLabel(o)
+            )}
           </button>
         ))}
       </div>
@@ -313,7 +329,7 @@ export function BetSizingView({
             <ResultStrip id={feedback.id} tone={feedback.ok ? 'ok' : 'miss'}>
               <div className="bet-verdict">
                 {feedback.saidYes === undefined
-                  ? betVerdictText(feedback.taken, feedback.correct, feedback.ok)
+                  ? betVerdictText(feedback.taken, feedback.correct, feedback.ok, verdictLabel)
                   : betPropositionVerdictText(feedback.taken, feedback.saidYes, feedback.correct, feedback.ok)}
               </div>
               <div className="bet-working">{feedback.working}</div>

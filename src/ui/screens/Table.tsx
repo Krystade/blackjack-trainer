@@ -94,6 +94,11 @@ import { useEyesFreeToggle } from '../eyesFreeSession';
 import { loadStats } from '../../store/persist';
 import { trayMarksShown } from '../trayFade';
 import { useSitOutPacing } from '../useSitOutPacing';
+import { useTabSettings } from '../tabSettingsContext';
+import { ResumedShoeNote } from '../components/ResumedShoeNote';
+import { resumeSpoken } from '../resumeCopy';
+import { BetCircle } from '../components/BetCircle';
+import { chipMoney, dollars as chipDollars, onFeltAfter, pullBackLine } from '../chips';
 
 /** B5/W4: the row's card slots and fixed chrome, for cardSize.css's clamp. */
 function feltStyle(row: FeltRow): CSSProperties {
@@ -486,6 +491,8 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange, k
     game,
     losingShoe,
     hotShoe,
+    resumed,
+    newShoe,
     deal,
     act,
     insure,
@@ -1137,6 +1144,21 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange, k
    */
   const [eyesFreeSwitch] = useEyesFreeToggle('table');
   const eyesFree = eyesFreeSwitch || voiceOn;
+
+  // Track 3: a resumed shoe says so once, eyes-free, before anything is dealt.
+  const resumeSaidRef = useRef(false);
+  useEffect(() => {
+    if (!resumed || resumeSaidRef.current || !eyesFree || !settings.audio.enabled) return;
+    if (game.roundNo !== resumed.roundNo || game.phase === 'player') return;
+    resumeSaidRef.current = true;
+    audio.say(resumeSpoken(resumed));
+  });
+  const tabSettings = useTabSettings();
+  /** Track 3: the resumed shoe is not wanted -- close its session and deal a new table. */
+  const handleNewShoe = () => {
+    newShoe();
+    tabSettings?.applyProfile(null);
+  };
   // B9: an eyes-free table holds the screen awake for itself. The only hold
   // here was useVoiceControl's, taken while a microphone window is open, so
   // between windows (narration, a dealer round, a pause between shoes) the
@@ -1242,6 +1264,22 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange, k
         : correctPlay(activeHand.cards, game.dealerCards[0].rank, game.trueCountNow, ctx, rules, game.runningCount).action;
   }
 
+  // Track 3: Show chips -- bets and payouts in dollars at the profile's unit (ui/chips.ts).
+  const chips = chipMoney(settings, activeProfile);
+  const chipsLine = (): { unit: number; pullBack: string | null } | undefined => {
+    if (!chips) return undefined;
+    if (game.phase !== 'settled') return { unit: chips.unit, pullBack: null };
+    // The next round's stake, as handleDeal will deal it (game.cfg: what the table was dealt with).
+    const nextUnits = !game.isIn
+      ? 0
+      : !game.cfg.betSpreadOn
+        ? playerHandsCount
+        : game.spreadsHands
+          ? spreadHands * (selectedBets[0] ?? 1)
+          : selectedBets.slice(0, playerHandsCount).reduce((a, b) => a + b, 0);
+    return { unit: chips.unit, pullBack: pullBackLine(onFeltAfter(game.hands, chips.unit), nextUnits * chips.unit) };
+  };
+
   let barMode: ActionBarMode;
   if (rewind !== null || countVerdict?.held) {
     // Wave X (item 2): the Rewind sheet -- or, fix round 1, the held deal's
@@ -1264,6 +1302,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange, k
         }))
         .reverse(),
       onDeal: handleDeal,
+      ...(chips ? { money: chipsLine() } : {}),
       // Wong-out only makes sense against a spread (the same gate the engine
       // uses to grade it); a flat-bet table hides the Sit Out button entirely.
       inOut: { isIn: game.isIn, onSet: setIn, locked: losingShoe },
@@ -1423,7 +1462,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange, k
     >
       <div className="topbar">
         <div className="topbar-stat">
-          Bankroll: {game.bankroll}
+          Bankroll: {chips ? chipDollars(game.bankroll * chips.unit) : game.bankroll}
           <span className="topbar-profile-name" style={{ marginLeft: 6, fontSize: '0.7em', opacity: 0.65 }}>
             {activeProfile.name}
           </span>
@@ -1476,6 +1515,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange, k
           Hot shoe &middot; bankroll not kept
         </div>
       )}
+      {resumed && <ResumedShoeNote facts={resumed} onNewShoe={handleNewShoe} />}
 
       {voiceOn && (
         <VoiceStatusBar
@@ -1598,8 +1638,12 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange, k
                 />
               ))}
             </div>
-            {/* s06: a doubled hand has twice its bet riding on it. */}
-            <div className="hand-bet">Bet: {hand.doubled ? hand.bet * 2 : hand.bet}</div>
+            {/* s06: a doubled hand has twice its bet riding on it. Track 3: in chips, the circle. */}
+            {chips ? (
+              <BetCircle hand={hand} unit={chips.unit} />
+            ) : (
+              <div className="hand-bet">Bet: {hand.doubled ? hand.bet * 2 : hand.bet}</div>
+            )}
           </div>
         ))}
       </div>

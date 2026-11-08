@@ -175,4 +175,21 @@ export class Shoe {
     this.cards = this.buildShoe();
     this.cutPosition = this.placeCut();
   }
+
+  /** Track 3 (table resume): the cards still to come, in dealing order (a copy). */
+  get upcoming(): Card[] {
+    return this.cards.map((c) => ({ ...c }));
+  }
+
+  /**
+   * Track 3 (table resume): put this shoe back where a saved one stood -- the
+   * cards still to come, in order, how many were dealt, and where the cut card
+   * sits. The shoe keeps its own shuffle stream, cut rule and order for the
+   * shoes after this one.
+   */
+  restore(state: { upcoming: readonly Card[]; dealt: number; cut: number }): void {
+    this.cards = state.upcoming.map((c) => ({ ...c }));
+    this.cardsDealtCount = state.dealt;
+    this.cutPosition = state.cut;
+  }
 }

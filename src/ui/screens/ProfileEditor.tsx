@@ -33,6 +33,7 @@ import {
 import { syncPenetration } from '../profileOptions';
 import { DealSpeedControl, DealerControls, LosingShoeControl, PlayDepthControl } from '../components/TableControls';
 import { useTabSettings } from '../tabSettingsContext';
+import { showChipsNote } from '../chips';
 
 interface ProfileEditorProps {
   onNavigate: (screen: Screen) => void;
@@ -666,6 +667,15 @@ function ProfileEditForm({
             value={draft.unitDollars}
             onChange={(v) => update({ unitDollars: v })}
           />
+          {/* Track 3: a display setting (every profile), saved at once like deal speed -- never a new shoe. */}
+          {tab && (
+            <Toggle
+              label="Show chips"
+              checked={tab.settings.showChips === true}
+              onChange={(v) => updateSettings({ showChips: v })}
+            />
+          )}
+          {tab && <p className="stats-detail" data-testid="show-chips-note">{showChipsNote(draft.unitDollars)}</p>}
       </CollapsibleSection>
 
       {draft.betSpreadOn && (

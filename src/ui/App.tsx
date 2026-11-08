@@ -36,6 +36,7 @@ import { setRoutePreferences } from '../audio/audioRoute';
 import { useActivityLive } from './activityLive';
 import { mayLeave } from './leaveGuard';
 import { noteNavigation } from './tableKeep';
+import { clearSavedTable } from './tableResumeSlot';
 import { lazyScreen, preloadWhenIdle } from './lazyScreen';
 
 // F11 (W2-24): rarely opened screens, each its own chunk (see lazyScreen.ts).
@@ -380,6 +381,9 @@ function App() {
     },
     activeProfile,
     applyProfile: (patch) => {
+      // Track 3: a new table is asked for, so the saved one is not resumed
+      // (cleared before the new table's first render reads the disk).
+      clearSavedTable();
       if (patch) patchActiveProfile(patch);
       setActiveProfileState(getActiveProfile());
       setTableEpoch((e) => e + 1);

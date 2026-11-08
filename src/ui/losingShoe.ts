@@ -28,14 +28,14 @@ export interface PlayGame {
   game: Game;
   /** Script round boundaries for a losing shoe; null for a fair shoe. */
   boundaries: number[] | null;
+  /** Track 3: the seed the losing shoe's script was built from, so a resumed table rebuilds the same script. */
+  scriptSeed?: number;
 }
 
-export function makePlayGame(cfg: GameConfig, losingShoe: boolean): PlayGame {
+export function makePlayGame(cfg: GameConfig, losingShoe: boolean, scriptSeed?: number): PlayGame {
   if (!losingShoe) return { game: new Game(cfg), boundaries: null };
-  const script = buildDownswingScript(
-    LOSING_SHOE_ROUNDS,
-    cfg.seed ?? Math.floor(Math.random() * 0x7fffffff),
-  );
+  const seed = scriptSeed ?? cfg.seed ?? Math.floor(Math.random() * 0x7fffffff);
+  const script = buildDownswingScript(LOSING_SHOE_ROUNDS, seed);
   // The cut card sits exactly on the last scripted round, so the shoe
   // shuffles (restocking the same script from the top, whose boundaries
   // therefore stay valid, and resetting the count) instead of dealing the
@@ -56,7 +56,7 @@ export function makePlayGame(cfg: GameConfig, losingShoe: boolean): PlayGame {
     },
     script.cards,
   );
-  return { game, boundaries: script.boundaries };
+  return { game, boundaries: script.boundaries, scriptSeed: seed };
 }
 
 /**

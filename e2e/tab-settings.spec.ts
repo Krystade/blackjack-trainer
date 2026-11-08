@@ -205,16 +205,18 @@ test('All settings and back resumes the same shoe, under one session', async ({ 
   expect(after.sessions[0]!.rounds).toBe(2);
 });
 
-test('Settings then anywhere but the table drops the kept shoe', async ({ page }) => {
+test('Settings then anywhere but the table: the in-memory shoe is dropped, the saved one comes back', async ({ page }) => {
   await openTable(page);
   await playOneRound(page);
   await page.getByRole('button', { name: 'Play settings' }).click();
   await page.getByRole('dialog', { name: 'Play settings' }).getByRole('button', { name: 'All settings' }).click();
-  // Not the round trip that promised to come back: a fresh table, as ever.
+  // Not the round trip that promised to come back -- but Track 3 (2026-11-07)
+  // keeps the table on disk across every exit but End, so it is resumed.
   const tabs = page.locator('.tab-bar');
   await tabs.getByRole('button', { name: 'Home', exact: true }).click();
   await tabs.getByRole('button', { name: 'Play', exact: true }).click();
-  await expect(roundStat(page)).toHaveText('Round 0');
+  await expect(roundStat(page)).toHaveText('Round 1');
+  await expect(page.getByTestId('resumed-shoe-note')).toContainText('Shoe resumed after round 1');
 });
 
 test('Settings opened from Home still says Back to Home', async ({ page }) => {

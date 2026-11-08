@@ -120,6 +120,11 @@ describe('answers', () => {
     expect(betSizingWorking({ rc: -6, cardsDealt: 156, totalDecks: 6 }, base)).toBe('RC −6 ÷ 3 decks → TC −2 → Sit');
     expect(betSizingWorking({ rc: 2, cardsDealt: 260, totalDecks: 6 }, base)).toBe('RC +2 ÷ 1 deck → TC +2 → 4u');
   });
+  it('Track 3: a label names the rung its own way (Show chips: units and dollars)', () => {
+    const label = (a: number | 'sit') => (a === 'sit' ? 'Sit' : `${a}u · $${a * 25}`);
+    expect(betSizingWorking({ rc: 7, cardsDealt: 182, totalDecks: 6 }, base, label)).toBe('RC +7 ÷ 2.5 decks → TC +2 → 4u · $100');
+    expect(betSizingWorking({ rc: -6, cardsDealt: 156, totalDecks: 6 }, base, label)).toBe('RC −6 ÷ 3 decks → TC −2 → Sit');
+  });
 });
 
 describe('makeBetSizingScenario', () => {

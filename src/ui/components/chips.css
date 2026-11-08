@@ -1,0 +1,212 @@
+/* Track 3: casino chips (ui/chips.ts). Physical objects, so the same colours in
+   every theme: opaque fills, an opaque edge ring and a dark outline, so the
+   black chip still reads on amoled-night and the white one on bone-ink. */
+:root {
+  --chip-1000: #e3b21f;
+  --chip-1000-edge: #6b4c00;
+  --chip-1000-ink: #2a1d00;
+  --chip-500: #6a3d9e;
+  --chip-500-edge: #f4f0e6;
+  --chip-500-ink: #ffffff;
+  --chip-100: #1d1d20;
+  --chip-100-edge: #f4f0e6;
+  --chip-100-ink: #ffffff;
+  --chip-25: #2b8a4c;
+  --chip-25-edge: #f4f0e6;
+  --chip-25-ink: #ffffff;
+  --chip-5: #c62f2a;
+  --chip-5-edge: #f4f0e6;
+  --chip-5-ink: #ffffff;
+  --chip-2_5: #ea8fb6;
+  --chip-2_5-edge: #ffffff;
+  --chip-2_5-ink: #3d0f22;
+  --chip-1: #f2eee4;
+  --chip-1-edge: #2c5fae;
+  --chip-1-ink: #1b2b45;
+  --chip-0_5: #c3c6cb;
+  --chip-0_5-edge: #8d9097;
+  --chip-0_5-ink: #23252a;
+  --chip-outline: #0c0c0d;
+}
+
+/* One denomination's colours, set on any element carrying data-chip. */
+[data-chip='1000'] { --c: var(--chip-1000); --c-edge: var(--chip-1000-edge); --c-ink: var(--chip-1000-ink); }
+[data-chip='500'] { --c: var(--chip-500); --c-edge: var(--chip-500-edge); --c-ink: var(--chip-500-ink); }
+[data-chip='100'] { --c: var(--chip-100); --c-edge: var(--chip-100-edge); --c-ink: var(--chip-100-ink); }
+[data-chip='25'] { --c: var(--chip-25); --c-edge: var(--chip-25-edge); --c-ink: var(--chip-25-ink); }
+[data-chip='5'] { --c: var(--chip-5); --c-edge: var(--chip-5-edge); --c-ink: var(--chip-5-ink); }
+[data-chip='2.5'] { --c: var(--chip-2_5); --c-edge: var(--chip-2_5-edge); --c-ink: var(--chip-2_5-ink); }
+[data-chip='1'] { --c: var(--chip-1); --c-edge: var(--chip-1-edge); --c-ink: var(--chip-1-ink); }
+[data-chip='0.5'] { --c: var(--chip-0_5); --c-edge: var(--chip-0_5-edge); --c-ink: var(--chip-0_5-ink); }
+
+/* ---------- A stack: one column per denomination, seen from the side ---------- */
+.chip-stack {
+  --chip-w: 22px;
+  --chip-t: 4px;
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  vertical-align: bottom;
+}
+
+.chip-stack-sm {
+  --chip-w: 15px;
+  --chip-t: 3px;
+}
+
+.chip-col {
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: center;
+  position: relative;
+}
+
+/* A chip's edge: the colour broken by the light stripes every casino chip has. */
+.chip-edge {
+  width: var(--chip-w);
+  height: var(--chip-t);
+  box-sizing: border-box;
+  margin-top: -1px;
+  border-radius: 2px;
+  border: 1px solid var(--chip-outline);
+  background: repeating-linear-gradient(
+    90deg,
+    var(--c) 0 calc(var(--chip-w) / 5),
+    var(--c-edge) calc(var(--chip-w) / 5) calc(var(--chip-w) / 5 + 3px)
+  );
+}
+
+/* The top chip's face, seen at an angle. */
+.chip-face {
+  width: var(--chip-w);
+  height: calc(var(--chip-w) * 0.5);
+  box-sizing: border-box;
+  margin-bottom: -2px;
+  border-radius: 50%;
+  border: 2px dashed var(--c-edge);
+  background: var(--c);
+  box-shadow: 0 0 0 1px var(--chip-outline);
+  position: relative;
+  z-index: 1;
+}
+
+.chip-col[data-chip='0.5'] .chip-face {
+  border-style: solid;
+  width: calc(var(--chip-w) * 0.75);
+  height: calc(var(--chip-w) * 0.38);
+}
+
+.chip-col[data-chip='0.5'] .chip-edge {
+  width: calc(var(--chip-w) * 0.75);
+  background: var(--c);
+}
+
+.chip-more {
+  position: absolute;
+  top: -1.05em;
+  font-size: var(--fs-2xs);
+  font-weight: 700;
+  color: var(--ink-dim);
+  white-space: nowrap;
+}
+
+/* ---------- The betting circle on the felt ---------- */
+.hand-bet.bet-circle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  min-height: 32px;
+  color: var(--ink-dim);
+}
+
+.bet-circle-ring {
+  display: inline-flex;
+  align-items: flex-end;
+  justify-content: center;
+  min-width: 34px;
+  min-height: 26px;
+  padding: 2px 4px 3px;
+  box-sizing: border-box;
+  border: 1.5px solid var(--line);
+  border-radius: 999px;
+}
+
+.bet-circle-paid {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 0.2rem;
+}
+
+.bet-circle-label {
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.bet-circle[data-outcome='win'] .bet-circle-label,
+.bet-circle[data-outcome='blackjack'] .bet-circle-label {
+  color: var(--good);
+  font-weight: 700;
+}
+
+.bet-circle[data-outcome='lose'] .bet-circle-label {
+  color: var(--bad);
+}
+
+/* ---------- Dollar chips in the bet bar ---------- */
+.chip-btn.chip-money {
+  background: var(--c);
+  color: var(--c-ink);
+  border: 3px dashed var(--c-edge);
+  box-shadow: 0 0 0 1px var(--chip-outline);
+  font-size: var(--fs-xs);
+  letter-spacing: -0.02em;
+  padding: 0;
+}
+
+.chip-btn.chip-money.chip-selected {
+  background: var(--c);
+  color: var(--c-ink);
+  border-color: var(--c-edge);
+  box-shadow:
+    0 0 0 1px var(--chip-outline),
+    0 0 0 4px var(--accent);
+  transform: translateY(-2px);
+}
+
+.bet-pullback {
+  margin: 0 max(0.75rem, env(safe-area-inset-left)) 0.35rem;
+  font-size: var(--fs-xs);
+  color: var(--ink-dim);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.bet-pullback strong {
+  color: var(--ink);
+}
+
+/* ---------- Bet sizing: a rung in chips and dollars ---------- */
+.bet-sizing-answers .bet-sizing-btn--chips {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 4px 2px;
+  min-height: 64px;
+  font-size: var(--fs-sm);
+}
+
+.bet-sizing-dollars {
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.bet-sizing-units {
+  font-size: var(--fs-2xs);
+  font-weight: 500;
+  color: var(--ink-dim);
+  line-height: 1;
+}

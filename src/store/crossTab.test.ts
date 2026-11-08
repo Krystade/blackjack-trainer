@@ -181,6 +181,11 @@ describe('OWNED_KEYS', () => {
     'bjtrainer.chartIntro.v1': 'one-shot seen flag, read once on mount',
     // Bounded to one challenge in one tab and cleared when it ends.
     'bjtrainer.masteryrun.v1': 'single in-flight challenge, cleared on finish',
+    // Track 3: the open Play table, written at each round boundary and read
+    // once when Play mounts. A table belongs to the tab dealing it; another
+    // tab's write must not move this one's shoe.
+    'bjtrainer.tableResume.v1': 'one open table, read once on Play mount',
+    'bjtrainer.tableRound.v1': 'the round in flight, burned on resume',
     // A half-typed note, written on every keystroke so a reload or an iOS
     // kill cannot eat it. NOT one box in one tab -- the run itself is synced,
     // so two tabs can sit on the same step with a box each. It is excluded

@@ -13,7 +13,8 @@ import { hotShoeActive } from '../engine/shoeBias';
 import { playConfigFor } from './playConfig';
 import { datedSessionEvents } from './sessionEvents';
 import { makePlayGame, realignLosingShoe, type PlayGame } from './losingShoe';
-import { dropKeptTable, offerKeptTable, peekKeptTable } from './tableKeep';
+import { dropKeptTable, offerKeptTable, peekKeptTable, type KeptSession } from './tableKeep';
+import { clearSavedTable, resumeKeyFor, saveCutOff, saveTable, takeSavedTable } from './tableResume';
 import type { AudioApi } from '../audio/useAudio';
 import { lockstepTell, type BetRound, type LockstepTell } from '../engine/coverBets';
 import { mistakeUnits } from './reportSections';
@@ -367,7 +368,18 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi, k
   // way home (ui/tableKeep.ts). Read on every render but used only by the
   // first, as every useRef initial value below is.
   const kept = keepKey === undefined ? null : peekKeptTable(keepKey);
+  // Track 3: or the table this profile left on disk -- after iOS evicted the
+  // page, or any exit but End (ui/tableResume.ts). Read only while the ref is
+  // still empty, so only a mount's render ever builds it.
+  const resumeKey = resumeKeyFor(profile, settings.losingShoe === true);
   const playRef = useRef<PlayGame | null>(kept?.playGame ?? null);
+  const resumedRef = useRef<ReturnType<typeof takeSavedTable> | undefined>(undefined);
+  if (playRef.current === null && resumedRef.current === undefined) {
+    resumedRef.current = keepKey === undefined ? null : takeSavedTable(profile, settings.losingShoe === true, Date.now());
+    if (resumedRef.current) playRef.current = resumedRef.current.playGame;
+  }
+  const resumedTable = resumedRef.current ?? null;
+  const start: { session: KeptSession } | null = kept ?? resumedTable;
   if (playRef.current === null) {
     // #42: the bankroll carries over from the last session on this profile.
     const cfg = playConfigFor(profile, resumeBankroll(profile), readSeed());
@@ -394,20 +406,26 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi, k
    * disagree. End finalises the same row. F22: nothing is written before the
    * first round.
    */
-  const committedRef = useRef(kept?.session.committed ?? 0);
+  const committedRef = useRef(start?.session.committed ?? 0);
   /** Wave L: side-bet decisions committed to Stats so far (as `committedRef`). */
-  const sideCommittedRef = useRef(kept?.session.sideCommitted ?? 0);
-  const sessionIdRef = useRef<string | null>(kept?.session.id ?? null);
+  const sideCommittedRef = useRef(start?.session.sideCommitted ?? 0);
+  const sessionIdRef = useRef<string | null>(start?.session.id ?? null);
   sessionIdRef.current ??= newSessionId();
   /** R7: peek reveals this session, counted here so the provisional row has them. */
-  const peeksRef = useRef(kept?.session.peeks ?? 0);
+  const peeksRef = useRef(start?.session.peeks ?? 0);
   const notePeek = useCallback(() => {
     peeksRef.current += 1;
   }, []);
   /** F5: decisions taken with the dealer-pace clock running, this session. */
-  const pacedRef = useRef(kept?.session.paced ?? 0);
-  /** What the last row write described, so an unchanged render writes nothing. */
-  const rowKeyRef = useRef('');
+  const pacedRef = useRef(start?.session.paced ?? 0);
+  /** What a row write describes (persistSession), so an unchanged render writes nothing. */
+  const rowKeyOf = (final: boolean): string => {
+    const t = game.dealerErrorTally;
+    return `${game.roundNo}|${game.events.length}|${game.bankroll}|${peeksRef.current}|${t.made}/${t.caught}/${t.falseCalls}|${game.dealerMistakesTrainingUsed}|${game.sideDecisions.length}/${game.sideTally.net}|${final}`;
+  };
+  /** What the last row write described. Track 3: a resumed or kept table's row
+   * is already written as it stands, so it is not re-dated by opening Play. */
+  const rowKeyRef = useRef(start ? rowKeyOf(false) : '');
   /** End has finalised the row; nothing may turn it provisional again. */
   const endedRef = useRef(false);
   const profileName = profile.name;
@@ -419,10 +437,9 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi, k
     (final: boolean) => {
       if (game.roundNo === 0 || endedRef.current) return;
       const fresh = game.events.length > committedRef.current;
-      const t = game.dealerErrorTally;
       const side = game.cfg.sideBet;
       const freshSide = side !== undefined && game.sideDecisions.length > sideCommittedRef.current;
-      const key = `${game.roundNo}|${game.events.length}|${game.bankroll}|${peeksRef.current}|${t.made}/${t.caught}/${t.falseCalls}|${game.dealerMistakesTrainingUsed}|${game.sideDecisions.length}/${game.sideTally.net}|${final}`;
+      const key = rowKeyOf(final);
       if (!fresh && !freshSide && key === rowKeyRef.current) return;
       const now = new Date().toISOString();
       let stats = loadStats();
@@ -470,6 +487,8 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi, k
       if (final) endedRef.current = true;
       saveStats(stats);
     },
+    // rowKeyOf reads only `game` and refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [game, profileId, profileName, hotShoe],
   );
 
@@ -484,14 +503,53 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi, k
    * events, so the stored bankroll and the stored stats always describe the
    * same rounds. An insurance loss mid-round is stored when the round settles.
    */
-  const storedBankrollRef = useRef(kept?.session.storedBankroll ?? game.bankroll);
+  const storedBankrollRef = useRef(start?.session.storedBankroll ?? game.bankroll);
+
+  /**
+   * Track 3 (ui/tableResume.ts): the table on disk, written after the round's
+   * stats and bankroll, so a resumed session neither re-applies nor loses a
+   * committed event. A no-op mid-round, with a check open, or once ended.
+   */
+  const sessionNow = (): KeptSession => ({
+    id: sessionIdRef.current!,
+    committed: committedRef.current,
+    sideCommitted: sideCommittedRef.current,
+    peeks: peeksRef.current,
+    paced: pacedRef.current,
+    storedBankroll: storedBankrollRef.current,
+  });
+  const resumeSaveKey = (): string =>
+    `${rowKeyOf(false)}|${committedRef.current}|${storedBankrollRef.current}|${game.isIn}|${game.sideOn}|${game.foulVerdict !== null}|${game.countCheckDue}|${pacedRef.current}`;
+  // A table taken back is on disk as it stands: the first write waits for a
+  // change, so a restore that crashes on its next deal is still "unsaved"
+  // (tableResume.noteCrash) and is not restored into the same crash again.
+  const savedKeyRef = useRef(start ? resumeSaveKey() : '');
+  const saveResume = (force: boolean): void => {
+    if (endedRef.current || keepKey === undefined) return;
+    const key = resumeSaveKey();
+    if (!force && key === savedKeyRef.current) return;
+    if (saveTable({ playGame, session: sessionNow(), key: resumeKey, now: Date.now() })) savedKeyRef.current = key;
+  };
+  /** Mid-round: what has been shown so far, so a round the page dies in is burned, not dealt again. */
+  const cutOffKeyRef = useRef('');
+  const saveRoundSoFar = (): void => {
+    if (endedRef.current || keepKey === undefined || game.roundNo <= 1) return;
+    const key = `${game.roundNo}|${game.shoe.cardsDealt}|${game.runningCount}`;
+    if (key === cutOffKeyRef.current) return;
+    if (saveCutOff(game, sessionIdRef.current!, Date.now())) cutOffKeyRef.current = key;
+  };
+
   useEffect(() => {
-    if (game.phase === 'player' || game.phase === 'insurance') return;
+    if (game.phase === 'player' || game.phase === 'insurance') {
+      saveRoundSoFar();
+      return;
+    }
     persistSession(false);
-    if (hotShoe) return;
-    if (game.bankroll === storedBankrollRef.current) return;
-    storedBankrollRef.current = game.bankroll;
-    storeBankrollNow(profileId, game.bankroll);
+    if (!hotShoe && game.bankroll !== storedBankrollRef.current) {
+      storedBankrollRef.current = game.bankroll;
+      storeBankrollNow(profileId, game.bankroll);
+    }
+    saveResume(false);
   });
 
   /**
@@ -501,6 +559,8 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi, k
    */
   useEffect(() => {
     dropKeptTable();
+    // Track 3: a new table (nothing kept, nothing resumed) owns the disk slot.
+    if (!start && keepKey !== undefined) clearSavedTable();
     return () => {
       if (keepKey === undefined || endedRef.current || game.roundNo === 0) return;
       offerKeptTable({
@@ -947,6 +1007,8 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi, k
       // F1: the answer is graded now; commit it before the next deal starts
       // a round whose events wait for its settle.
       persistSession(false);
+      // Track 3: and the table with it, before that deal moves it mid-round.
+      saveResume(true);
       if (!hold) {
         pendingDealRef.current = null;
         runPendingDeal(pending);
@@ -958,6 +1020,8 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi, k
       const held = hold ? { held: true, withheld: true } : {};
       return { endNow: pending?.kind === 'end', check: { ...result, rcGuess: rc, tcGuess, round: roundAtCheck + 1, ...rewind, ...held } };
     },
+    // saveResume reads only refs and what is fixed for the mount (game, keys).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [game, bump, audio, persistSession, runPendingDeal],
   );
 
@@ -981,6 +1045,8 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi, k
     // G2: no deal follows End, so an error still uncalled is missed now.
     game.closeDealerError();
     persistSession(true);
+    // Track 3: an ended session is not resumed.
+    clearSavedTable();
     const events = game.events;
     const bankrollDelta = game.bankroll - game.cfg.bankrollStart;
     storedBankrollRef.current = game.bankroll;
@@ -996,10 +1062,33 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi, k
     return rep;
   }, [game, profileId, persistSession, hotShoe]);
 
+  /**
+   * Track 3: the resumed shoe is not wanted. The session ends as End ends it
+   * (its row final, the bankroll kept) but without a report, and nothing is
+   * left on disk; the caller then asks App for a new table.
+   */
+  const newShoe = useCallback((): void => {
+    if (game.roundNo > 0) {
+      game.closeDealerError();
+      persistSession(true);
+      storedBankrollRef.current = game.bankroll;
+      if (!hotShoe) storeBankrollNow(profileId, game.bankroll);
+    }
+    endedRef.current = true;
+    clearSavedTable();
+  }, [game, persistSession, hotShoe, profileId]);
+
+  /** Track 3: set when this mount took its table back from disk. */
+  const resumed = resumedTable
+    ? { roundNo: resumedTable.roundNo, savedAt: resumedTable.savedAt, cutOff: resumedTable.cutOff }
+    : null;
+
   return {
     game,
     losingShoe,
     hotShoe,
+    resumed,
+    newShoe,
     deal,
     sitOut,
     setIn,

@@ -15,3 +15,13 @@ describe('betVerdictText (B2 #19: the strip says what you tapped)', () => {
     expect(betVerdictText('sit', 'sit', true)).toBe('Correct — Sit');
   });
 });
+
+describe('Track 3: Show chips names the rungs in dollars', () => {
+  const at25 = (a: number | 'sit') => (a === 'sit' ? 'Sit' : `$${a * 25}`);
+  it('the label replaces the units on both sides, sitting stays Sit', () => {
+    expect(betVerdictText(1, 'sit', false, at25)).toBe('You bet $25 · Right Sit');
+    expect(betVerdictText(8, 4, false, at25)).toBe('You bet $200 · Right $100');
+    expect(betVerdictText(4, 4, true, at25)).toBe('Correct — $100');
+    expect(betVerdictText('sit', 4, false, at25)).toBe('You sat out · Right $100');
+  });
+});

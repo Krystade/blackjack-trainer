@@ -1815,4 +1815,210 @@ export class Game {
         ask === 'true' || ask === 'both' || (ask === 'alternate' && this.countCheckPromptCount % 2 === 0);
     }
   }
+
+  // ---- Track 3: table resume (ui/tableResume.ts) ----
+
+  /** The shoe as plain data: a fair shoe's cards to come, or how far a rigged script was dealt. */
+  private shoeResume(): ResumeShoe {
+    if (this.shoeIsRigged) return { kind: 'rigged', dealt: this.shoe.cardsDealt };
+    return { kind: 'fair', upcoming: this.shoe.upcoming, dealt: this.shoe.cardsDealt, cut: this.shoe.cutCardPosition };
+  }
+
+  private restoreShoe(s: ResumeShoe): void {
+    if (s.kind === 'rigged') {
+      if (!this.shoeIsRigged) throw new Error('a rigged shoe resumes only on a rigged game');
+      // The script restocks from its top; then bin what this pass had dealt.
+      this.shoe.shuffle();
+      this.discardRiggedCards(s.dealt);
+      return;
+    }
+    if (this.shoeIsRigged) throw new Error('a fair shoe resumes only on a fair game');
+    this.shoe.restore(s);
+  }
+
+  /** The count as plain data: Hi-Lo, the Rewind trail and the side count. */
+  private countResume(): ResumeCount {
+    return {
+      runningCount: this.runningCount,
+      trail: this.trail.map((c) => ({ ...c })),
+      sideRanks: [...this.sideCounter.ranks],
+      sideSuits: [...this.sideCounter.suits],
+    };
+  }
+
+  private restoreCount(c: ResumeCount): void {
+    this.runningCount = c.runningCount;
+    this.trail = c.trail.map((x) => ({ ...x }));
+    this.sideCounter.ranks.set(c.sideRanks.slice(0, 13));
+    this.sideCounter.suits.set(c.sideSuits.slice(0, 4));
+  }
+
+  /** Between rounds (idle, or settled with no check being asked): what `toResume` may take. */
+  get resumable(): boolean {
+    return (this.phase === 'idle' || this.phase === 'settled') && !this.countCheckOpen;
+  }
+
+  /**
+   * Track 3: this table between rounds, as plain data. Throws mid-round or
+   * while a check is being asked -- the save path checks `resumable` first.
+   */
+  toResume(): GameResumeState {
+    if (!this.resumable) throw new Error('toResume is only valid between rounds');
+    const copy = <T>(v: T): T => structuredClone(v);
+    return {
+      phase: this.phase as 'idle' | 'settled',
+      shoe: this.shoeResume(),
+      ...this.countResume(),
+      dealerCards: copy(this.dealerCards),
+      holeRevealed: this.holeRevealed,
+      seats: copy(this.seats),
+      playerSeatIndex: this.playerSeatIndex,
+      active: this._active,
+      bankroll: this.bankroll,
+      roundNo: this.roundNo,
+      handsPlayed: this.handsPlayed,
+      events: copy(this.events),
+      countCheckDue: this.countCheckDue,
+      askRc: this.askRc,
+      askTcToo: this.askTcToo,
+      countCheckPromptCount: this.countCheckPromptCount,
+      shuffledLastRound: this.shuffledLastRound,
+      insuranceNet: this.insuranceNet,
+      dealerError: copy(this.dealerError),
+      foulVerdict: copy(this.foulVerdict),
+      missedDealerError: copy(this.missedDealerError),
+      dealerErrorTally: { ...this.dealerErrorTally },
+      dealerMistakesUsed: this.dealerMistakesUsed,
+      dealerMistakesTrainingUsed: this.dealerMistakesTrainingUsed,
+      toggleIn: this.toggleIn,
+      lastIn: this.lastIn,
+      sideOn: this.sideOn,
+      sideDecisions: copy(this.sideDecisions),
+      sideTally: { ...this.sideTally },
+    };
+  }
+
+  /**
+   * Track 3: take back a state `toResume` gave, on a game built from the same
+   * config. The random streams (bots, dealer errors, later shuffles) start
+   * afresh; nobody can tell which shoe would have come next. Nothing is
+   * re-narrated or re-animated, and an owed check is asked at the next deal.
+   */
+  restoreResume(s: GameResumeState): void {
+    const copy = <T>(v: T): T => structuredClone(v);
+    this.restoreShoe(s.shoe);
+    this.restoreCount(s);
+    this.phase = s.phase;
+    this.dealerCards = copy(s.dealerCards);
+    this.holeRevealed = s.holeRevealed;
+    this.seats = copy(s.seats);
+    this.playerSeatIndex = s.playerSeatIndex;
+    this._active = s.active;
+    this.bankroll = s.bankroll;
+    this.roundNo = s.roundNo;
+    this.handsPlayed = s.handsPlayed;
+    this.events = copy(s.events);
+    this.countCheckDue = s.countCheckDue;
+    this.countCheckOpen = false;
+    this.askRc = s.askRc;
+    this.askTcToo = s.askTcToo;
+    this.countCheckPromptCount = s.countCheckPromptCount;
+    this.shuffledLastRound = s.shuffledLastRound;
+    this.insuranceNet = s.insuranceNet;
+    this.dealerError = copy(s.dealerError);
+    this.foulVerdict = copy(s.foulVerdict);
+    this.missedDealerError = copy(s.missedDealerError);
+    this.dealerErrorTally = { ...s.dealerErrorTally };
+    this.dealerMistakesUsed = s.dealerMistakesUsed;
+    this.dealerMistakesTrainingUsed = s.dealerMistakesTrainingUsed;
+    this.toggleIn = s.toggleIn;
+    this.lastIn = s.lastIn;
+    this.sideOn = s.sideOn;
+    this.sideDecisions = copy(s.sideDecisions);
+    this.sideTally = { ...s.sideTally };
+    this.sideOpen = null;
+    this.sidePlayerCards = null;
+    this.botActionLog = [];
+    this.dealOrder = [];
+  }
+
+  /** Track 3: mid-round, the shoe and the count of exactly the cards shown so far. */
+  cutOffRecord(): CutOffRound {
+    return { round: this.roundNo, shoe: this.shoeResume(), ...this.countResume() };
+  }
+
+  /**
+   * Track 3: the page died during round `rec.round`. Its cards are burned --
+   * the ones shown stay counted, the rest are gone unseen, as a dealer's
+   * discards are -- and the round itself is void: no bet, no decisions, an
+   * empty felt. An error left uncalled on the round before was missed when
+   * this round was dealt, so it is graded missed here too.
+   */
+  voidCutOffRound(rec: CutOffRound): void {
+    if (!this.resumable) throw new Error('voidCutOffRound is only valid between rounds');
+    this.missedDealerError = this.closeDealerError();
+    this.foulVerdict = null;
+    this.restoreShoe(rec.shoe);
+    this.restoreCount(rec);
+    this.phase = 'idle';
+    this.dealerCards = [];
+    this.holeRevealed = false;
+    this.seats = this.seats.map((s) => ({ ...s, hands: [] }));
+    this._active = 0;
+    this.insuranceNet = null;
+    this.shuffledLastRound = false;
+    this.botActionLog = [];
+    this.dealOrder = [];
+  }
+}
+
+/** Track 3: a shoe as plain data (see Game#toResume). */
+export type ResumeShoe =
+  | { kind: 'fair'; upcoming: Card[]; dealt: number; cut: number }
+  | { kind: 'rigged'; dealt: number };
+
+/** Track 3: the count as plain data. */
+export interface ResumeCount {
+  runningCount: number;
+  trail: Card[];
+  sideRanks: number[];
+  sideSuits: number[];
+}
+
+/** Track 3: a round cut off mid-play (see Game#voidCutOffRound). */
+export interface CutOffRound extends ResumeCount {
+  round: number;
+  shoe: ResumeShoe;
+}
+
+/** Track 3: a table between rounds, as plain data (see Game#toResume). */
+export interface GameResumeState extends ResumeCount {
+  phase: 'idle' | 'settled';
+  shoe: ResumeShoe;
+  dealerCards: Card[];
+  holeRevealed: boolean;
+  seats: Seat[];
+  playerSeatIndex: number;
+  active: number;
+  bankroll: number;
+  roundNo: number;
+  handsPlayed: number;
+  events: GradedEvent[];
+  countCheckDue: boolean;
+  askRc: boolean;
+  askTcToo: boolean;
+  countCheckPromptCount: number;
+  shuffledLastRound: boolean;
+  insuranceNet: number | null;
+  dealerError: DealerError | null;
+  foulVerdict: FoulVerdict | null;
+  missedDealerError: DealerError | null;
+  dealerErrorTally: DealerErrorTally;
+  dealerMistakesUsed: boolean;
+  dealerMistakesTrainingUsed: boolean;
+  toggleIn: boolean;
+  lastIn: boolean;
+  sideOn: boolean;
+  sideDecisions: SideBetDecision[];
+  sideTally: SideTally;
 }

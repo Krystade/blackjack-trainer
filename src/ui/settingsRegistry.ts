@@ -103,6 +103,10 @@ export const SETTINGS_REGISTRY: readonly SettingEntry[] = [
     'countPaceRamp',
   ].map((k) => p(`settings.drill.${k}`, null, 'drill')),
   p('settings.drill.shotClockMs', null, 'drill', ['drills']),
+
+  // ---- Added 2026-11-07 (appended, D10) ----
+  // Track 3: My system > Bankroll, beside $ per unit; Track 1 adds the Play-gear shortcut.
+  p('settings.showChips', 'Show chips', 'system'),
 ];
 
 /**

@@ -6,6 +6,7 @@ import { noteBackupHandedOver } from '../../store/backupStatus';
 import { casinoLogFileText, hasCasinoLog } from '../crashSalvage';
 import { exportFileName } from '../../store/casinoLog';
 import { crashLineWanted, sayCrashLine } from '../crashLine';
+import { noteCrash } from '../tableResumeSlot';
 
 interface Props {
   children: ReactNode;
@@ -65,6 +66,8 @@ export class ErrorBoundary extends Component<Props, State> {
     // Nothing ships errors anywhere, so the console is the only record the
     // user can hand back when reporting a problem.
     console.error('Blackjack Trainer crashed:', error, info.componentStack);
+    // Track 3: a crash right after a shoe was resumed may be the resume -- Reload must not restore it again.
+    noteCrash();
     // R1: a press left over from an earlier fallback is not this one's.
     this.downOnFallback = false;
     // D1b: once per crash, and only when nobody is looking at the screen.
