@@ -240,7 +240,7 @@ describe('nextStep (#28)', () => {
 
   it('F15: short or self-paced count runs do not count toward the counting step', () => {
     const s = withIndices(learned());
-    s.countDrill.history = Array.from({ length: 5 }, () => ({ date: '', cards: 20, intervalMs: 700, correct: true }));
+    s.countDrill.history = Array.from({ length: 5 }, () => ({ date: '', cards: 20, intervalMs: 550, correct: true }));
     expect(nextStep(s, { sweepDone: true }).why).toMatch(/^0 of 5 count drill runs/);
   });
 

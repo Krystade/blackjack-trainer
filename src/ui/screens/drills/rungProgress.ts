@@ -37,7 +37,7 @@ export function homeLadder(stats: Stats, profile?: Profile, now: number = Date.n
   return buildHomeLadder(stats, profile, now);
 }
 
-/** "Running count at table pace: 3/5 paced deck runs", ticked once passed. */
+/** "Running count at table pace: 3/5 table-pace deck runs", ticked once passed. */
 export function rungLine(rung: { label: string; progress: string; passed: boolean }): string {
   return `${rung.label}: ${rung.progress}${rung.passed ? ' ✓' : ''}`;
 }

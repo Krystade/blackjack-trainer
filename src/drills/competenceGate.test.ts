@@ -147,3 +147,29 @@ describe('tierAbove', () => {
     expect(tierAbove('expert')).toBeNull();
   });
 });
+
+// T2-2A: the gate over any ordered ladder (the count drill's pace steps).
+describe('computeUnlockedTier over a custom order', () => {
+  it('starts an empty history at the ladder\'s own first tier', () => {
+    expect(computeUnlockedTier<'a' | 'b'>([], { order: ['a', 'b'] }).unlockedTier).toBe('a');
+  });
+
+  it('behaves exactly like the default over a renamed copy of SPEED_TIER_ORDER', () => {
+    const rename = { learning: 'w', 'table-ready': 'x', pro: 'y', expert: 'z' } as const;
+    const order = SPEED_TIER_ORDER.map((t) => rename[t]);
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    for (let trial = 0; trial < 300; trial++) {
+      const history = Array.from({ length: Math.floor(rnd() * 25) }, () => ({
+        tier: SPEED_TIER_ORDER[Math.floor(rnd() * 4)]!,
+        correct: rnd() < 0.7,
+      }));
+      const want = computeUnlockedTier(history, { windowSize: 5, minAttempts: 3 });
+      const got = computeUnlockedTier(
+        history.map((h) => ({ tier: rename[h.tier], correct: h.correct })),
+        { windowSize: 5, minAttempts: 3, order },
+      );
+      expect({ ...got, unlockedTier: got.unlockedTier }).toEqual({ ...want, unlockedTier: rename[want.unlockedTier] });
+    }
+  });
+});

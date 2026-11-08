@@ -116,7 +116,7 @@ test('Start is the one primary button; Play a shoe steps back, and goes when it 
   await expect(page.locator('.home-screen .u-btn-primary')).toHaveCount(1);
   await expect(page.getByRole('button', { name: 'Play a shoe', exact: true })).toBeVisible();
 
-  const runs = Array.from({ length: 5 }, () => ({ date: '', cards: 52, intervalMs: 700, correct: true }));
+  const runs = Array.from({ length: 5 }, () => ({ date: '', cards: 52, intervalMs: 550, correct: true }));
   const perIndex = Object.fromEntries(
     ['ins', '16v10', '15v10', 'TTv5', 'TTv6', '10v10', '12v3', '12v2', '11vA', '9v2', '10vA', '9v7', '16v9', '13v2', '12v4', '12v5', '12v6', '13v3', '14v10', '15v9', '15vA']
       .map((id) => [id, { right: 10, wrong: 0 }]),

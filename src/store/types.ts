@@ -113,6 +113,11 @@ export interface Settings {
     // G1 (L-1): the count drill prints each flashed card's Hi-Lo value under
     // it, and opens the result's run listing. A beginner aid. Absent = off.
     countShowHiLo?: boolean;
+    // T2-2A: the count drill's pace ramp (drills/countPaceRamp.ts). While on,
+    // a visual auto run deals at the step the accuracy gate has unlocked
+    // instead of countIntervalMs (which stays the eyes-free gap and Produce
+    // TC's pace, untouched). Absent = off; Easy first run turns it on.
+    countPaceRamp?: boolean;
     countGroup: 1 | 2 | 3;
     countIntervalMs: number;
     countLengthCards: number;
@@ -747,6 +752,9 @@ export interface Stats {
       // Kept for volume; left out of the mastery readers (count-clean, Full
       // shoe, the count rung).
       selfReport?: true;
+      // T2-2A: cards flashed together on a grouped auto run (the timer runs
+      // per group). Absent = single cards, every row before it shipped.
+      group?: 2 | 3;
     }[];
   };
   // Cycle-4 (docs/research/2026-07-21-priority-list.md item 8): per-drill

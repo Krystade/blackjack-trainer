@@ -11,6 +11,9 @@ import {
   meanTapGapMs,
   formatCountRun,
   bestCleanCountRuns,
+  isTablePace,
+  rowGroup,
+  TABLE_PACE_MS,
 } from './countSpeed';
 import { IDLE_CAP_MS } from './idleCap';
 import type { SpeedTier } from './countSpeed';
@@ -332,5 +335,31 @@ describe('bestCleanCountRuns: self-reported runs (R7)', () => {
     const selfAuto = { cards: 52, intervalMs: 300, correct: true, selfReport: true as const };
     const selfManual = { cards: 52, intervalMs: 200, correct: true, manual: true, meanTapMs: 200, selfReport: true as const };
     expect(bestCleanCountRuns([graded, selfAuto, selfManual])).toEqual({ auto: graded, manual: null });
+  });
+});
+
+// T2-2A: a grouped run's interval is the group's time, and the row says so.
+describe('per-card pace with groups (T2-2A)', () => {
+  it('divides an auto run by its group, and leaves eyes-free and manual alone', () => {
+    expect(countRunPerCardMs({ cards: 52, intervalMs: 1500, group: 3 })).toBe(500);
+    expect(countRunPerCardMs({ cards: 52, intervalMs: 800 })).toBe(800);
+    expect(countRunPerCardMs({ cards: 52, intervalMs: 300, group: 2, eyesFree: true, elapsedMs: 52 * 900 })).toBe(900);
+    expect(countRunPerCardMs({ cards: 52, intervalMs: 0, group: 2, manual: true, meanTapMs: 640 })).toBe(640);
+  });
+
+  it('isTablePace is the table-ready band: 576 in, 577 out, nothing for no pace', () => {
+    expect(TABLE_PACE_MS).toBe(576);
+    expect(isTablePace(576)).toBe(true);
+    expect(isTablePace(577)).toBe(false);
+    expect(isTablePace(0)).toBe(false);
+    expect(isTablePace(undefined)).toBe(false);
+  });
+
+  it('records a group only on a grouped ordinary run', () => {
+    expect(rowGroup({ tableRun: false, countdown: false, group: 3 })).toBe(3);
+    expect(rowGroup({ tableRun: false, countdown: false, group: 1 })).toBeUndefined();
+    // Countdown deals single cards whatever the stored setting says.
+    expect(rowGroup({ tableRun: false, countdown: true, group: 3 })).toBeUndefined();
+    expect(rowGroup({ tableRun: true, countdown: false, group: 2 })).toBeUndefined();
   });
 });

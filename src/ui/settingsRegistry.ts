@@ -100,6 +100,7 @@ export const SETTINGS_REGISTRY: readonly SettingEntry[] = [
     'countLengthCards', 'countManual', 'quizIndex', 'quizAsk', 'countTimedStartMs', 'quizDistractorPct', 'timedAdaptive',
     'distractionFreq', 'distractionMode', 'countBias', 'countCheckpoints', 'flashByConfusability',
     'depthResolution', 'messyCards', 'pacePressure', 'wheelMode',
+    'countPaceRamp',
   ].map((k) => p(`settings.drill.${k}`, null, 'drill')),
   p('settings.drill.shotClockMs', null, 'drill', ['drills']),
 ];

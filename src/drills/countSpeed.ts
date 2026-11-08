@@ -183,17 +183,48 @@ export interface CountRunPace {
   /** C6: an eyes-free auto run's measured time; its pace is elapsedMs / cards. */
   elapsedMs?: number;
   eyesFree?: true;
+  /**
+   * T2-2A: the cards flashed together on a grouped auto run. The flash timer
+   * runs once per GROUP, so `intervalMs` is the group's time. Absent = single
+   * cards, which is every row before the field shipped (read conservatively:
+   * an old grouped run reads slower than it was, never faster).
+   */
+  group?: 2 | 3;
 }
 
 /**
  * C6: the per-card pace a run was really dealt at: a manual run's mean tap
  * gap, an eyes-free run's measured time per card (speech plus gap), otherwise
- * the auto interval. undefined when a manual run measured no taps.
+ * the auto interval -- per group, so divided by the group size (T2-2A).
+ * undefined when a manual run measured no taps.
  */
 export function countRunPerCardMs(run: CountRunPace): number | undefined {
   if (run.manual) return run.meanTapMs;
   if (run.elapsedMs !== undefined && run.elapsedMs > 0 && run.cards > 0) return run.elapsedMs / run.cards;
-  return run.intervalMs;
+  return run.intervalMs / (run.group ?? 1);
+}
+
+/**
+ * T2-2A: "table pace" -- the code's one definition of it. A deck in 30 s or
+ * faster, the counters' table-ready benchmark (classifySpeed), which is the
+ * Timed Challenge's table-ready interval: 576 ms a card. The Full shoe
+ * achievement tests the same thing.
+ */
+export const TABLE_PACE_MS = tierStartIntervalMs('table-ready');
+
+/** A per-card pace at table pace or faster. undefined / 0 is no pace at all. */
+export function isTablePace(perCardMs: number | undefined): boolean {
+  return typeof perCardMs === 'number' && perCardMs > 0 && classifySpeed(secondsPerDeck(perCardMs, 1)) !== 'learning';
+}
+
+/**
+ * T2-2A: the group size a new count-drill row records. Only a grouped
+ * ordinary run deals groups: Countdown deals single cards whatever the stored
+ * setting says, and a table run's timer is already per card.
+ */
+export function rowGroup(input: { tableRun: boolean; countdown: boolean; group: 1 | 2 | 3 }): 2 | 3 | undefined {
+  if (input.tableRun || input.countdown || input.group === 1) return undefined;
+  return input.group;
 }
 
 /**

@@ -9,7 +9,7 @@ import { cellWindow, countBits } from '../../store/cellStats';
 import type { HandCategoryProgress, WeakCell } from './handProgress';
 import type { HandScope } from '../../drills/handScope';
 import { MIN_INDEX_ANSWERS, activeIndices, indexPractised } from './readiness';
-import { COUNT_RUNS_JUDGED, COUNT_RUNS_NEEDED, countFluency } from '../../drills/fluencyGate';
+import { COUNT_RUNS_JUDGED, COUNT_RUNS_NEEDED, FLUENCY_RULE_TEXT, countFluency } from '../../drills/fluencyGate';
 import type { IndexRules } from './readiness';
 import type { SrDeck } from '../../drills/spacedRepetition';
 import { PLAY_MIN_GRADED, REVIEW_DUE_MIN, betRampResult, deckTcResult, dueForReview, playResult, reviewIndexMin, stalestSkill } from './ladderRules';
@@ -27,8 +27,8 @@ import { PLAY_MIN_GRADED, REVIEW_DUE_MIN, betRampResult, deckTcResult, dueForRev
  *                   cells goes to Custom instead.
  *  2. repair     -- no weak cells (Custom with Auto) and a whole-chart Mastery
  *                   sweep completed.
- *  3. count      -- COUNT_RUNS_NEEDED of the last COUNT_RUNS_JUDGED paced,
- *                   deck-long runs right (F15: drills/fluencyGate.ts).
+ *  3. count      -- COUNT_RUNS_NEEDED of the last COUNT_RUNS_JUDGED deck-long
+ *                   runs at table pace right (F15, T2-2A: drills/fluencyGate.ts).
  *  4. tc         -- deck estimation and the true count drill each at
  *                   DRILL_WINDOW_NEEDED of the last DRILL_WINDOW (ladderRules.ts).
  *  5. deviations -- every active index at MIN_INDEX_ANSWERS answers and
@@ -359,12 +359,12 @@ export function ladder(stats: Stats, ctx: LadderContext): Ladder {
             title: 'Practise counting',
             why:
               fluency.judged < COUNT_RUNS_JUDGED
-                ? `${fluency.judged} of ${COUNT_RUNS_JUDGED} count drill runs done (dealt at a set pace, a deck or more).`
+                ? `${fluency.judged} of ${COUNT_RUNS_JUDGED} count drill runs done (${FLUENCY_RULE_TEXT}).`
                 : `${fluency.right} of your last ${COUNT_RUNS_JUDGED} count runs were right; aim for ${COUNT_RUNS_NEEDED}.`,
           },
       progress:
         fluency.judged < COUNT_RUNS_JUDGED
-          ? `${fluency.judged}/${COUNT_RUNS_JUDGED} paced deck runs`
+          ? `${fluency.judged}/${COUNT_RUNS_JUDGED} table-pace deck runs`
           : `${fluency.right}/${COUNT_RUNS_JUDGED} right (need ${COUNT_RUNS_NEEDED})`,
       passedStart: { kind: 'count' },
     },

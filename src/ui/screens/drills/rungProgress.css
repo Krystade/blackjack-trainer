@@ -10,3 +10,11 @@
   opacity: 0.8;
   text-align: left;
 }
+
+/* T2-2A: why a run did not count toward the rung, and what the pace ramp did.
+   Same voice as the progress line, but it wraps: it is a sentence to read. */
+.rung-progress-note {
+  font-size: var(--fs-sm);
+  opacity: 0.8;
+  text-align: center;
+}

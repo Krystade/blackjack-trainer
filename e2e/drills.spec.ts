@@ -1734,11 +1734,12 @@ test('count drill: turning distractions on before fluency says so, and still tur
 });
 
 test('count drill: a fluent learner gets no distraction nudge', async ({ page }) => {
-  // F15: the shared fluency rule counts paced runs of at least one deck.
+  // F15: the shared fluency rule counts paced runs of at least one deck,
+  // at table pace (T2-2A: 550 ms a card).
   const history = Array.from({ length: 10 }, () => ({
     date: '2026-08-03T00:00:00.000Z',
     cards: 52,
-    intervalMs: 800,
+    intervalMs: 550,
     correct: true,
   }));
   await withStats(page, { countDrill: { history } });

@@ -108,7 +108,7 @@ test('E2 Review: a missed due cell comes back after 3-6 others, and the review e
       version: 1,
       cellStats: { 'hard-16-v-10': strong, 'soft-18-v-9': strong, 'pair-8-v-A': strong },
       masterySweepsCompleted: 1,
-      countDrill: { history: Array.from({ length: 5 }, () => ({ date: d, cards: 52, intervalMs: 700, correct: true })) },
+      countDrill: { history: Array.from({ length: 5 }, () => ({ date: d, cards: 52, intervalMs: 550, correct: true })) },
     }));
     const past = Date.now() - 86_400_000;
     localStorage.setItem('bjtrainer.flashsr.v1', JSON.stringify(Object.fromEntries(

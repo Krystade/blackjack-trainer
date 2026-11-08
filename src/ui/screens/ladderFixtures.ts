@@ -16,7 +16,7 @@ export function learned(): Stats {
   };
   return s;
 }
-export const runs = (ok: boolean[], cards = 52) => ok.map((correct) => ({ date: iso(1), cards, intervalMs: 700, correct }));
+export const runs = (ok: boolean[], cards = 52) => ok.map((correct) => ({ date: iso(1), cards, intervalMs: 550, correct }));
 export const deckRows = (ok: boolean[]) => ok.map((correct) => ({ date: iso(1), actualDecks: 3, guess: 3, errorDecks: correct ? 0 : 1, correct }));
 export const tcRows = (ok: boolean[]) => ok.map((correct) => ({ date: iso(1), runningCount: 6, decksRemaining: 3, guess: 2, correctTc: 2, correct }));
 export const betRows = (ok: boolean[]) => ok.map((v) => ({ date: iso(1), rc: 6, decksRemaining: 3, tc: 2, taken: 4, correct: 4, ok: v }));

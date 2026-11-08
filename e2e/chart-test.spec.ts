@@ -36,7 +36,7 @@ const STRONG = { 'hard-16-v-10': { right: 30, wrong: 0, lastAt: D }, 'soft-18-v-
 const RUNG4 = {
   cellStats: STRONG,
   masterySweepsCompleted: 1,
-  countDrill: { history: Array.from({ length: 5 }, () => ({ date: D, cards: 52, intervalMs: 700, correct: true })) },
+  countDrill: { history: Array.from({ length: 5 }, () => ({ date: D, cards: 52, intervalMs: 550, correct: true })) },
 };
 
 async function setup(page: Page, settings: Record<string, unknown> = {}): Promise<void> {

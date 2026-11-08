@@ -16,7 +16,7 @@ const RUNG_STATS: Record<number, Record<string, unknown>> = {
   2: { cellStats: STRONG },
   3: { cellStats: STRONG, masterySweepsCompleted: 1 },
 };
-RUNG_STATS[4] = { ...RUNG_STATS[3], countDrill: { history: many(5, { date: D, cards: 52, intervalMs: 700, correct: true }) } };
+RUNG_STATS[4] = { ...RUNG_STATS[3], countDrill: { history: many(5, { date: D, cards: 52, intervalMs: 550, correct: true }) } };
 RUNG_STATS[5] = { ...RUNG_STATS[4], deckEstimation: { history: many(10, { date: D, actualDecks: 3, guess: 3, errorDecks: 0, correct: true }) }, trueCount: { history: many(10, { date: D, runningCount: 6, decksRemaining: 3, guess: 2, correctTc: 2, correct: true }) } };
 RUNG_STATS[6] = { ...RUNG_STATS[5], perIndex: Object.fromEntries(IDS.map((id) => [id, { right: 10, wrong: 0 }])) };
 RUNG_STATS[7] = { ...RUNG_STATS[6], betSizing: { history: many(10, { date: D, rc: 6, decksRemaining: 3, tc: 2, taken: 4, correct: 4, ok: true }) } };

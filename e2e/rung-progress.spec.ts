@@ -55,7 +55,7 @@ async function enter(page: Page, n: number) {
 const line = (page: Page) => page.getByTestId('rung-progress');
 
 test('Count drill: the result shows the running-count rung', async ({ page }) => {
-  const paced = (i: number, correct: boolean) => ({ date: day(i), cards: 52, intervalMs: 1000, correct });
+  const paced = (i: number, correct: boolean) => ({ date: day(i), cards: 52, intervalMs: 550, correct });
   await open(page, 'Count drill', { countDrill: { history: [paced(0, true), paced(1, false)] } }, {
     drill: { countManual: true, countLengthCards: 13, countGroup: 1, countIntervalMs: 300 },
   });

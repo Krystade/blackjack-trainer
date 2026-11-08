@@ -25,6 +25,7 @@ import {
   timedRunPace,
   RAMP_FLOOR_MS,
   meanTapGapMs,
+  rowGroup,
 } from '../../../drills/countSpeed';
 import type { SpeedTier } from '../../../drills/countSpeed';
 import { computeUnlockedTier, tierAbove, SPEED_TIER_ORDER } from '../../../drills/competenceGate';
@@ -34,7 +35,9 @@ import { PlayingCard } from '../../components/PlayingCard';
 import { cardJitter, jitterTransform } from '../../../drills/cardJitter';
 import { paceMultiplier } from '../../../drills/pacePressure';
 import { cardArrival } from '../../../drills/cardArrive';
-import { isCountFluent } from '../../../drills/fluencyGate';
+import { isCountFluent, rungMissLine, rungMissReason, rungMissToSay } from '../../../drills/fluencyGate';
+import type { RungMissReason } from '../../../drills/fluencyGate';
+import { paceRampStatus, rampDealMs, rampResultLine, rampSetupLine } from '../../../drills/countPaceRamp';
 import { NumPad } from '../../components/NumPad';
 import { Segmented, Stepper } from '../Settings';
 import { useAudio } from '../../../audio/useAudio';
@@ -393,6 +396,17 @@ export function CountDrillView({
   const eyesFreeDealtMsRef = useRef(0);
   const tapGapsRef = useRef<number[]>([]);
   // Owner 2026-11-06: a manual run's pace, and your earlier bests, for the result.
+  // T2-2A: the pace THIS run is dealt at. `ramped` when the pace ramp set it
+  // (countPaceRamp.ts); otherwise the live countIntervalMs, exactly as before.
+  const [runPace, setRunPace] = useState<{ ramped: boolean; ms: number }>({ ramped: false, ms: 0 });
+  // T2-2A: after a run, why it did not count toward the rung, and what the
+  // pace ramp did. Both null when there is nothing to say.
+  const [rungMiss, setRungMiss] = useState<string | null>(null);
+  const [rampLine, setRampLine] = useState<string | null>(null);
+  /** The last run's miss reason, read synchronously by the eyes-free verdict. */
+  const lastRunMissRef = useRef<RungMissReason | null>(null);
+  /** The miss reason last said out loud this visit (T2#6: once, until it changes). */
+  const saidRunMissRef = useRef<RungMissReason | null | undefined>(undefined);
   const [manualResult, setManualResult] = useState<{ pace: ManualPace; bests: Partial<Record<PaceBestKey, number>> } | null>(null);
   const lastCardAtRef = useRef<number | null>(null);
   /**
@@ -502,6 +516,16 @@ export function CountDrillView({
   // G1: Hi-Lo values under the flashed cards -- screen only, never eyes-free.
   const showHiLo = hiLoShown(settings.drill, eyesFree);
   const tableOn = tableChoosable && settings.drill.countTableMode === true;
+  // T2-2A: the pace ramp sets a visual auto run's pace; eyes-free (the gap),
+  // manual and Timed Challenge runs keep their own. countIntervalMs is never
+  // written by it -- it is also the eyes-free gap and Produce TC's pace.
+  const rampApplies = !eyesFree && !settings.drill.countManual && !timedChallenge;
+  const rampOn = rampApplies && settings.drill.countPaceRamp === true;
+  // Read again whenever the phase moves, so the setup line follows each run.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const rampStatus = useMemo(() => paceRampStatus(loadStats().countDrill.history), [phase]);
+  /** The flash timer's interval for the run in progress. */
+  const dealMs = runPace.ramped ? runPace.ms : settings.drill.countIntervalMs;
 
   const groups: Card[][] = countdownMode
     ? countdownRound
@@ -518,8 +542,8 @@ export function CountDrillView({
   const tableManual = settings.drill.countManual && !timedChallenge;
   const tableDeal = tableDealOf(settings.drill.countTableDeal);
   const tablePlan = useMemo(
-    () => (roundOnFelt ? tableRoundPlan(roundOnFelt, settings.drill.countIntervalMs, tableDeal, tableManual) : null),
-    [roundOnFelt, settings.drill.countIntervalMs, tableDeal, tableManual],
+    () => (roundOnFelt ? tableRoundPlan(roundOnFelt, dealMs, tableDeal, tableManual) : null),
+    [roundOnFelt, dealMs, tableDeal, tableManual],
   );
   const tableShown =
     tablePlan === null
@@ -668,7 +692,7 @@ export function CountDrillView({
       // ET7: adversarial dealer-pace pressure -- a seeded speed-up burst shortens
       // THIS card's interval, then recovers (paceMultiplier returns 1 off-burst,
       // and always 1 when the toggle is off, so default pacing is byte-identical).
-    }, settings.drill.countIntervalMs *
+    }, dealMs *
       // #47: a table round stays up for the time its cards would take.
       (tableRun ? (groups[shownIndex]?.length ?? 1) : 1) *
       (settings.drill.pacePressure ? paceMultiplier(runSeedRef.current, shownIndex) : 1));
@@ -678,7 +702,7 @@ export function CountDrillView({
     phase,
     shownIndex,
     groups.length,
-    settings.drill.countIntervalMs,
+    dealMs,
     settings.drill.countManual,
     settings.drill.distractionFreq,
     settings.drill.pacePressure,
@@ -1335,6 +1359,22 @@ export function CountDrillView({
     setHonorCheck(false);
     setTimedResult(null);
     setGateOutcome(null);
+    setRungMiss(null);
+    setRampLine(null);
+    lastRunMissRef.current = null;
+    // T2-2A: a ramp run deals at the unlocked step, per card -- times the
+    // group, since the timer runs once per group.
+    setRunPace(
+      rampOn
+        ? {
+            ramped: true,
+            ms: rampDealMs(
+              paceRampStatus(loadStats().countDrill.history),
+              rowGroup({ tableRun: tableOn, countdown: countdownMode, group: settings.drill.countGroup }),
+            ),
+          }
+        : { ramped: false, ms: 0 },
+    );
 
     // R2 (docs/BACKLOG.md, accuracy-gated difficulty): decide THIS run's
     // effective ramp start/floor before it begins, so the ramp effect above
@@ -1525,7 +1565,10 @@ export function CountDrillView({
     const pace = manual && !countdownMode && !tableRun ? manualPace(tapGapsRef.current) : undefined;
     setManualResult(pace ? { pace, bests: paceBests(stats.countDrill.history, cardsInRun) } : null);
     // C6: an eyes-free auto run records what its cards really took.
-    const eyesFreeAuto = eyesFree && !manual && !countdownMode && eyesFreeDealtMsRef.current > 0;
+    // T2#1: eyes-free Countdown is the same speech loop, so it records its
+    // measured time too -- its `intervalMs` is only the gap after each card.
+    const eyesFreeAuto = eyesFree && !manual && eyesFreeDealtMsRef.current > 0;
+    const runGroup = rowGroup({ tableRun: tableRun !== null, countdown: countdownMode, group: settings.drill.countGroup });
     const updated = {
       ...statsWithDistraction,
       countDrill: {
@@ -1534,8 +1577,10 @@ export function CountDrillView({
           {
             date: new Date().toISOString(),
             cards: cardsInRun,
-            intervalMs: manual ? (meanTapMs ?? 0) : settings.drill.countIntervalMs,
+            intervalMs: manual ? (meanTapMs ?? 0) : dealMs,
             correct,
+            // T2-2A: the timer ran per group; Countdown and table runs never group.
+            ...(!manual && runGroup ? { group: runGroup } : {}),
             ...(manual ? { manual: true, ...(meanTapMs !== undefined ? { meanTapMs } : {}) } : {}),
             ...(pace ? { pace } : {}),
             ...(eyesFreeAuto ? { eyesFree: true as const, elapsedMs: Math.round(eyesFreeDealtMsRef.current) } : {}),
@@ -1549,6 +1594,25 @@ export function CountDrillView({
       },
     };
     saveStats(updated);
+
+    // T2-2A: say why this run did not count toward the rung, and what the
+    // pace ramp made of it.
+    const row = updated.countDrill.history[updated.countDrill.history.length - 1]!;
+    lastRunMissRef.current = rungMissReason(row);
+    setRungMiss(rungMissLine(row));
+    setRampLine(
+      runPace.ramped && row.selfReport !== true
+        ? rampResultLine(paceRampStatus(stats.countDrill.history), paceRampStatus(updated.countDrill.history))
+        : null,
+    );
+  };
+
+  /** T2#6: eyes-free, the one fixable reason a run missed the rung, said once until it changes. */
+  const sayRunMiss = () => {
+    const reason = lastRunMissRef.current;
+    const line = rungMissToSay(saidRunMissRef.current, reason);
+    saidRunMissRef.current = reason;
+    if (line) speak(line, speechOptsFrom(settings.audio));
   };
 
   // D1 part 2 (docs/BACKLOG.md, distraction training): grades the posed
@@ -1646,6 +1710,8 @@ export function CountDrillView({
         const spd = secondsPerDeck(timedResult.elapsedMs, timedResult.cardsShown);
         const tier = TIER_LABEL[classifySpeed(spd)];
         speak(`${formatDuration(timedResult.elapsedMs)}, ${spd.toFixed(1)} seconds per deck. ${tier}.`, speechOptsFrom(settings.audio));
+      } else {
+        sayRunMiss();
       }
     } else {
       audio.sayFull(verdict);
@@ -1667,6 +1733,7 @@ export function CountDrillView({
     // which card you lost track of, and the whole run was fifty-one cards.
     if (eyesFree) {
       speak(countdownVerdict(correct, countdownRound.hidden), speechOptsFrom(settings.audio));
+      sayRunMiss();
     }
   };
 
@@ -2136,7 +2203,7 @@ export function CountDrillView({
     if (timedChallenge) return rampIntervalMs(shownIndex, timedStartMsRef.current, { floorMs: timedFloorMsRef.current });
     if (settings.drill.countManual) return Infinity;
     return (
-      settings.drill.countIntervalMs *
+      dealMs *
       (settings.drill.pacePressure ? paceMultiplier(runSeedRef.current, shownIndex) : 1)
     );
   };
@@ -2396,15 +2463,33 @@ export function CountDrillView({
               </div>
           )}
 
-          <Stepper
-            label="Time per card"
-            value={settings.drill.countIntervalMs}
-            min={300}
-            max={3000}
-            step={100}
-            format={(v) => `${v}ms`}
-            onChange={(v) => updateDrill({ countIntervalMs: v })}
-          />
+          {/* T2-2A: the pace ramp. Eyes-free the stepper is the gap after each
+              spoken card, so the ramp never takes it over there. */}
+          {rampApplies && (
+            <label className="count-toggle">
+              <input
+                type="checkbox"
+                checked={settings.drill.countPaceRamp === true}
+                onChange={(e) => updateDrill({ countPaceRamp: e.target.checked })}
+              />
+              Step the pace up as I get it right
+            </label>
+          )}
+          {rampOn ? (
+            <div className="settings-row settings-note-row" data-testid="pace-ramp-note">
+              The pace ramp sets the time per card: {rampStatus.ms}ms now. Turn it off to set your own.
+            </div>
+          ) : (
+            <Stepper
+              label="Time per card"
+              value={settings.drill.countIntervalMs}
+              min={300}
+              max={3000}
+              step={100}
+              format={(v) => `${v}ms`}
+              onChange={(v) => updateDrill({ countIntervalMs: v })}
+            />
+          )}
 
           <div className="settings-row">
             <span className="settings-label">Next card</span>
@@ -2667,6 +2752,12 @@ export function CountDrillView({
             </div>
           </details>
 
+          {/* T2-2A: where the pace ramp is, and what unlocks the next step. */}
+          {rampOn && (
+            <div className="settings-row settings-note-row" data-testid="pace-ramp-status">
+              {rampSetupLine(rampStatus)}
+            </div>
+          )}
           {/* G1: a first run made easy, offered until any count run is recorded. */}
           {easyOffered && !eyesFree && (
             <div className="settings-row settings-note-row easy-first-note" data-testid="easy-first-note">
@@ -2906,6 +2997,16 @@ export function CountDrillView({
           </div>
           {/* L-3: the Home ladder rung this drill feeds. */}
           <RungProgressLine rung={DRILL_RUNG.count} />
+          {rungMiss && (
+            <div className="rung-progress-note" data-testid="rung-miss">
+              {rungMiss}
+            </div>
+          )}
+          {rampLine && (
+            <div className="rung-progress-note" data-testid="pace-ramp-result">
+              {rampLine}
+            </div>
+          )}
           {checkpointBlock}
           {manualResult && <ManualPaceTable pace={manualResult.pace} bests={manualResult.bests} counts={wasCorrect === true} />}
           {timedResult &&

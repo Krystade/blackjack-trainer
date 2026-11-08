@@ -51,4 +51,6 @@ export const EASY_FIRST_RUN: Partial<Settings['drill']> = {
   countBias: 'none',
   messyCards: false,
   pacePressure: false,
+  // T2-2A: from here the pace steps up as the count holds (countPaceRamp.ts).
+  countPaceRamp: true,
 };

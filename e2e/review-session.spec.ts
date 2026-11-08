@@ -17,7 +17,7 @@ const D = '2026-10-16T10:00:00.000Z';
 const many = <T,>(n: number, row: T) => Array.from({ length: n }, () => row);
 const STRONG = { 'hard-16-v-10': { right: 30, wrong: 0, lastAt: D }, 'soft-18-v-9': { right: 30, wrong: 0, lastAt: D }, 'pair-8-v-A': { right: 30, wrong: 0, lastAt: D } };
 /** Rung 4 current (count passed), so a review can come first. */
-const RUNG4 = { cellStats: STRONG, masterySweepsCompleted: 1, countDrill: { history: many(5, { date: D, cards: 52, intervalMs: 700, correct: true }) } };
+const RUNG4 = { cellStats: STRONG, masterySweepsCompleted: 1, countDrill: { history: many(5, { date: D, cards: 52, intervalMs: 550, correct: true }) } };
 /** Saved settings a review must not touch: a Custom deck on Soft, one index picked, Ask = play. */
 const SAVED = {
   drill: {

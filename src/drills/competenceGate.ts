@@ -20,9 +20,9 @@ import type { SpeedTier } from './countSpeed';
  * "the next tier up" / "the tier below" by index. */
 export const SPEED_TIER_ORDER: SpeedTier[] = ['learning', 'table-ready', 'pro', 'expert'];
 
-export interface GateResult {
+export interface GateResult<T extends string = SpeedTier> {
   /** The tier the user has earned the right to practice at right now. */
-  unlockedTier: SpeedTier;
+  unlockedTier: T;
   /** Accuracy (0-100) over the most recent `windowSize` attempts AT
    * `unlockedTier` specifically. 0 when there is no attempt at that tier yet
    * (e.g. immediately after a fresh promotion). */
@@ -45,6 +45,11 @@ export interface GateOptions {
    * considered held at all -- guards against a lucky short streak advancing
    * the user off a tier they haven't really practiced. Default 5. */
   minAttempts?: number;
+}
+
+/** T2-2A: a gate over any ordered ladder of tiers, slowest first (default SPEED_TIER_ORDER). */
+export interface OrderedGateOptions<T extends string> extends GateOptions {
+  order?: readonly T[];
 }
 
 const DEFAULT_WINDOW_SIZE = 10;
@@ -80,40 +85,42 @@ const MISS_STREAK_TO_EASE = 3;
  * - There is nothing above 'expert' to advance to, and nothing below
  *   'learning' to ease down to.
  */
-export function computeUnlockedTier(
-  history: { tier: SpeedTier; correct: boolean }[],
-  opts?: GateOptions,
-): GateResult {
+export function computeUnlockedTier<T extends string = SpeedTier>(
+  history: readonly { tier: T; correct: boolean }[],
+  opts?: OrderedGateOptions<T>,
+): GateResult<T> {
+  const order = (opts?.order ?? SPEED_TIER_ORDER) as readonly T[];
   const windowSize = opts?.windowSize ?? DEFAULT_WINDOW_SIZE;
   const advanceThresholdPct = opts?.advanceThresholdPct ?? DEFAULT_ADVANCE_THRESHOLD_PCT;
   const minAttempts = opts?.minAttempts ?? DEFAULT_MIN_ATTEMPTS;
 
-  const attemptsAt = (tier: SpeedTier) => history.filter((h) => h.tier === tier);
-  const recentWindowAt = (tier: SpeedTier) => attemptsAt(tier).slice(-windowSize);
+  const attemptsAt = (tier: T) => history.filter((h) => h.tier === tier);
+  const recentWindowAt = (tier: T) => attemptsAt(tier).slice(-windowSize);
   const accuracyOf = (attemptsList: { correct: boolean }[]): number =>
     attemptsList.length === 0
       ? 0
       : (attemptsList.filter((a) => a.correct).length / attemptsList.length) * 100;
-  const isHeld = (tier: SpeedTier): boolean => {
+  const isHeld = (tier: T): boolean => {
     const window = recentWindowAt(tier);
     return window.length >= minAttempts && accuracyOf(window) >= advanceThresholdPct;
   };
-  const hasMissStreak = (tier: SpeedTier): boolean => {
+  const hasMissStreak = (tier: T): boolean => {
     const all = attemptsAt(tier);
     if (all.length < MISS_STREAK_TO_EASE) return false;
     return all.slice(-MISS_STREAK_TO_EASE).every((a) => !a.correct);
   };
 
-  const currentTier: SpeedTier = history.length > 0 ? history[history.length - 1]!.tier : 'learning';
-  const currentIdx = SPEED_TIER_ORDER.indexOf(currentTier);
+  // T2-2A: an empty history starts at the ladder's first tier, whatever the ladder.
+  const currentTier: T = history.length > 0 ? history[history.length - 1]!.tier : order[0]!;
+  const currentIdx = order.indexOf(currentTier);
 
   let unlockedTier = currentTier;
   let canAdvance = false;
 
   if (hasMissStreak(currentTier) && currentIdx > 0) {
-    unlockedTier = SPEED_TIER_ORDER[currentIdx - 1]!;
-  } else if (isHeld(currentTier) && currentIdx < SPEED_TIER_ORDER.length - 1) {
-    unlockedTier = SPEED_TIER_ORDER[currentIdx + 1]!;
+    unlockedTier = order[currentIdx - 1]!;
+  } else if (isHeld(currentTier) && currentIdx < order.length - 1) {
+    unlockedTier = order[currentIdx + 1]!;
     canAdvance = true;
   }
 
