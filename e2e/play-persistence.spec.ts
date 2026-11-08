@@ -61,7 +61,9 @@ test('settled rounds are in Stats before End, with the bankroll they moved', asy
   // End is the way to a new shoe; the bankroll carries into it as before.
   await page.locator('.end-btn').click();
   await page.locator('.end-btn').click();
-  await page.locator('.tab-bar').getByRole('button', { name: 'Play', exact: true }).click();
+  await expect(page.locator('.report-summary')).toBeVisible();
+  await page.reload();
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
   await expect(bankroll).toHaveText(new RegExp(`^Bankroll: ${before}(?!\\d)`));
   await expect(page.locator('.topbar-stat', { hasText: /^Round / })).toHaveText('Round 0');
 });
