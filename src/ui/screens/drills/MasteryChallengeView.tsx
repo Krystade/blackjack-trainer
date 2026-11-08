@@ -348,7 +348,7 @@ export function MasteryChallengeView({
             </div>
 
             <ActionBar
-              mode={{ kind: 'actions', legal: drillLegalActions(cell.cards, activeProfile.rules, cell.up, cellCtx), onAction: handleAction }}
+              mode={{ kind: 'actions', legal: drillLegalActions(cell.cards, activeProfile.rules, cell.up, cellCtx), onAction: handleAction, hand: settings.handedness }}
             />
           </>
         )

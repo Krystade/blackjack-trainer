@@ -30,6 +30,26 @@
   min-height: 52px;
 }
 
+/* Owner 2026-11-07: on a phone tall enough to spare it, Play's answers sit in
+ * the two rows Flashcards has: Hit | Stand big on top, then Surrender |
+ * Double | Split (mirrored for a left hand, ActionBar's order) with Double in
+ * the middle. A short phone (320x568) keeps the one-row bar. */
+@media (min-height: 700px) {
+  .table-screen > .action-bar-actions {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 0.35rem;
+  }
+  .table-screen > .action-bar-actions > .action-btn {
+    grid-column: span 2;
+  }
+  .table-screen > .action-bar-actions > .action-btn:nth-child(-n + 2) {
+    grid-column: span 3;
+    min-height: 60px;
+    font-size: var(--fs-lg);
+  }
+}
+
 /* B5: the skip control is a labelled pill, not an emoji. */
 .table-screen .fast-forward-btn {
   min-height: 44px;

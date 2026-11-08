@@ -1,4 +1,5 @@
 import type { Action } from '../../engine/deviations';
+import { actionButtons, type Handedness } from './actionOrder';
 import './inOutToggle.css';
 import './sideBetChip.css';
 import './handsChoice.css';
@@ -12,7 +13,14 @@ export interface BetHandEntry {
 }
 
 export type ActionBarMode =
-  | { kind: 'actions'; legal: Action[]; onAction: (a: Action) => void; advice?: Action }
+  | {
+      kind: 'actions';
+      legal: Action[];
+      onAction: (a: Action) => void;
+      advice?: Action;
+      /** The hand holding the phone (Settings.handedness); absent = 'right'. */
+      hand?: Handedness;
+    }
   | {
       kind: 'bet';
       betSpreadOn: boolean;
@@ -46,14 +54,6 @@ interface ActionBarProps {
 }
 
 const BET_CHIPS = [1, 2, 4, 8, 10, 12];
-
-const ACTION_BUTTONS: { key: Action; label: string }[] = [
-  { key: 'hit', label: 'Hit' },
-  { key: 'stand', label: 'Stand' },
-  { key: 'double', label: 'Double' },
-  { key: 'split', label: 'Split' },
-  { key: 'surrender', label: 'Surrender' },
-];
 
 /** Wave J: one hand or two, for a ramp that spreads hands. */
 function HandsChoice({ hands, onHands, disabled }: { hands: 1 | 2; onHands: (h: 1 | 2) => void; disabled?: boolean }) {
@@ -132,8 +132,8 @@ export function ActionBar({ mode }: ActionBarProps) {
 
   if (mode.kind === 'actions') {
     return (
-      <div className="action-bar" data-advice={mode.advice}>
-        {ACTION_BUTTONS.map((btn) => (
+      <div className="action-bar action-bar-actions" data-advice={mode.advice} data-hand={mode.hand ?? 'right'}>
+        {actionButtons(mode.hand).map((btn) => (
           <button
             key={btn.key}
             type="button"

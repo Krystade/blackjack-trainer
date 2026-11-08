@@ -454,6 +454,7 @@ export function VariantDrillView({
               kind: 'actions',
               legal,
               onAction: answer,
+              hand: settings.handedness,
               ...(isE2eAudioMode() ? { advice: item.advice.action } : {}),
             }}
           />

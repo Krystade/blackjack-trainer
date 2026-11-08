@@ -696,7 +696,8 @@ export function DeviationQuizView({
             mode={{
               kind: 'actions',
               legal: quizLegalActions(item, strategyRulesFor(activeProfile)),
-              onAction: handleAnswer }}
+              onAction: handleAnswer,
+              hand: settings.handedness }}
           />
         )
       ) : (

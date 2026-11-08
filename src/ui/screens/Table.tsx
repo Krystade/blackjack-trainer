@@ -1248,7 +1248,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange, k
     // sheet -- is in the action bar's place until it closes.
     barMode = { kind: 'hidden' };
   } else if (game.phase === 'player') {
-    barMode = { kind: 'actions', legal, onAction: timedAct, advice };
+    barMode = { kind: 'actions', legal, onAction: timedAct, advice, hand: settings.handedness };
   } else if ((game.phase === 'idle' || game.phase === 'settled') && !game.countCheckOpen) {
     barMode = {
       kind: 'bet',

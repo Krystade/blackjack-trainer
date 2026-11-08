@@ -789,6 +789,7 @@ export function FlashcardsView({
               kind: 'actions',
               legal: drillLegalActions(card.cards, activeProfile.rules, card.up, card.ctx),
               onAction: handleAction,
+              hand: settings.handedness,
               // ?e2e=1 only, as on Play's table: lets a spec answer right.
               ...(isE2eAudioMode() ? { advice: card.correct } : {}) }}
           />

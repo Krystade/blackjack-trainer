@@ -638,7 +638,7 @@ export function MixedSessionView({
         ) : isInsuranceItem ? (
           <InsuranceBar onAnswer={handleAnswer} />
         ) : (
-          <ActionBar mode={{ kind: 'actions', legal, onAction: handleAnswer }} />
+          <ActionBar mode={{ kind: 'actions', legal, onAction: handleAnswer, hand: settings.handedness }} />
         )
       ) : (
         <NextBar onNext={() => next()} />
