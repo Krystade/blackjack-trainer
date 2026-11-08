@@ -31,6 +31,13 @@ describe('G2: dealer-error copy', () => {
     expect(missedErrorText({ kind: 'underpay' })).toContain('underpaid');
   });
 
+  it('Track 3: Show chips names the unit in dollars', () => {
+    expect(foulVerdictText({ correct: true, error: { kind: 'overpay' } as never }, 25)).toBe(
+      'Foul called. The dealer overpaid your win by $25. Payout corrected.',
+    );
+    expect(missedErrorText({ kind: 'underpay' }, 12.5)).toBe('Missed: last hand the dealer underpaid your win by $12.50.');
+  });
+
   it('caught of made, with false calls beside it', () => {
     expect(dealerErrorsValue({ made: 3, caught: 2, falseCalls: 0 })).toBe('2/3');
     expect(dealerErrorsValue({ made: 3, caught: 2, falseCalls: 1 })).toBe('2/3 · 1 false call');

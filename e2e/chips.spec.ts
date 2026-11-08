@@ -84,6 +84,12 @@ test('a natural on $125 pays $187.50 in chips, and the bar says what to pull bac
   ]);
   await expect(page.getByTestId('bet-pullback')).toHaveText('On the felt $312.50 · next bet $125 · pull back $187.50');
   await expect(bankroll(page)).toContainText('Bankroll: $12,687.50');
+  // The result line reads in dollars too.
+  await expect(page.locator('.round-banner-head').first()).toHaveText('Blackjack! +$187.50');
+  // Chips big enough to read on a phone, the value on the face.
+  const face = circle.locator('.bet-circle-paid .chip-face').first();
+  expect((await face.boundingBox())!.width).toBeGreaterThanOrEqual(28);
+  await expect(face).toHaveText('100');
   // A smaller next bet: more to pull back.
   await page.getByRole('button', { name: /^\$25, 2 units$/ }).click();
   await expect(page.getByTestId('bet-pullback')).toHaveText('On the felt $312.50 · next bet $25 · pull back $287.50');
@@ -101,6 +107,41 @@ test('a flat table shows its bet in chips too, with no chip row', async ({ page 
   await expect(circle.locator('.bet-circle-label')).toHaveText('paid $25');
   await expect(page.getByTestId('bet-pullback')).toHaveText('On the felt $50 · next bet $25 · pull back $25');
   await expect(roundStat(page)).toHaveText('Round 1');
+  await expect(page.locator('.round-banner-head').first()).toHaveText('Win +$25');
+});
+
+test('two hands and three players: the circles fit, never over a card, and the bar stays on screen', async ({ page }) => {
+  await withSettings(page, { countCheckEvery: 0, showChips: true });
+  await withProfile(page, {
+    unitDollars: 25,
+    betSpreadOn: true,
+    spread: DEFAULT_SPREAD,
+    seats: { playerHands: 2, bots: 3, botMistakePct: 0, playerPosition: 1 },
+  });
+  for (const seed of [5, 48]) {
+    await openPlay(page, seed);
+    await playOne(page);
+    const circles = page.getByTestId('bet-circle');
+    await expect(circles).toHaveCount(2);
+    const cards = await page.locator('.table-screen [data-card]').evaluateAll((els) =>
+      els.map((e) => {
+        const r = e.getBoundingClientRect();
+        return { l: r.left, r: r.right, t: r.top, b: r.bottom };
+      }),
+    );
+    for (let i = 0; i < 2; i++) {
+      const c = (await circles.nth(i).boundingBox())!;
+      expect(c.x).toBeGreaterThanOrEqual(0);
+      expect(c.x + c.width).toBeLessThanOrEqual(375);
+      for (const k of cards) {
+        const overlap = c.x < k.r - 1 && c.x + c.width > k.l + 1 && c.y < k.b - 1 && c.y + c.height > k.t + 1;
+        expect(overlap, `circle ${i} over a card (seed ${seed})`).toBe(false);
+      }
+    }
+    const deal = (await page.getByRole('button', { name: 'Deal', exact: true }).boundingBox())!;
+    expect(deal.y + deal.height).toBeLessThanOrEqual(812);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+  }
 });
 
 test('chips off: units, as ever', async ({ page }) => {

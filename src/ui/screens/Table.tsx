@@ -99,6 +99,7 @@ import { ResumedShoeNote } from '../components/ResumedShoeNote';
 import { resumeSpoken } from '../resumeCopy';
 import { BetCircle } from '../components/BetCircle';
 import { chipMoney, dollars as chipDollars, onFeltAfter, pullBackLine } from '../chips';
+import { signedMoney } from '../casinoFigures';
 
 /** B5/W4: the row's card slots and fixed chrome, for cardSize.css's clamp. */
 function feltStyle(row: FeltRow): CSSProperties {
@@ -1728,18 +1729,18 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange, k
                 // B5/W5: result and both totals, so the reason for a loss
                 // reads off the banner instead of off the felt. B2 #34: a
                 // banner that wraps drops the dot instead of hanging it.
-                const b = roundBanner(h, handPlayNumber(i, game.hands.length), multiHand, game.dealerCards, game.holeRevealed);
+                const b = roundBanner(h, handPlayNumber(i, game.hands.length), multiHand, game.dealerCards, game.holeRevealed, chips?.unit);
                 return <RoundBannerLine key={i} banner={b} />;
               })}
             {game.insuranceNet !== null && (
               <div className="message-result">
-                Insurance {formatSigned(game.insuranceNet)}
+                Insurance {chips ? signedMoney(game.insuranceNet * chips.unit) : formatSigned(game.insuranceNet)}
               </div>
             )}
           </>
         )}
         {/* G2: Foul from settlement until the next deal; a miss is said on the next round. */}
-        <FoulCall game={game} onFoul={callFoul} />
+        <FoulCall game={game} onFoul={callFoul} unit={chips?.unit} />
       </div>
 
       {/* #40: the peek just above the bar, under the holding thumb (Wave X:
@@ -1829,7 +1830,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange, k
                     .map((h, i) => ({ h, i }))
                     .reverse()
                     .map(({ h, i }) => {
-                      const b = roundBanner(h, handPlayNumber(i, game.hands.length), multiHand, game.dealerCards, game.holeRevealed);
+                      const b = roundBanner(h, handPlayNumber(i, game.hands.length), multiHand, game.dealerCards, game.holeRevealed, chips?.unit);
                       return `${b.head} · ${b.totals}`;
                     })
                     .join(' / ')}

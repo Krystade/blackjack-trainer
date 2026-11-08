@@ -6,6 +6,7 @@ import { toDealerMistakesMode } from '../engine/dealerErrors';
 import type { DealerError, DealerErrorTally, DealerMistakesMode } from '../engine/dealerErrors';
 import type { FoulVerdict } from '../engine/game';
 import type { Settings, Stats } from '../store/types';
+import { money } from './casinoFigures';
 
 type SessionRow = Stats['sessions'][number];
 
@@ -40,13 +41,14 @@ export function dealerMistakesOn(settings: MistakesSettings, eyesFree: boolean):
 export const DEALER_TRAINING_REPORT =
   'Dealer mistakes training: about one round in 5 had a payout error on purpose. Missed errors stay in your bankroll.';
 
-/** "overpaid your win by 1 unit" -- after "The dealer ". */
-export function dealerErrorWords(e: Pick<DealerError, 'kind'>): string {
+/** "overpaid your win by 1 unit" -- after "The dealer ". Track 3: Show chips names the unit in dollars ("by $25"). */
+export function dealerErrorWords(e: Pick<DealerError, 'kind'>, unit?: number): string {
+  const by = unit === undefined ? '1 unit' : money(unit);
   switch (e.kind) {
     case 'overpay':
-      return 'overpaid your win by 1 unit';
+      return `overpaid your win by ${by}`;
     case 'underpay':
-      return 'underpaid your win by 1 unit';
+      return `underpaid your win by ${by}`;
     case 'pay-push':
       return 'paid your push as a win';
     case 'take-win':
@@ -55,14 +57,14 @@ export function dealerErrorWords(e: Pick<DealerError, 'kind'>): string {
 }
 
 /** The strip after Foul is called. */
-export function foulVerdictText(v: FoulVerdict): string {
-  if (v.correct && v.error) return `Foul called. The dealer ${dealerErrorWords(v.error)}. Payout corrected.`;
+export function foulVerdictText(v: FoulVerdict, unit?: number): string {
+  if (v.correct && v.error) return `Foul called. The dealer ${dealerErrorWords(v.error, unit)}. Payout corrected.`;
   return 'No foul: that payout was right.';
 }
 
 /** The strip on the round after an error nobody called. */
-export function missedErrorText(e: Pick<DealerError, 'kind'>): string {
-  return `Missed: last hand the dealer ${dealerErrorWords(e)}.`;
+export function missedErrorText(e: Pick<DealerError, 'kind'>, unit?: number): string {
+  return `Missed: last hand the dealer ${dealerErrorWords(e, unit)}.`;
 }
 
 /** "2/3" -- caught of made. */

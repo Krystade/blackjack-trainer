@@ -30,6 +30,13 @@ describe('roundBanner (B5/W5)', () => {
   it('a dealer natural is named, not summed', () => {
     expect(roundBanner(hand(c('10', '8'), 'lose', -1), 1, false, c('A', 'K'), true).totals).toBe('You 18 · Dealer blackjack');
   });
+  it('Track 3: with Show chips the net reads in dollars at the unit', () => {
+    expect(roundBanner(hand(c('10', '6'), 'surrender', -0.5), 1, false, c('10', '7'), false, 25).head).toBe('Surrender −$12.50');
+    expect(roundBanner(hand(c('A', 'K'), 'blackjack', 7.5), 1, false, c('10', '8'), true, 25).head).toBe('Blackjack! +$187.50');
+    expect(roundBanner(hand(c('10', '7'), 'lose', -2), 2, true, c('10', '9'), true, 25).head).toBe('Hand 2: Lose −$50');
+    expect(roundBanner(hand(c('10', '8'), 'push', 0), 1, false, c('9', '9'), true, 25).head).toBe('Push');
+    expect(roundBanner(hand(c('10', '7'), 'lose', -2), 1, false, c('10', '9'), true, 25).net, 'the net stays in units').toBe(-2);
+  });
   it('split and multi-hand rounds carry the play-order label', () => {
     expect(roundBanner(hand(c('8', '10'), 'win', 1), 2, true, c('10', '7'), true).head).toBe('Hand 2: Win +1');
   });

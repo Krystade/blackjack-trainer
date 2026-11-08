@@ -2,6 +2,7 @@ import type { Card } from '../engine/cards';
 import type { PlayerHand } from '../engine/game';
 import { handValue, isBlackjack } from '../engine/hand';
 import { signed } from '../drills/signed';
+import { signedMoney } from './casinoFigures';
 
 /**
  * B5/W5 (spec 2026-10-16): one settled hand's result, read at a glance.
@@ -30,18 +31,20 @@ export function roundBanner(
   multi: boolean,
   dealerCards: readonly Card[],
   holeRevealed: boolean,
+  /** Track 3: Show chips -- the net in dollars at this unit ("Surrender −$12.50"). Absent: units. */
+  unit?: number,
 ): RoundBanner {
   const net = hand.net ?? 0;
   const prefix = multi ? `Hand ${playNumber}: ` : '';
+  const n = unit === undefined ? signed(net, { plusZero: false }) : signedMoney(net * unit);
   return {
-    head: `${prefix}${resultWords(hand.result, net)}`,
+    head: `${prefix}${resultWords(hand.result, n)}`,
     totals: `${youTotal(hand)} · ${dealerTotal(dealerCards, holeRevealed)}`,
     net,
   };
 }
 
-function resultWords(result: PlayerHand['result'], net: number): string {
-  const n = signed(net, { plusZero: false });
+function resultWords(result: PlayerHand['result'], n: string): string {
   switch (result) {
     case 'win':
       return `Win ${n}`;

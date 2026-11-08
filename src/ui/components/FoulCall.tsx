@@ -14,7 +14,8 @@ import './foulCall.css';
  * Inside the message strip, which skips bot pacing on a tap: the button
  * stops its click there, so calling Foul never also fast-forwards the table.
  */
-export function FoulCall({ game, onFoul }: { game: Game; onFoul: () => void }) {
+/** `unit`: Track 3 Show chips -- the payout error named in dollars. */
+export function FoulCall({ game, onFoul, unit }: { game: Game; onFoul: () => void; unit?: number }) {
   const offered = game.foulOpen && !game.countCheckOpen && (game.dealerMistakes || game.dealerError !== null);
   const verdict = game.phase === 'settled' ? game.foulVerdict : null;
   const missed = game.missedDealerError;
@@ -24,7 +25,7 @@ export function FoulCall({ game, onFoul }: { game: Game; onFoul: () => void }) {
       {missed && (
         <ResultStrip id={`foul-missed-${game.roundNo}`} tone="miss">
           <span className="foul-missed" data-testid="foul-missed" data-kind={missed.kind}>
-            {missedErrorText(missed)}
+            {missedErrorText(missed, unit)}
           </span>
         </ResultStrip>
       )}
@@ -36,7 +37,7 @@ export function FoulCall({ game, onFoul }: { game: Game; onFoul: () => void }) {
             data-correct={verdict.correct ? 'true' : 'false'}
             data-kind={verdict.error?.kind}
           >
-            {foulVerdictText(verdict)}
+            {foulVerdictText(verdict, unit)}
           </span>
         </ResultStrip>
       )}
