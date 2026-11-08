@@ -1,7 +1,7 @@
 import type { Profile, Stats } from '../../../store/types';
 import { strategyRulesFor } from '../../../store/profiles';
-import { ladder as buildLadder, masterySweepDone, type Ladder } from '../nextStep';
-import { loadMasteryRun } from '../../../drills/masteryChallenge';
+import { rungDone, type Ladder } from '../nextStep';
+import { buildHomeLadder } from '../ladderContext';
 import { loadFlashSr, loadQuizSr } from '../../../drills/gradeAnswer';
 import { dueForReview } from '../ladderRules';
 import { weakCells } from '../handProgress';
@@ -20,22 +20,23 @@ export function planInputFor(stats: Stats, profile: Profile, now: number, built?
   const rules = strategyRulesFor(profile);
   const flashSr = loadFlashSr();
   const quizSr = loadQuizSr();
-  const lad =
-    built ??
-    buildLadder(stats, {
-      sweepDone: (stats.masterySweepsCompleted ?? 0) > 0 || masterySweepDone(loadMasteryRun()),
-      rules,
-      flashSr,
-      quizSr,
-      now,
-    });
+  const lad = built ?? buildHomeLadder(stats, profile, now);
   const rungsPassed: Partial<Record<GuidedRung, boolean>> = {};
-  for (const r of lad.rungs) {
-    if (r.id !== 'play') rungsPassed[r.id] = r.passed;
-  }
+  const rungsReached: Partial<Record<GuidedRung, boolean>> = {};
+  const rungsSkipped: Partial<Record<GuidedRung, boolean>> = {};
+  lad.rungs.forEach((r, i) => {
+    if (r.id === 'play') return;
+    rungsPassed[r.id] = r.passed;
+    if (r.skipped) rungsSkipped[r.id] = true;
+    // D1: reached = passed, skipped, or at or before the current rung.
+    rungsReached[r.id] = rungDone(r) || lad.current === null || i <= lad.current;
+  });
   const due = dueForReview(flashSr, quizSr, activeIndices(rules).map((d) => d.id), now);
   return {
     rungsPassed,
+    rungsReached,
+    rungsSkipped,
+    currentRung: lad.current === null ? null : lad.rungs[lad.current]!.id,
     dueCells: orderDueCells(due.cells, flashSr, now),
     weakCells: weakCells(stats).map((w) => w.id),
     dueIndexes: due.indexes,

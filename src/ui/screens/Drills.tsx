@@ -16,7 +16,9 @@ import '../components/handResultIndex.css';
 import '../components/rulesChip.css';
 import './drills/missHistory.css';
 import { saveSettings, loadStats } from '../../store/persist';
-import { isCountFluent } from '../../drills/fluencyGate';
+import { buildHomeLadder } from './ladderContext';
+import { drillTag, type PickerDrill } from './drillRungs';
+import './drillsLabels.css';
 import { IndexTestView } from './drills/IndexTestView';
 import { isE2eAudioMode } from '../../audio/speech';
 import { CountDrillView } from './drills/CountDrillView';
@@ -374,30 +376,28 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
   }
   if (mode === 'rulesdiff') return <RulesDiffView settings={settings} activeProfile={activeProfile} onBack={() => setMode('picker')} />;
 
-  // V3-4: SOFT competence gating — advanced pressure modes still work, but show
-  // a "get fluent first" nudge until the learner has demonstrated basic
-  // count-drill competence. Read once here (only the picker branch reaches this).
-  const fluent = isCountFluent(loadStats().countDrill.history);
+  // Track 1 (1A): the learning path, from the same ladder Home shows. "Start
+  // here" on the current step's drill, "After: X" on drills not reached yet.
+  // Labels, not locks: it replaces V3-4's soft "get fluent first" note on the
+  // two advanced drills, saying the same thing for every drill, more exactly.
+  const ladder = buildHomeLadder(loadStats(), activeProfile);
 
   // One line per drill: what you practise, and why it matters at the table.
   // The name stays the button's accessible name (aria-label) so a screen
   // reader -- and every spec that clicks a drill by name -- hears the drill,
   // with the line attached as its description.
-  const entry = (
-    target: DrillMode,
-    name: string,
-    description: string,
-    advanced = false,
-  ) => {
+  const entry = (target: PickerDrill, name: string, description: string) => {
     const descId = `drill-desc-${target}`;
-    const gated = advanced && !fluent;
+    const tag = drillTag(target, ladder);
+    const tagId = `drill-tag-${target}`;
     return (
       <button
         key={target}
         type="button"
-        className={`drills-nav-btn${gated ? ' drills-nav-btn-advanced' : ''}`}
+        className="drills-nav-btn"
         aria-label={name}
-        aria-describedby={descId}
+        aria-describedby={tag ? `${tagId} ${descId}` : descId}
+        data-drill={target}
         // Wave O: a lazy drill opens in a transition, so the picker stays up
         // while its chunk loads instead of the screen going blank. The eager
         // drills open synchronously, as before (a transition there let a
@@ -405,10 +405,14 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
         onClick={() => (LAZY_DRILLS.has(target) ? startTransition(() => setMode(target)) : setMode(target))}
       >
         <span className="drills-nav-name">{name}</span>
+        {tag && (
+          <span className="drills-nav-tag" id={tagId} data-tag={tag.kind}>
+            {tag.text}
+          </span>
+        )}
         <span className="drills-nav-desc" id={descId}>
           {description}
         </span>
-        {gated && <span className="drills-nav-note">Advanced — get fluent at the count drill first</span>}
       </button>
     );
   };
@@ -424,31 +428,31 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
       <div className="drills-nav">
         {/* Owner 2026-11-06: in the order you learn them, the most used first in each group. */}
         <h2 className="drills-group-title">Basic strategy</h2>
-        {entry('flash', 'Flashcards', 'Basic strategy, one hand at a time. It decides most of your hands.')}
-        {entry('mastery', 'Mastery challenge', 'Every basic-strategy hand once, with no mistakes. One miss starts the sweep over.')}
-        {entry('speed', 'Speed', 'Yes or no, against the clock: Surrender? Deviation here? Double? Split?')}
+        {entry('flash', 'Flashcards', 'Learn basic strategy: the right play for each hand, one hand at a time.')}
+        {entry('mastery', 'Mastery challenge', 'Every basic-strategy hand once, with no mistakes. One miss starts it over.')}
+        {entry('speed', 'Speed', 'Quick yes-or-no questions against the clock: double here? Split? Surrender?')}
         {entry('custom', 'Custom', 'Paint the chart cells you want, then drill just those in Flashcards, Mastery or Mixed.')}
 
         <h2 className="drills-group-title">Keeping the count</h2>
         {entry('count', 'Count drill', 'Keep the running count as cards are dealt. Every bet and play starts from it.')}
-        {entry('paircancel', 'Pair cancellation', 'Read two cards as one net value and skip pairs that cancel, to keep up with a fast dealer.')}
-        {entry('deckest', 'Deck estimation', 'Judge decks remaining from the discard tray. It is what you divide by.')}
-        {entry('truecount', 'True count drill', 'Turn a running count and decks remaining into the true count, which sets your bet.')}
-        {entry('producetc', 'Produce the true count', 'Count the cards, read the tray, give the true count: the whole job, as at the table.')}
+        {entry('paircancel', 'Pair cancellation', 'Spot two cards that cancel out, like a 5 and a king, so you can keep up with a fast dealer.')}
+        {entry('deckest', 'Deck estimation', 'Judge how many decks are left from the discard tray. You need it for the true count.')}
+        {entry('truecount', 'True count drill', 'Divide the running count by the decks left. The result, the true count, sets your bet.')}
+        {entry('producetc', 'Produce the true count', 'Count the cards, read the tray and give the true count, as at a real table.')}
 
         <h2 className="drills-group-title">Deviations</h2>
-        {entry('quiz', 'Deviation quiz', 'Index plays: when the true count says to leave basic strategy.')}
+        {entry('quiz', 'Deviation quiz', 'Hands where the count changes the right play, like standing on 16 against a 10.')}
         {/* R2/R4: interleaving is a DESIRABLE difficulty -- it helps once the
             base skill is there and costs accuracy before it. Soft, like every
             other gate here (V3-4, operator's explicit choice): the mode still
-            works, it just says what it is. */}
-        {entry('mixed', 'Mixed', 'Basic-strategy and index hands shuffled together, so you learn when the count matters.', true)}
+            works, and its "After:" label (Track 1) says what comes first. */}
+        {entry('mixed', 'Mixed', 'Basic-strategy and count-changed hands shuffled together, so you learn when the count matters.')}
 
         <h2 className="drills-group-title">Betting</h2>
-        {entry('betsizing', BET_SIZING_DRILL, BET_SIZING_PICKER, true)}
+        {entry('betsizing', BET_SIZING_DRILL, BET_SIZING_PICKER)}
 
         <h2 className="drills-group-title">Other games and rules</h2>
-        {entry('rulesdiff', 'Rules differences', 'Only the plays that change between H17 and S17, 6 and 8 decks, or another game.')}
+        {entry('rulesdiff', 'Rules differences', 'Only the plays that change with the rules: the dealer hitting soft 17, 6 or 8 decks, another game.')}
         {entry('variant', 'Variant hands', 'Free Bet, Spanish 21 and Blackjack Switch hands, graded on their own charts.')}
         {entry('sidecount', 'Side count', 'Keep a side bet’s own count, then say whether the bet is worth making.')}
       </div>

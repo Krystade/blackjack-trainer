@@ -4,7 +4,7 @@ import type { Profile, Settings } from '../../../store/types';
 import { loadStats, saveSettings } from '../../../store/persist';
 import { localDayKey } from '../../../store/practiceDays';
 import { habitClock } from '../../../habits/clock';
-import { PRESETS, segmentDef, type GuidedPreset } from '../../../guided/plan';
+import { PRESETS, planBlurb, planSession, segmentDef, type GuidedPreset } from '../../../guided/plan';
 import { isResumable, resume, type GuidedSession } from '../../../guided/session';
 import { loadGuided } from '../../../guided/store';
 import { noteGuidedPriorModes, setGuidedLaunch } from '../../../guided/launch';
@@ -15,7 +15,8 @@ import { isVoiceOn, setVoiceOn } from '../../voiceSession';
 import { withAudioEnabled } from '../../audioGate';
 import { speak } from '../../../audio/speech';
 import { speechOptsFrom } from '../../../audio/speechOpts';
-import { startGuided } from './guidedStart';
+import { planInputFor, startGuided } from './guidedStart';
+import type { Ladder } from '../nextStep';
 import './guidedCard.css';
 
 /**
@@ -29,11 +30,14 @@ export function GuidedCard({
   activeProfile,
   onSettingsChange,
   onNavigate,
+  ladder,
 }: {
   settings: Settings;
   activeProfile: Profile;
   onSettingsChange: (s: Settings) => void;
   onNavigate: (screen: Screen) => void;
+  /** Home's ladder, so the card describes the plan from the same judgement. */
+  ladder?: Ladder;
 }) {
   const [store] = useState(() => loadGuided());
   // B33: the habit clock, so the guided day moves with every other habit day.
@@ -63,6 +67,12 @@ export function GuidedCard({
   };
 
   const start = (drive: boolean) => launch(startGuided(preset, drive, loadStats(), activeProfile, Date.now()), drive ? driveIntroLine(preset) : introLine(preset));
+  // Track 1 (1A): the line says what THIS preset's plan covers -- only the
+  // steps reached so far, and which one joins next.
+  const blurb = active ? '' : (() => {
+    const input = planInputFor(loadStats(), activeProfile, Date.now(), ladder);
+    return planBlurb(planSession(preset, input), input);
+  })();
 
   if (active) {
     const seg = active.plan[active.index]!;
@@ -94,7 +104,7 @@ export function GuidedCard({
       <div className="guided-card-head">
         <div className="guided-card-text">
           <h2 className="guided-card-title">Guided session</h2>
-          <p className="guided-card-why">One tap, a routine: warm-up, speed, counting, deviations, bets. Weak spots get longer.</p>
+          <p className="guided-card-why" data-testid="guided-card-blurb">{blurb}</p>
         </div>
         <div className="guided-card-presets" role="radiogroup" aria-label="Length">
           {PRESETS.map((p) => (

@@ -1,0 +1,23 @@
+/* Track 1 (1A): the Drills picker's learning-path tags (drillRungs.ts).
+   A small pill between the drill's name and its description: gold for the
+   step you're on, quiet for the ones that come later. */
+.drills-nav-tag {
+  align-self: flex-start;
+  display: inline-block;
+  padding: 0.05rem 0.5rem;
+  border-radius: 999px;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.drills-nav-tag[data-tag='start'] {
+  color: var(--accent);
+  background: var(--accent-wash);
+  border: 1px solid var(--accent);
+}
+
+.drills-nav-tag[data-tag='after'] {
+  color: var(--ink-dim);
+  border: 1px dashed var(--line);
+}

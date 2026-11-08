@@ -18,6 +18,15 @@
  *   - Minutes: the preset apportioned over the included weights by largest
  *     remainder, every segment at least one minute. Answer targets are the
  *     minutes times the segment's pace, rounded to five (at least five).
+ *
+ * Track 1 (2026-11-07, D1): ONLY REACHED STEPS. A rung is reached when it is
+ * passed, skipped at the welcome, or at or before the ladder's current rung
+ * -- never by position alone, so a passed rung above a current one that fell
+ * back (a weak cell, a stricter count rule, a failed re-test) stays in.
+ * A segment is planned when any rung it serves is reached. The base weight of
+ * the unreached segments goes to the current rung's own segment, and a
+ * segment whose answer target would clamp at ANSWER_TARGET_MAX gets a time
+ * target instead, so the session still lasts the preset.
  */
 
 export type SegmentId = 'warmup' | 'speed' | 'count' | 'truecount' | 'deviations' | 'bets';
@@ -73,6 +82,21 @@ export interface PlannedSegment {
 export interface PlanInput {
   /** Rung id -> passed, from the Home ladder. A rung missing reads as not passed. */
   rungsPassed: Partial<Record<GuidedRung, boolean>>;
+  /**
+   * D1: rung id -> reached (passed, skipped, or at or before the current
+   * rung; guidedStart.planInputFor). A rung missing reads as REACHED, so a
+   * caller that does not say plans every segment, as before.
+   */
+  rungsReached?: Partial<Record<GuidedRung, boolean>>;
+  /** 1C: rungs skipped at the welcome -- reached, and not weak. */
+  rungsSkipped?: Partial<Record<GuidedRung, boolean>>;
+  /** 3B (Track 3): rungs due a re-test -- reached, and planned as weak. */
+  rungsRusty?: Partial<Record<GuidedRung, boolean>>;
+  /**
+   * The ladder's current rung: it takes the minutes of the unreached
+   * segments. 'play' or null (every rung done) or absent: nothing is freed.
+   */
+  currentRung?: GuidedRung | 'play' | null;
   dueCells: readonly string[];
   weakCells: readonly string[];
   dueIndexes: readonly string[];
@@ -81,9 +105,38 @@ export interface PlanInput {
 /** At most this many cells in the warm-up's review deck. */
 export const WARMUP_CELLS_MAX = 12;
 
+/** The ladder's order (nextStep.ts), without the last rung, 'play'. */
+export const RUNG_ORDER: readonly GuidedRung[] = ['basic', 'repair', 'count', 'tc', 'deviations', 'betramp'];
+
+/** nextStep.ts RUNG_LABELS, restated to keep this pure (plan.test.ts holds them equal). */
+export const GUIDED_RUNG_LABELS: Record<GuidedRung, string> = {
+  basic: 'Basic strategy',
+  repair: 'Weak cells and a full sweep',
+  count: 'Running count at table pace',
+  tc: 'Deck estimation and true count',
+  deviations: 'Deviations',
+  betramp: 'Bet ramp',
+};
+
+/** The segment that trains each rung, and so takes the minutes freed while it is current. */
+export const PRIMARY_SEGMENT: Record<GuidedRung, SegmentId> = {
+  basic: 'warmup',
+  repair: 'warmup',
+  count: 'count',
+  tc: 'truecount',
+  deviations: 'deviations',
+  betramp: 'bets',
+};
+
 export function isWeak(def: SegmentDef, input: PlanInput): boolean {
-  if (def.id === 'warmup') return input.dueCells.length > 0 || input.weakCells.length > 0;
-  return def.rungs.some((r) => input.rungsPassed[r] !== true);
+  const rusty = def.rungs.some((r) => input.rungsRusty?.[r] === true);
+  if (def.id === 'warmup') return input.dueCells.length > 0 || input.weakCells.length > 0 || rusty;
+  return rusty || def.rungs.some((r) => input.rungsPassed[r] !== true && input.rungsSkipped?.[r] !== true);
+}
+
+/** D1: planned when any rung the segment serves is reached. */
+export function isReached(def: SegmentDef, input: PlanInput): boolean {
+  return def.rungs.some((r) => input.rungsReached?.[r] !== false);
 }
 
 /**
@@ -141,8 +194,25 @@ export function warmupCells(dueCells: readonly string[], weakCells: readonly str
   return [...new Set([...dueTake, ...weakTake, ...dueCells, ...weakOnly])].slice(0, WARMUP_CELLS_MAX);
 }
 
+/**
+ * The target for `minutes` of a segment: its answers at its pace, or (no pace,
+ * or more answers than ANSWER_TARGET_MAX) the time itself -- a clamped answer
+ * target would end the segment, and so the session, early.
+ */
+export function segmentTarget(def: SegmentDef, minutes: number): SegmentTarget {
+  if (def.perMinute && minutes * def.perMinute <= ANSWER_TARGET_MAX) {
+    return { kind: 'answers', n: answerTarget(minutes, def.perMinute) };
+  }
+  return { kind: 'time', ms: minutes * 60_000 };
+}
+
 export function planSession(preset: GuidedPreset, input: PlanInput, opts: { drive?: boolean } = {}): PlannedSegment[] {
-  const flagged = SEGMENTS.filter((def) => !(opts.drive && DRIVE_EXCLUDED.includes(def.id))).map((def) => ({
+  const reached = SEGMENTS.filter((def) => isReached(def, input));
+  // The current rung takes the time of what is not reached yet.
+  const current = input.currentRung;
+  const primary = current && current !== 'play' ? PRIMARY_SEGMENT[current] : null;
+  const freed = SEGMENTS.filter((def) => !reached.includes(def)).reduce((n, def) => n + def.base, 0);
+  const flagged = reached.filter((def) => !(opts.drive && DRIVE_EXCLUDED.includes(def.id))).map((def) => ({
     def,
     weak: isWeak(def, input),
   }));
@@ -158,14 +228,12 @@ export function planSession(preset: GuidedPreset, input: PlanInput, opts: { driv
   }
   const minutes = apportion(
     preset,
-    included.map((f) => f.def.base * (f.weak ? 2 : 1)),
+    included.map((f) => f.def.base * (f.weak ? 2 : 1) + (f.def.id === primary ? freed : 0)),
   );
   const cells = warmupCells(input.dueCells, input.weakCells);
   return included.map((f, i) => {
     const m = minutes[i]!;
-    const target: SegmentTarget = f.def.perMinute
-      ? { kind: 'answers', n: answerTarget(m, f.def.perMinute) }
-      : { kind: 'time', ms: m * 60_000 };
+    const target = segmentTarget(f.def, m);
     return {
       id: f.def.id,
       minutes: m,
@@ -175,4 +243,28 @@ export function planSession(preset: GuidedPreset, input: PlanInput, opts: { driv
       ...(f.def.id === 'deviations' ? { indexes: [...input.dueIndexes] } : {}),
     };
   });
+}
+
+/** "a", "a and b", "a, b and c". */
+function listText(items: readonly string[]): string {
+  if (items.length <= 1) return items.join('');
+  return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
+}
+
+/**
+ * Home's guided card line: what THIS plan covers (the preset's own plan, so
+ * 5 minutes names its three), and, while some steps are not reached, which
+ * segment joins next and what it waits for -- the rung just before the
+ * segment's first, the last one to pass before it is reached.
+ */
+export function planBlurb(plan: readonly PlannedSegment[], input: PlanInput): string {
+  const names = plan.map((p, i) => {
+    const label = segmentDef(p.id).label;
+    return i === 0 ? label : label.toLowerCase();
+  });
+  const next = SEGMENTS.find((def) => !isReached(def, input));
+  if (!next) return `One tap, a routine: ${listText(names)}. Weak spots get longer.`;
+  const first = Math.min(...next.rungs.map((r) => RUNG_ORDER.indexOf(r)));
+  const before = RUNG_ORDER[Math.max(0, first - 1)]!;
+  return `${listText(names)} for now. ${next.label} joins after ${GUIDED_RUNG_LABELS[before].toLowerCase()}.`;
 }

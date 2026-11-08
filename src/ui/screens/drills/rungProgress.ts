@@ -1,9 +1,6 @@
 import type { Profile, Stats } from '../../../store/types';
-import { strategyRulesFor } from '../../../store/profiles';
-import { loadMasteryRun } from '../../../drills/masteryChallenge';
-import { loadFlashSr, loadQuizSr } from '../../../drills/gradeAnswer';
-import { ladder, masterySweepDone } from '../nextStep';
 import type { RungId } from '../nextStep';
+import { buildHomeLadder } from '../ladderContext';
 
 /**
  * L-3: a drill's step progress on its result screen -- the Home ladder rung
@@ -31,15 +28,13 @@ export function speedRung(q: { deviationId?: string }): RungId {
   return q.deviationId ? 'deviations' : 'basic';
 }
 
-/** The ladder exactly as Home builds it (Home.tsx). */
+/**
+ * The ladder exactly as Home builds it. D3 (2026-11-07): through the one
+ * context builder (ladderContext.ts), so skipped and rusty rungs read the
+ * same on a result screen as on Home.
+ */
 export function homeLadder(stats: Stats, profile?: Profile, now: number = Date.now()) {
-  return ladder(stats, {
-    sweepDone: (stats.masterySweepsCompleted ?? 0) > 0 || masterySweepDone(loadMasteryRun()),
-    rules: profile ? strategyRulesFor(profile) : undefined,
-    flashSr: loadFlashSr(),
-    quizSr: loadQuizSr(),
-    now,
-  });
+  return buildHomeLadder(stats, profile, now);
 }
 
 /** "Running count at table pace: 3/5 paced deck runs", ticked once passed. */

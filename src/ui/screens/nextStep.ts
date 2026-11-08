@@ -77,8 +77,20 @@ export interface RungResult {
   id: RungId;
   label: string;
   passed: boolean;
+  /**
+   * Track 1 (1C): the user said they know this step (first-launch welcome), so
+   * the ladder moves past it -- but it is NOT passed: stats and the rung's own
+   * judgement stay honest. Only ever true while `passed` is false; absent
+   * until the welcome ships.
+   */
+  skipped?: boolean;
   progress: string;
   start: StartTarget;
+}
+
+/** A rung the ladder has moved past: passed, or skipped at the welcome. */
+export function rungDone(r: Pick<RungResult, 'passed' | 'skipped'>): boolean {
+  return r.passed || r.skipped === true;
 }
 
 export type CardKind = 'rung' | 'review' | 'stale';

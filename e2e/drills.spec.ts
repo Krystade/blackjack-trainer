@@ -1708,45 +1708,8 @@ test('produce the true count: flash then produce a TC, graded within tolerance a
   }
 });
 
-/* V3-4 + R2: SOFT competence gating. The advanced modes -- the two pressure     */
-/* drills AND Mixed, whose interleaving is a desirable difficulty that costs      */
-/* accuracy before the base skill is there -- show a "build fluency first" nudge  */
-/* until the learner has enough count-drill history, but stay CLICKABLE (soft,    */
-/* not a lock). Gone once fluent.                                                */
-test('drills picker: advanced modes show a soft fluency nudge until fluent, but stay clickable', async ({
-  page,
-}) => {
-  await page.goto('/?e2e=1');
-  await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await expect(page.locator('.drills-title')).toHaveText('Drills');
-  // Fresh profile: not fluent -> advisory on Mixed and Bet sizing.
-  await expect(page.locator('.drills-nav-note')).toHaveCount(2);
-  // #48-51: the Downswing drill is gone.
-  await expect(page.getByRole('button', { name: 'Downswing', exact: true })).toHaveCount(0);
-  // Mixed carries it too, and is still reachable.
-  await expect(
-    page.getByRole('button', { name: 'Mixed', exact: true }),
-  ).toHaveClass(/drills-nav-btn-advanced/);
-  await shot(page, '99-soft-gate');
-  // Soft, not locked: the mode still opens.
-  await page.getByRole('button', { name: 'Bet sizing', exact: true }).click();
-  await expect(page.locator('.drill-heading')).toHaveText('Bet sizing');
-});
-
-test('drills picker: no fluency nudge once the learner is fluent', async ({ page }) => {
-  // F15: the shared fluency rule counts paced runs of at least one deck.
-  const history = Array.from({ length: 10 }, () => ({
-    date: '2026-08-03T00:00:00.000Z',
-    cards: 52,
-    intervalMs: 800,
-    correct: true,
-  }));
-  await withStats(page, { countDrill: { history } });
-  await page.goto('/?e2e=1');
-  await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await expect(page.locator('.drills-title')).toHaveText('Drills');
-  await expect(page.locator('.drills-nav-note')).toHaveCount(0);
-});
+/* V3-4's soft "get fluent first" note on the picker gave way to the ladder's  */
+/* "Start here" / "After: X" labels (Track 1, 2026-11-07): drills-labels.spec. */
 
 /* R2's other half: an interruption you cannot yet absorb does not train        */
 /* robustness, it makes the count wrong. Same soft nudge, on the count drill's  */

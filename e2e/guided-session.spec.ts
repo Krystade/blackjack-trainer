@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { readStoredDiagnostics, sayOnceListening, submitZero, withProfile, withSettings } from './helpers';
+import { readStoredDiagnostics, sayOnceListening, submitZero, withProfile, withSettings, withStats } from './helpers';
 import { answersSentence, driveIntroLine } from '../src/guided/lines';
 import { driveTransitionCapMs } from '../src/guided/transitionCap';
 import { DRIVE_INTRO_LISTEN_MS } from '../src/guided/transitionCap';
@@ -9,13 +9,25 @@ import { DRIVE_INTRO_LISTEN_MS } from '../src/guided/transitionCap';
  * the rest back to back; each segment ends on its target and the next starts
  * through a short transition, by tap or, in Drive, by voice.
  *
- * Deterministic: a fresh profile always plans the same 5-minute session --
- * warm-up, then the two weakest drills in ladder order, speed and the running
- * count (src/guided/plan.ts) -- whose targets the spec reads from the plan
- * the app stored rather than restating them; every hand is answered with the
- * play the drill itself advertises (`data-advice`), and the one time target
- * is driven by Playwright's clock.
+ * Deterministic: a profile past basic strategy (PAST_BASIC: every category on
+ * target and a sweep, so counting is the current step) always plans the same
+ * 5-minute session -- warm-up, speed and the running count (src/guided/plan.ts;
+ * Track 1: only the steps reached) -- whose targets the spec reads from the
+ * plan the app stored rather than restating them; a fresh profile plans
+ * warm-up and speed alone. Every hand is answered with the play the drill
+ * itself advertises (`data-advice`), and the one time target is driven by
+ * Playwright's clock.
  */
+
+/** Basic strategy and the repair rung passed: counting is the current step, so it is reached. */
+const PAST_BASIC = {
+  cellStats: {
+    'hard-16-v-10': { right: 30, wrong: 0, lastAt: '' },
+    'soft-18-v-9': { right: 30, wrong: 0, lastAt: '' },
+    'pair-8-v-A': { right: 30, wrong: 0, lastAt: '' },
+  },
+  masterySweepsCompleted: 1,
+};
 
 const GUIDED_KEY = 'bjtrainer.guided.v1';
 const PROGRESS_KEY = 'bjtrainer.progress.v1';
@@ -85,6 +97,7 @@ async function answerSegment(page: Page, seg: string, n: number): Promise<void> 
 
 test('tap: Home to summary, auto-advancing, crediting the day and "Guided start"', async ({ page }) => {
   await base(page);
+  await withStats(page, PAST_BASIC);
   await page.goto('/?e2e=1');
   const card = page.locator('.guided-card');
   await card.getByRole('radio', { name: /^5/ }).click();
@@ -244,6 +257,7 @@ test('Drive: spoken transitions, answers and commands by voice, an answer is nev
   test.setTimeout(90_000);
   await withFakeEngine(page);
   await base(page);
+  await withStats(page, PAST_BASIC);
   await page.goto('/?e2e=1');
   const card = page.locator('.guided-card');
   await card.getByRole('radio', { name: /^5/ }).click();
@@ -335,12 +349,43 @@ test('interrupted: a reload leaves a resume point on Home, with the answers kept
   const home = page.locator('.tab-bar').getByRole('button', { name: 'Home', exact: true });
   if (!(await card.isVisible())) await home.click();
   await expect(card).toHaveAttribute('data-state', 'resume');
-  await expect(card).toContainText('Warm-up, segment 1 of 3');
+  // A fresh profile: warm-up and speed, the steps reached so far (Track 1).
+  await expect(card).toContainText('Warm-up, segment 1 of 2');
   await card.getByRole('button', { name: 'Resume', exact: true }).click();
   await expect(page.getByText('Picking up')).toBeVisible();
-  await expect(page.getByText(`2 of ${warm} answers · segment 1 of 3`)).toBeVisible();
+  await expect(page.getByText(`2 of ${warm} answers · segment 1 of 2`)).toBeVisible();
   await expect(running(page, 'warmup')).toBeVisible({ timeout: 8000 });
   await expect(strip(page)).toHaveText(`2/${warm}`);
+});
+
+/* Track 1 (1A): a session covers only the steps reached, and the card says so. */
+test('a fresh profile: the card names warm-up and speed, and 15 minutes plans just those two', async ({ page }) => {
+  await base(page);
+  await page.goto('/?e2e=1');
+  const card = page.locator('.guided-card');
+  await card.getByRole('radio', { name: /^15/ }).click();
+  await expect(card.getByTestId('guided-card-blurb')).toHaveText(
+    "Warm-up and speed for now. Running count joins after weak cells and a full sweep.",
+  );
+  await card.getByRole('button', { name: 'Start guided session' }).click();
+  await expect(page.locator('[data-testid="guided-transition"][data-segment="warmup"]')).toBeVisible();
+  const plan = await storedPlan(page);
+  expect(plan.map((p) => p.id)).toEqual(['warmup', 'speed']);
+  // The freed minutes went to the step being learned.
+  const mins = await page.evaluate((k) => JSON.parse(localStorage.getItem(k) ?? '{}').active.plan.map((p: { minutes: number }) => p.minutes), GUIDED_KEY);
+  expect(mins).toEqual([11, 4]);
+  await expect(page.locator('.guided-rail-item')).toHaveCount(2);
+});
+
+test('past basic strategy: the card names the count too, and says what joins next', async ({ page }) => {
+  await base(page);
+  await withStats(page, PAST_BASIC);
+  await page.goto('/?e2e=1');
+  const card = page.locator('.guided-card');
+  await card.getByRole('radio', { name: /^15/ }).click();
+  await expect(card.getByTestId('guided-card-blurb')).toHaveText(
+    "Warm-up, speed and running count for now. True count joins after running count at table pace.",
+  );
 });
 
 test('paused, then Home: Resume picks the segment up, not a second pause screen', async ({ page }) => {

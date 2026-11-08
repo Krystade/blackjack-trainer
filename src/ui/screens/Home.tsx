@@ -8,11 +8,9 @@ import { readiness, weakestCategories } from './readiness';
 import { buildLabel, formatBuiltAt, runningBuildId, runningBuiltAt } from '../../updateCheck';
 import { CATEGORY_LABELS } from './categoryLabels';
 import { pctOfPercent } from './statsFormat';
-import { ladder as buildLadder, masterySweepDone } from './nextStep';
 import type { NextStep, StartTarget } from './nextStep';
-import { loadMasteryRun } from '../../drills/masteryChallenge';
+import { buildHomeLadder } from './ladderContext';
 import { launchSettings, reviewIndexesLaunch, reviewLaunch, setDrillLaunch, weakCellsLaunch } from '../drillLaunch';
-import { loadFlashSr, loadQuizSr } from '../../drills/gradeAnswer';
 import { LadderCard } from './LadderCard';
 import { strategyRulesFor } from '../../store/profiles';
 import './nextStep.css';
@@ -66,13 +64,8 @@ export function Home({ onNavigate, activeProfile, settings, onSettingsChange }: 
   const r = readiness(stats, gradedRules);
   const weak = weakestCategories(stats);
   // #28 / B2: the seven-rung ladder, and the one step it recommends.
-  const ladder = buildLadder(stats, {
-    sweepDone: (stats.masterySweepsCompleted ?? 0) > 0 || masterySweepDone(loadMasteryRun()),
-    rules: gradedRules,
-    flashSr: loadFlashSr(),
-    quizSr: loadQuizSr(),
-    now: Date.now(),
-  });
+  // D3: the one context builder, shared with the guided card and Drills.
+  const ladder = buildHomeLadder(stats, activeProfile, Date.now());
   const step = ladder.step;
   const openStep = (t: StartTarget & Pick<NextStep, 'reviewCells' | 'reviewIndexes'>) => {
     if (t.kind === 'play') {
@@ -163,7 +156,7 @@ export function Home({ onNavigate, activeProfile, settings, onSettingsChange }: 
       <StreakCard settings={settings} onOpen={() => onNavigate('progress')} />
 
       {/* Wave L (lane v): one tap runs a guided routine (its own component). */}
-      <GuidedCard settings={settings} activeProfile={activeProfile} onSettingsChange={onSettingsChange} onNavigate={onNavigate} />
+      <GuidedCard settings={settings} activeProfile={activeProfile} onSettingsChange={onSettingsChange} onNavigate={onNavigate} ladder={ladder} />
 
       {/* B2: the ladder first, so Start sits above the fold. */}
       <LadderCard
