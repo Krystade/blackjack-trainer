@@ -3,6 +3,7 @@ import { strategyRulesFor } from '../../store/profiles';
 import { loadMasteryRun } from '../../drills/masteryChallenge';
 import { loadFlashSr, loadQuizSr } from '../../drills/gradeAnswer';
 import { ladder, masterySweepDone, type Ladder, type LadderContext } from './nextStep';
+import { loadOnboarding, skippedRungs } from '../../store/onboarding';
 
 /**
  * Track 1 (2026-11-07, D3): THE one place the ladder's context is gathered.
@@ -20,6 +21,8 @@ export function homeLadderContext(stats: Stats, profile?: Profile, now: number =
     flashSr: loadFlashSr(),
     quizSr: loadQuizSr(),
     now,
+    // 1C: the welcome's skips, so Home, guided, Drills and the result lines all see them.
+    skipped: skippedRungs(loadOnboarding()),
   };
 }
 

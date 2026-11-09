@@ -124,6 +124,8 @@ export interface LadderContext {
   flashSr?: SrDeck;
   quizSr?: SrDeck;
   now?: number;
+  /** Track 1 (1C): rungs the welcome skipped (store/onboarding.ts skippedRungs). */
+  skipped?: readonly RungId[];
 }
 
 // W3: the category and cell thresholds live with the shared figures Home and
@@ -407,16 +409,19 @@ export function ladder(stats: Stats, ctx: LadderContext): Ladder {
     },
   ];
 
+  const skipped = new Set(ctx.skipped ?? []);
   const rungs: RungResult[] = drafts.map((d) => ({
     id: d.id,
     label: RUNG_LABELS[d.id],
     passed: d.card === null,
+    // 1C: a skip never passes a rung; one passed since reads passed.
+    ...(d.card !== null && skipped.has(d.id) ? { skipped: true } : {}),
     progress: d.progress,
     start: d.card
       ? { kind: d.card.kind, ...(d.card.scope ? { scope: d.card.scope } : {}), ...(d.card.reviewIndexes ? { reviewIndexes: d.card.reviewIndexes } : {}) }
       : d.passedStart,
   }));
-  const first = rungs.findIndex((r) => !r.passed);
+  const first = rungs.findIndex((r) => !rungDone(r));
   const current = first === -1 ? null : first;
   const now = ctx.now ?? Date.now();
   const activeIds = active.map((d) => d.id);

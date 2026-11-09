@@ -1,0 +1,77 @@
+/* Track 1 (1C): the first-launch welcome card on Home (WelcomeCard.tsx). */
+.welcome-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 0.5rem);
+  width: 100%;
+  padding: var(--space-3, 0.75rem) var(--space-4, 1rem);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-lg, 0.75rem);
+  background: var(--surface);
+}
+.welcome-title {
+  margin: 0;
+  font-size: var(--fs-xl);
+  color: var(--ink);
+}
+.welcome-ask {
+  margin: 0;
+  color: var(--ink-dim);
+}
+.welcome-choices {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 0.5rem);
+}
+.welcome-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-height: 44px;
+  padding: var(--space-2, 0.5rem) var(--space-3, 0.75rem);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md, 0.5rem);
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.welcome-choice:hover,
+.welcome-choice:focus-visible {
+  border-color: var(--accent);
+  background: var(--accent-wash);
+}
+.welcome-choice-label {
+  font-weight: 700;
+}
+.welcome-choice-note {
+  font-size: var(--fs-sm);
+  color: var(--ink-dim);
+}
+.welcome-skip {
+  align-self: flex-start;
+  min-height: 44px;
+  padding: 0 var(--space-1, 0.25rem);
+  border: 0;
+  background: none;
+  color: var(--ink-dim);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.home-intro {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: var(--fs-sm);
+}
+
+/* 1C: .home-screen centres its children (align-items: center), so a card
+   without a width shrank to its text -- a short Next step ("Learn the
+   deviations") sat narrower than the cards around it. Home's cards span the
+   column. */
+.home-screen > :is(.next-step, .readiness, .guided-card, .home-intro) {
+  align-self: stretch;
+}

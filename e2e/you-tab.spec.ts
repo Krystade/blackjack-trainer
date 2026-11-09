@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings } from './helpers';
+import { withSettings, withStats } from './helpers';
 
 /**
  * Wave W: the You tab. Jack asked to see his achievements from the tab bar;
@@ -53,6 +53,7 @@ test('the tab opens whichever half was open last, across a reload', async ({ pag
 });
 
 test("Home's ways in still land where they did, with You lit", async ({ page }) => {
+  await withStats(page, { cellStats: { 'hard-16-v-10': { right: 1, wrong: 0, lastAt: '' } } }); // T1-1C: the streak card waits for practice
   await page.goto('/?e2e=1');
   await page.getByTestId('streak-card').click();
   await expect(page.getByTestId('progress-screen')).toBeVisible();

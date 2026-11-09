@@ -59,9 +59,15 @@ async function shot(page: Page, name: string): Promise<void> {
   await page.screenshot({ path: `${SHOTS}/${NARROW ? '320' : '375'}-${theme}-${name}.png` });
 }
 
+// T1-1C: a fresh install shows no streak card; it arrives with the first
+// answer, empty, with the goal explained.
 test('new user: an empty streak card with the goal explained', async ({ page }) => {
   await page.clock.setFixedTime(at(10));
   await page.goto('/?e2e=1');
+  await expect(page.getByTestId('welcome-card')).toBeVisible();
+  await expect(page.getByTestId('streak-card')).toHaveCount(0);
+  await page.evaluate((s) => localStorage.setItem('bjtrainer.stats.v1', JSON.stringify({ version: 1, ...s })), { cellStats: { 'hard-16-v-10': { right: 1, wrong: 0, lastAt: '' } } });
+  await page.reload();
   const card = page.getByTestId('streak-card');
   await expect(card).toBeVisible();
   await expect(page.getByTestId('streak-count')).toHaveText('0');
@@ -220,6 +226,7 @@ test('Wave T: the mastery tiers are one tile per achievement, earned tiers dated
 
 test('Settings: the daily goal changes what Home asks for', async ({ page }) => {
   await page.clock.setFixedTime(at(10));
+  await withStats(page, { cellStats: { 'hard-16-v-10': { right: 1, wrong: 0, lastAt: '' } } }); // T1-1C: the streak card waits for practice
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Settings' }).click();
   // ?e2e=1 opens every Settings section (CollapsibleSection e2eForcesOpen).

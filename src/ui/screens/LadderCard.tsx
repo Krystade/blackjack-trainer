@@ -1,5 +1,6 @@
 import type { Ladder, NextStep, StartTarget } from './nextStep';
 import './driveButton.css';
+import './ladderSkipped.css';
 import { CATEGORY_TARGET, MIN_CATEGORY_ANSWERS, goalPct, pctDown } from './handProgress';
 
 /**
@@ -67,8 +68,9 @@ export function LadderCard({
       )}
       <ol className="ladder">
         {rungs.map((rung, i) => {
-          const state = rung.passed ? 'done' : i === current ? 'current' : 'locked';
-          const suffix = state === 'done' ? 'done' : state === 'current' ? 'current' : 'not yet';
+          // 1C: a rung the welcome skipped is muted and marked, never ticked.
+          const state = rung.passed ? 'done' : rung.skipped ? 'skipped' : i === current ? 'current' : 'locked';
+          const suffix = state === 'done' ? 'done' : state === 'skipped' ? 'skipped' : state === 'current' ? 'current' : 'not yet';
           return (
             <li key={rung.id}>
               <button
@@ -81,9 +83,10 @@ export function LadderCard({
                 onClick={() => onStart(rung.start)}
               >
                 <span className="ladder-mark" aria-hidden="true">
-                  {state === 'done' ? '✓' : i + 1}
+                  {state === 'done' ? '✓' : state === 'skipped' ? '–' : i + 1}
                 </span>
                 <span className="ladder-label">{rung.label}</span>
+                {state === 'skipped' && <span className="ladder-skipped">skipped</span>}
                 {state === 'current' && <span className="ladder-progress">{rung.progress}</span>}
               </button>
             </li>

@@ -31,6 +31,8 @@ test.beforeEach(async ({ page }) => {
     localStorage.setItem('bjtrainer.profiles.v1', JSON.stringify([profile]));
     localStorage.setItem('bjtrainer.activeProfile.v1', profile.id);
     localStorage.setItem('bjtrainer.settings.v1', JSON.stringify({ version: 1, dealerMistakesMode: 'occasional' }));
+    // A returning player has practice on record (T1-1C: Home's nudges wait for it).
+    localStorage.setItem('bjtrainer.stats.v1', JSON.stringify({ version: 1, cellStats: { 'hard-16-v-10': { right: 1, wrong: 0, lastAt: '' } } }));
   }, JACK);
 });
 

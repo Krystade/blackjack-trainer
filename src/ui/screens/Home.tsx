@@ -19,7 +19,12 @@ import { driveTarget, setDriveAutoStart } from '../driveLaunch';
 import { setEyesFreeOn } from '../eyesFreeSession';
 import { diag } from '../../diag/diagnosticLog';
 import { setVoiceOn } from '../voiceSession';
-import { useEffect } from 'react';
+import { Fragment, useEffect, useState, type ReactNode } from 'react';
+import { homeLayout, type HomeBlock } from './homeLayout';
+import { hasPracticeData } from './practiceData';
+import { WelcomeCard } from './WelcomeCard';
+import { loadOnboarding } from '../../store/onboarding';
+import { loadProgress } from '../../habits/progressStore';
 import { speak } from '../../audio/speech';
 import { prewarmClips } from '../../audio/clips';
 import { speechOptsFrom } from '../../audio/speechOpts';
@@ -68,6 +73,10 @@ export function Home({ onNavigate, activeProfile, settings, onSettingsChange }: 
   // D3: the one context builder, shared with the guided card and Drills.
   const ladder = buildHomeLadder(stats, activeProfile, Date.now());
   const step = ladder.step;
+  // 1C: re-read on every render, so the first answer (or a welcome choice) reshapes Home.
+  const [, setOnboardingTick] = useState(0);
+  const onboarding = loadOnboarding();
+  const blocks = homeLayout(hasPracticeData(stats, loadProgress()), ladder, onboarding);
   const openStep = (t: StartTarget & Pick<NextStep, 'reviewCells' | 'reviewIndexes'>) => {
     if (t.kind === 'play') {
       onNavigate('table');
@@ -128,6 +137,129 @@ export function Home({ onNavigate, activeProfile, settings, onSettingsChange }: 
     onNavigate('drills');
   };
 
+  /** 1C: one Home block. Order and presence: homeLayout. */
+  const renderBlock = (block: HomeBlock): ReactNode => {
+    switch (block) {
+      case 'welcome':
+        return <WelcomeCard activeProfile={activeProfile} onChosen={() => setOnboardingTick((n) => n + 1)} />;
+      case 'intro':
+        return (
+          <p className="home-intro" data-testid="home-intro">
+            Blackjack Trainer takes you from basic strategy to counting a shoe, one step at a time.
+          </p>
+        );
+      case 'streak':
+        return (
+          <StreakCard settings={settings} onOpen={() => onNavigate('progress')} />
+        );
+      case 'guided':
+        return (
+          <GuidedCard settings={settings} activeProfile={activeProfile} onSettingsChange={onSettingsChange} onNavigate={onNavigate} ladder={ladder} />
+        );
+      case 'ladder':
+        return (
+          <LadderCard
+            ladder={ladder}
+            onStart={openStep}
+            drive={drive ? { label: drive.label, onDrive: startDrive } : undefined}
+          />
+        );
+      case 'suggest':
+        return (
+          <SwitchSuggestion ladder={ladder} activeProfile={activeProfile} settings={settings} onSettingsChange={onSettingsChange} />
+        );
+      case 'backup':
+        return (
+          <BackupNudge />
+        );
+      case 'readiness':
+        return (
+          <section className="readiness" aria-label="Readiness">
+            <div className="readiness-figures">
+              <div className="readiness-stat">
+                <span className="readiness-value">{pct(r.accuracyPct)}</span>
+                <span className="readiness-label">accuracy</span>
+              </div>
+              <div className="readiness-stat">
+                <span className="readiness-value">{secs(r.medianMs)}</span>
+                <span className="readiness-label">median decision time</span>
+              </div>
+              <div className="readiness-stat">
+                <span className="readiness-value">
+                  {r.indicesPractised}/{r.indicesTotal}
+                </span>
+                {/* Wave B2 #10: the ladder's own figure and word. */}
+                <span className="readiness-label">indices practised</span>
+              </div>
+            </div>
+
+            {r.decisions === 0 && r.indexAnswers === 0 ? (
+              <p className="u-note">
+                Nothing answered yet. Start with the next step above.
+              </p>
+            ) : r.decisions === 0 ? (
+              // H1 fix round: index answers are not graded decisions, but they
+              // are answers -- "Nothing answered yet" beside "1/17 indices
+              // practised" was false.
+              <p className="u-note" data-testid="readiness-index-only">
+                No basic-strategy decisions graded yet · {r.indexAnswers} index{' '}
+                {r.indexAnswers === 1 ? 'answer' : 'answers'}
+              </p>
+            ) : (
+              <p className="u-note">
+                {r.decisions} decisions graded
+                {weak.length > 0 && (
+                  <> · weakest: {weak
+                      .map((w) => (CATEGORY_LABELS[w as keyof typeof CATEGORY_LABELS] ?? w).toLowerCase())
+                      .join(', ')}</>
+                )}
+              </p>
+            )}
+
+            {/* Wave N: F10's "Practised N of the last 7 days" line is gone; the
+                streak card's week dots above say it. */}
+
+            <button type="button" className="home-stats-link" onClick={() => onNavigate('stats')}>
+              All stats
+            </button>
+          </section>
+        );
+      case 'play':
+        return (
+          <div className="home-actions">
+            {/* W13: secondary to Next step, and gone when Next step is the shoe
+                itself -- two buttons for the same thing compete. */}
+            {step.kind !== 'play' && (
+              <button type="button" className="u-btn home-play-btn" onClick={() => onNavigate('table')}>
+                Play a shoe
+              </button>
+            )}
+          </div>
+        );
+      case 'statsLink':
+        // 1C: readiness waits for data; its way into Stats does not.
+        return (
+          <button type="button" className="home-stats-link" onClick={() => onNavigate('stats')}>
+            All stats
+          </button>
+        );
+      case 'build':
+        return (
+          <>
+            <p className="home-build" data-build={runningBuildId() ?? ''} data-built-at={runningBuiltAt() ?? ''}>
+              build {buildLabel()}
+              {formatBuiltAt() && <span className="home-build-at">{formatBuiltAt()}</span>}
+            </p>
+            {/* Diagnostics, not play: a small link under the build line rather
+                than a second full-width button beside "Play a shoe". */}
+            <button type="button" className="home-testkit-link" data-testid="testkit-open" onClick={() => onNavigate('testkit')}>
+              Test kit
+            </button>
+          </>
+        );
+    }
+  };
+
   return (
     <div className="home-screen">
       <header className="home-head">
@@ -153,101 +285,10 @@ export function Home({ onNavigate, activeProfile, settings, onSettingsChange }: 
         </button>
       </header>
 
-      {/* Wave N: the streak card, above everything else. */}
-      <StreakCard settings={settings} onOpen={() => onNavigate('progress')} />
-
-      {/* Wave L (lane v): one tap runs a guided routine (its own component). */}
-      <GuidedCard settings={settings} activeProfile={activeProfile} onSettingsChange={onSettingsChange} onNavigate={onNavigate} ladder={ladder} />
-
-      {/* B2: the ladder first, so Start sits above the fold. */}
-      <LadderCard
-        ladder={ladder}
-        onStart={openStep}
-        drive={drive ? { label: drive.label, onDrive: startDrive } : undefined}
-      />
-
-      {/* T1-1B: the next What-to-check switch, once its rung is passed. */}
-      <SwitchSuggestion ladder={ladder} activeProfile={activeProfile} settings={settings} onSettingsChange={onSettingsChange} />
-
-      {/* Below the ladder: above it, it pushed Start under the fold at 320x693. */}
-      <BackupNudge />
-
-      <section className="readiness" aria-label="Readiness">
-        <div className="readiness-figures">
-          <div className="readiness-stat">
-            <span className="readiness-value">{pct(r.accuracyPct)}</span>
-            <span className="readiness-label">accuracy</span>
-          </div>
-          <div className="readiness-stat">
-            <span className="readiness-value">{secs(r.medianMs)}</span>
-            <span className="readiness-label">median decision time</span>
-          </div>
-          <div className="readiness-stat">
-            <span className="readiness-value">
-              {r.indicesPractised}/{r.indicesTotal}
-            </span>
-            {/* Wave B2 #10: the ladder's own figure and word. */}
-            <span className="readiness-label">indices practised</span>
-          </div>
-        </div>
-
-        {r.decisions === 0 && r.indexAnswers === 0 ? (
-          <p className="u-note">
-            Nothing answered yet. Start with the next step above.
-          </p>
-        ) : r.decisions === 0 ? (
-          // H1 fix round: index answers are not graded decisions, but they
-          // are answers -- "Nothing answered yet" beside "1/17 indices
-          // practised" was false.
-          <p className="u-note" data-testid="readiness-index-only">
-            No basic-strategy decisions graded yet · {r.indexAnswers} index{' '}
-            {r.indexAnswers === 1 ? 'answer' : 'answers'}
-          </p>
-        ) : (
-          <p className="u-note">
-            {r.decisions} decisions graded
-            {weak.length > 0 && (
-              <> · weakest: {weak
-                  .map((w) => (CATEGORY_LABELS[w as keyof typeof CATEGORY_LABELS] ?? w).toLowerCase())
-                  .join(', ')}</>
-            )}
-          </p>
-        )}
-
-        {/* Wave N: F10's "Practised N of the last 7 days" line is gone; the
-            streak card's week dots above say it. */}
-
-        <button type="button" className="home-stats-link" onClick={() => onNavigate('stats')}>
-          All stats
-        </button>
-      </section>
-
-
-      {/* Play, and Settings (which has no tab). Drills and
-          Charts are one tap away in the tab bar, and repeating them would
-          make Home a menu again -- the exact thing the tab bar replaces. */}
-      <div className="home-actions">
-        {/* W13: secondary to Next step, and gone when Next step is the shoe
-            itself -- two buttons for the same thing compete. */}
-        {step.kind !== 'play' && (
-          <button type="button" className="u-btn home-play-btn" onClick={() => onNavigate('table')}>
-            Play a shoe
-          </button>
-        )}
-      </div>
-
-      {/* The installed app can sit on a cached bundle without saying so. This
-          is the one place to check that a deploy actually landed: it is the
-          same string version.json carries. */}
-      <p className="home-build" data-build={runningBuildId() ?? ''} data-built-at={runningBuiltAt() ?? ''}>
-        build {buildLabel()}
-        {formatBuiltAt() && <span className="home-build-at">{formatBuiltAt()}</span>}
-      </p>
-      {/* Diagnostics, not play: a small link under the build line rather
-          than a second full-width button beside "Play a shoe". */}
-      <button type="button" className="home-testkit-link" data-testid="testkit-open" onClick={() => onNavigate('testkit')}>
-        Test kit
-      </button>
+      {/* 1C: the blocks and their order come from homeLayout (pure, tested). */}
+      {blocks.map((block) => (
+        <Fragment key={block}>{renderBlock(block)}</Fragment>
+      ))}
     </div>
   );
 }

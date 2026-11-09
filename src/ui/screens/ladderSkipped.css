@@ -1,0 +1,14 @@
+/* Track 1 (1C): a rung the first-launch welcome skipped. Muted, marked with a
+   dash and "skipped" -- not passed, and its row still opens its drill. */
+.ladder-row[data-state='skipped'] {
+  color: var(--ink-dim);
+}
+.ladder-row[data-state='skipped'] .ladder-mark {
+  color: var(--ink-dim);
+}
+.ladder-skipped {
+  grid-column: 2;
+  font-size: var(--fs-xs);
+  font-weight: 400;
+  line-height: 1.3;
+}

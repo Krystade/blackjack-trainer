@@ -71,9 +71,14 @@ for (const [r, id, kind, lands] of LANDS) {
     expect(sb!.y + sb!.height).toBeLessThanOrEqual(tb!.y);
     // The card comes before the readiness figures (Start sits beside the
     // title, so it fits the fold either way; the order is the contract).
-    const cardBox = await card(page).boundingBox();
-    const readinessBox = await page.locator('.readiness').boundingBox();
-    expect(cardBox!.y).toBeLessThan(readinessBox!.y);
+    // T1-1C: a fresh install (rung 1) has no readiness block yet.
+    if (r === 1) {
+      await expect(page.locator('.readiness')).toHaveCount(0);
+    } else {
+      const cardBox = await card(page).boundingBox();
+      const readinessBox = await page.locator('.readiness').boundingBox();
+      expect(cardBox!.y).toBeLessThan(readinessBox!.y);
+    }
     await expect(page.locator('.home-screen .u-btn-primary')).toHaveCount(1);
     if (r === 1 || r === 4) await themedShots(page, `rung${r}`);
     await startBtn(page).click();

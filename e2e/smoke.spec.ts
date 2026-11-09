@@ -46,7 +46,10 @@ test('full journey: Home -> Profiles -> Settings -> Charts -> Table -> all ten D
     await expect(page.locator('.tab-bar').getByRole('button', { name: label, exact: true })).toBeVisible();
   }
   await expect(page.getByRole('button', { name: 'Settings', exact: true })).toBeVisible();
-  await expect(page.locator('.readiness-figures .readiness-stat')).toHaveCount(3);
+  // T1-1C: a fresh install's Home asks where you are starting from; the
+  // readiness figures wait for the first answer.
+  await expect(page.getByTestId('welcome-card')).toBeVisible();
+  await expect(page.locator('.readiness-figures .readiness-stat')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Play a shoe', exact: true })).toBeVisible();
   await shot(page, 'smoke-01-home');
 

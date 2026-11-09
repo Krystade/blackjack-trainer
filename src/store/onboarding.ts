@@ -1,5 +1,6 @@
 import { getStorage } from './persist';
 import type { CheckKey } from '../ui/whatToCheck';
+import type { RungId } from '../ui/screens/nextStep';
 
 /**
  * T1-1B: first-run and suggestion choices, one small blob
@@ -11,6 +12,8 @@ import type { CheckKey } from '../ui/whatToCheck';
  * - `migratedOff`: the switches the beginner-Play migration closed where the
  *   profile had the finer value on (Home's "turn back on" card). Emptied as
  *   each is turned back on; an empty list (or `migratedOffDismissed`) hides it.
+ * - `welcome` / `startRung` (1C): the first-launch answer. The rungs before
+ *   `startRung` are SKIPPED on the ladder, never passed (skippedRungs).
  */
 
 export const ONBOARDING_KEY = 'bjtrainer.onboarding.v1';
@@ -22,6 +25,20 @@ export interface Onboarding {
   suggestions?: Partial<Record<SuggestRung, SuggestAnswer>>;
   migratedOff?: CheckKey[];
   migratedOffDismissed?: true;
+  welcome?: WelcomeChoice;
+  startRung?: RungId;
+}
+
+export type WelcomeChoice = 'new' | 'basic' | 'counter' | 'skipped';
+
+/** The ladder's order (nextStep.ts drafts); kept here so the store needs no UI import. */
+export const LADDER_ORDER: readonly RungId[] = ['basic', 'repair', 'count', 'tc', 'deviations', 'betramp', 'play'];
+const WELCOMES: readonly WelcomeChoice[] = ['new', 'basic', 'counter', 'skipped'];
+
+/** 1C: the rungs before the welcome's start rung. */
+export function skippedRungs(o: Pick<Onboarding, 'startRung'>): RungId[] {
+  const at = o.startRung ? LADDER_ORDER.indexOf(o.startRung) : -1;
+  return at <= 0 ? [] : LADDER_ORDER.slice(0, at);
 }
 
 const RUNGS: readonly SuggestRung[] = ['count', 'deviations', 'betramp'];
@@ -44,6 +61,8 @@ export function normalizeOnboarding(raw: unknown): Onboarding {
     out.migratedOff = r.migratedOff.filter((k): k is CheckKey => CHECKS.includes(k as CheckKey));
   }
   if (r.migratedOffDismissed === true) out.migratedOffDismissed = true;
+  if (WELCOMES.includes(r.welcome as WelcomeChoice)) out.welcome = r.welcome as WelcomeChoice;
+  if (LADDER_ORDER.includes(r.startRung as RungId)) out.startRung = r.startRung as RungId;
   return out;
 }
 
