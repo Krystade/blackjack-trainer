@@ -78,6 +78,7 @@ import { CarStatusLine } from '../../components/CarStatusLine';
 import { carMic, carScore, countPrompt, countWheelLabel, type CarStatus } from '../../carStatus';
 import { RungProgressLine } from './RungProgressLine';
 import { DRILL_RUNG, homeLadder } from './rungProgress';
+import { rungDone } from '../nextStep';
 import { useVoiceToggle, usePushToTalk, startPushToTalk } from '../../voiceSession';
 import { useEyesFreeToggle } from '../../eyesFreeSession';
 import { DrillPrimaryBar } from '../../components/DrillPrimaryBar';
@@ -328,17 +329,17 @@ export function CountDrillView({
   const pushToTalkOpen = usePushToTalk();
   // T2-2B: "Learn Hi-Lo" in place of the setup, once -- when basic strategy
   // is done, counting is not, and no count run is on record. Read at mount,
-  // from the ladder Home reads, so the two cannot disagree. Held for 1C: the
-  // rung verdicts are `passed` until Track 1's rungDone (passed OR skipped)
-  // lands.
+  // from the ladder Home reads, so the two cannot disagree. Basic is done
+  // when passed OR skipped at the welcome (rungDone); counting must really
+  // be passed -- skipping it is exactly who still needs the card.
   const [hiLoIntro, setHiLoIntro] = useState(() => {
     const stats = loadStats();
     const rungs = homeLadder(stats, getActiveProfile()).rungs;
-    const passed = (id: string) => rungs.find((r) => r.id === id)?.passed === true;
+    const basic = rungs.find((r) => r.id === 'basic');
     return hiLoIntroDue({
       seen: loadIntroSeen(HILO_INTRO_KEY),
-      basicDone: passed('basic'),
-      countDone: passed('count'),
+      basicDone: basic !== undefined && rungDone(basic),
+      countDone: rungs.find((r) => r.id === 'count')?.passed === true,
       easyOffered: offersEasyFirstRun(stats),
       eyesFree,
       voiceOn,

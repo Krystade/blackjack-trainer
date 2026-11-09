@@ -88,3 +88,22 @@ test('a count run on record: no card', async ({ page }) => {
   await expect(card(page)).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Start', exact: true })).toBeVisible();
 });
+
+test('basic SKIPPED at the welcome counts as done: the card shows', async ({ page }) => {
+  await withProfile(page);
+  // The welcome's "I know basic strategy": rungs before count are skipped, not passed.
+  await page.addInitScript(() => {
+    localStorage.setItem('bjtrainer.onboarding.v1', JSON.stringify({ welcome: 'basic', startRung: 'count' }));
+  });
+  await openCount(page);
+  await expect(card(page)).toBeVisible();
+});
+
+test('count skipped (welcome: counter) but not passed: the card still shows', async ({ page }) => {
+  await withProfile(page);
+  await page.addInitScript(() => {
+    localStorage.setItem('bjtrainer.onboarding.v1', JSON.stringify({ welcome: 'counter', startRung: 'deviations' }));
+  });
+  await openCount(page);
+  await expect(card(page)).toBeVisible();
+});
