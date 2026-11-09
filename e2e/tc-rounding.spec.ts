@@ -90,11 +90,19 @@ test('the convention reaches the live table count, not just the profile', async 
       // (one decimal); the GRADED integer -- the convention under test --
       // rides on data-tc while it is held.
       // Wave L C-extra: the peek is back once the opening deal is on the felt.
-      await expect(peek).toBeVisible();
-      await peek.focus();
-      await page.keyboard.down('Enter');
-      const tc = await peek.getAttribute('data-tc');
-      if (tc !== null) seen.push(Number(tc));
+      // The last round's peek is still mounted for a moment after Deal: the
+      // deal animation (dealAnimating, set in an effect) then unmounts it and
+      // mounts a fresh one ~260ms later. A focus + keydown landing in that
+      // gap went to <body>, the peek never opened, data-tc read null and the
+      // round was silently dropped -- so one run read 11 counts, the other 12.
+      // Hold until the peek really reports the graded count, and drop nothing.
+      await expect(async () => {
+        await page.keyboard.up('Enter');
+        await peek.focus();
+        await page.keyboard.down('Enter');
+        await expect(peek).toHaveAttribute('data-tc', /^-?\d+$/, { timeout: 1000 });
+      }).toPass({ timeout: 10_000 });
+      seen.push(Number(await peek.getAttribute('data-tc')));
       await page.keyboard.up('Enter');
 
       await playRoundByAdvice(page);
