@@ -20,3 +20,30 @@
   border-bottom-left-radius: 0;
   border-bottom-right-radius: 0;
 }
+
+/* T2-2B: the "why" under a basic-strategy miss. The last band of the miss
+   strip: it closes the strip's rounded bottom when it is there. */
+.miss-why {
+  align-self: stretch;
+  box-sizing: border-box;
+  margin-top: -0.15rem;
+  background: var(--bad-surface);
+  border: 1px solid var(--bad-line);
+  border-top: 1px dashed var(--bad-line);
+  border-radius: 0 0 10px 10px;
+  padding: 4px 12px 5px;
+  color: var(--ink);
+  font-size: var(--fs-sm);
+  line-height: 1.35;
+  text-align: left;
+}
+.miss-why-label {
+  font-weight: 700;
+}
+.miss-history:has(+ .miss-why) {
+  border-radius: 0;
+}
+.result-strip--miss:has(+ .miss-why) {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}

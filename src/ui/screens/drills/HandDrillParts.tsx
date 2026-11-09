@@ -7,6 +7,7 @@ import { ShotClockBar } from '../../components/ShotClockBar';
 import { StudyChartOverlay } from '../../components/StudyChartOverlay';
 import { HandResultStrip } from '../../components/HandResultStrip';
 import { MissHistoryLine } from './MissHistoryLine';
+import { MissWhyLine } from './MissWhyLine';
 import type { DrillHandResult } from './drillMiss';
 import type { HandResult } from '../../handResult';
 import type { AnswerFeedback } from './handDrillShared';
@@ -95,6 +96,7 @@ export function LastResult({ session, result }: { session: AnswerSession; result
         onWrongTap={session.wrongTapFor(result)}
       />
       <MissHistoryLine result={result} />
+      <MissWhyLine result={result} />
     </>
   );
 }

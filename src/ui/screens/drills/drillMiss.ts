@@ -5,9 +5,22 @@ import type { HandResult } from '../../handResult';
 import { regionRuleFor } from '../regionRule';
 import { missHistoryLine } from '../../../drills/missHistory';
 import type { CellTally } from '../../../store/cellStats';
+import { missWhy } from './missWhy';
 
-/** A drill's frozen result; `missLine` is the B6 miss strip (Task 6). */
-export type DrillHandResult = HandResult & { missLine?: string };
+/**
+ * A drill's frozen result; `missLine` is the B6 miss strip (Task 6), `why`
+ * the T2-2B principle behind the chart's play (missWhy.ts).
+ */
+export type DrillHandResult = HandResult & { missLine?: string; why?: string };
+
+/** T2-2B: the "why" for a basic-strategy miss in Flashcards or Mastery. */
+export function whyForMiss(event: GradedEvent, rules: RuleSet): string | undefined {
+  if (event.correct) return undefined;
+  if (event.source !== 'flashcard' && event.source !== 'mastery') return undefined;
+  const cellId = tallyCellIdFor(event);
+  if (cellId === null) return undefined;
+  return missWhy(cellId, rules) ?? undefined;
+}
 
 /**
  * B7: a basic-strategy miss in Flashcards or Mastery reads the chart region it
@@ -35,5 +48,9 @@ export function withMissDetail(
   cellBefore: CellTally | null,
   rules: RuleSet,
 ): DrillHandResult {
-  return { ...withRegionRule(result, event, rules), missLine: missHistoryLine(event, cellBefore) ?? undefined };
+  return {
+    ...withRegionRule(result, event, rules),
+    missLine: missHistoryLine(event, cellBefore) ?? undefined,
+    why: whyForMiss(event, rules),
+  };
 }

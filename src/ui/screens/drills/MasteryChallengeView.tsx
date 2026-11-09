@@ -28,6 +28,7 @@ import { RulesChip } from '../../components/RulesChip';
 import { releaseAnswerFocus, snapshotResult, type HandResult } from '../../handResult';
 import { withMissDetail, type DrillHandResult } from './drillMiss';
 import { MissHistoryLine } from './MissHistoryLine';
+import { MissWhyLine } from './MissWhyLine';
 import { withdrawAnswer, wrongTapOffered, type WrongTapRecord } from '../../wrongTap';
 import { answerTooSoon } from '../../answerBounce';
 import { StudyChartOverlay } from '../../components/StudyChartOverlay';
@@ -345,6 +346,7 @@ export function MasteryChallengeView({
                 />
               )}
               <MissHistoryLine result={lastResult} />
+              <MissWhyLine result={lastResult} />
             </div>
 
             <ActionBar
