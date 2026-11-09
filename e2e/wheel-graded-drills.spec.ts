@@ -46,9 +46,12 @@ test('Speed, eyes-free: the hand and question are said, forward is yes, the verd
   await press(page, 'forward');
   await expect(page.getByTestId('speed-result')).toHaveAttribute('data-cell-id', asked!);
   await expect(page.getByTestId('speed-score')).toHaveText(/^\d\/1$/);
-  const strip = await page.getByTestId('speed-result').innerText();
+  // The strip's grade, from its markup -- not its text, which leads with
+  // the "Last" eyebrow (D6), so `innerText.startsWith('Correct')` was never
+  // true and every right answer was checked against "Wrong" (half the runs).
+  const correct = await stripSaysCorrect(page);
   const verdict = (await spoken(page)).slice(before);
-  if (strip.startsWith('Correct')) expect(verdict).toContain('Correct.');
+  if (correct) expect(verdict).toContain('Correct.');
   else expect(verdict).toContain('Wrong. The answer is no.');
   await page.screenshot({ path: `${SHOTS}/c-r1-speed-verdict.png` });
 
@@ -59,6 +62,38 @@ test('Speed, eyes-free: the hand and question are said, forward is yes, the verd
   await expect(page.getByTestId('speed-score')).toHaveText(/^\d\/2$/);
   // No clock eyes-free: a wheel answer is not a reaction time.
   await expect(page.getByTestId('speed-median')).toHaveText('–');
+});
+
+/** The strip's grade, read from its markup (see the note in the test above). */
+async function stripSaysCorrect(page: Page): Promise<boolean> {
+  return (await page.getByTestId('speed-result').locator('.result-correct').count()) === 1;
+}
+
+test('Speed, eyes-free: the strip and the spoken verdict agree, on a right answer and on a wrong one', async ({ page }) => {
+  // The test above takes whichever branch its one random question gives it,
+  // so a broken branch failed only half the time. This one keeps answering
+  // until it has checked both.
+  await open(page, 'Speed');
+  await page.getByRole('checkbox', { name: 'Eyes-free audio' }).check();
+  await expect.poll(async () => (await spoken(page)).some((l) => /Surrender\?$/.test(l))).toBe(true);
+  const seen = { right: false, wrong: false };
+  for (let i = 0; i < 30 && !(seen.right && seen.wrong); i++) {
+    const asked = await page.getByTestId('speed-hand').getAttribute('data-cell-id');
+    const before = (await spoken(page)).length;
+    // Alternate yes and no, so both grades come up quickly whatever is dealt.
+    await press(page, i % 2 === 0 ? 'forward' : 'back');
+    await expect(page.getByTestId('speed-result')).toHaveAttribute('data-cell-id', asked!);
+    await expect(page.getByTestId('speed-score')).toHaveText(new RegExp(`^\\d+/${i + 1}$`));
+    const correct = await stripSaysCorrect(page);
+    await expect.poll(async () => (await spoken(page)).slice(before).some((l) => /^(Correct|Wrong)\./.test(l))).toBe(true);
+    const verdict = (await spoken(page)).slice(before).filter((l) => /^(Correct|Wrong)\./.test(l));
+    expect(verdict, `strip says ${correct ? 'correct' : 'wrong'}`).toEqual([correct ? 'Correct.' : expect.stringMatching(/^Wrong\. The answer is (yes|no)\.$/)]);
+    seen[correct ? 'right' : 'wrong'] = true;
+    // Forward on the verdict: the next question.
+    await press(page, 'forward');
+    await expect(page.getByTestId('speed-hand')).toBeVisible();
+  }
+  expect(seen).toEqual({ right: true, wrong: true });
 });
 
 test('Bet sizing, eyes-free: a proposed bet, back is no, graded and recorded', async ({ page }) => {
