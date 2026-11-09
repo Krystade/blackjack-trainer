@@ -26,7 +26,7 @@ import { WelcomeCard } from './WelcomeCard';
 import { loadOnboarding } from '../../store/onboarding';
 import { loadProgress } from '../../habits/progressStore';
 import { speak } from '../../audio/speech';
-import { prewarmClips } from '../../audio/clips';
+import { prewarmClips, setClipVoice } from '../../audio/clips';
 import { speechOptsFrom } from '../../audio/speechOpts';
 import { withAudioEnabled } from '../audioGate';
 import { useDayTick } from '../useDayTick';
@@ -123,9 +123,14 @@ export function Home({ onNavigate, activeProfile, settings, onSettingsChange }: 
   // never hears (drive `siw`, 2026-10-30: "Flashcards." fell to Samantha and
   // timed out). Nothing else on Home has warmed it by then.
   const warm = !!drive && settings.audio.useClips;
+  // Home mounts no useAudio, so it sets the chosen clip voice itself first:
+  // otherwise a cold launch warmed (and the tap spoke) the index default.
+  const clipVoice = settings.audio.clipVoice;
   useEffect(() => {
-    if (warm) void prewarmClips();
-  }, [warm]);
+    if (!warm) return;
+    setClipVoice(clipVoice);
+    void prewarmClips();
+  }, [warm, clipVoice]);
   const startDrive = () => {
     if (!drive) return;
     const next = settings.audio.enabled ? settings : withAudioEnabled(settings);

@@ -71,10 +71,10 @@ export function useAudio(audio: AudioSettings): AudioApi {
   // useAudio itself.
   useEffect(() => {
     setClipsEnabled(useClips);
-    // Warm the manifest now rather than on the first thing said: the gate in
-    // speech.ts is synchronous, so an unwarmed manifest costs the opening
-    // utterance of the session (see prewarmClips).
-    if (useClips) void prewarmClips();
+    // Not warmed here: this effect runs before the clip voice below is set,
+    // so a warm from here resolved the index default -- fetching af_bella's
+    // clips for a user who chose another voice (clip-playback.spec.ts, the
+    // bogus-voice fallback). The clip-voice effect warms on either change.
   }, [useClips]);
 
   /*
@@ -86,8 +86,10 @@ export function useAudio(audio: AudioSettings): AudioApi {
     setUserVoiceAliases((voiceAliases ?? {}) as Record<string, VoiceAction>);
   }, [voiceAliases]);
 
-  // Same pattern for the selected clip voice, warmed for the same reason --
-  // switching voice empties the cache for the one now selected.
+  // Same pattern for the selected clip voice. Warm the manifest now rather
+  // than on the first thing said: the gate in speech.ts is synchronous, so an
+  // unwarmed manifest costs the opening utterance of the session (see
+  // prewarmClips) -- and switching voice empties the cache for the new one.
   useEffect(() => {
     setClipVoice(clipVoice);
     if (useClips) void prewarmClips();
