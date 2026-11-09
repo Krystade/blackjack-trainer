@@ -236,6 +236,7 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
     return (
       <FlashEntry
         activeProfile={activeProfile}
+        autoStart={autoStartFor('flash')}
         onBack={() => setMode('picker')}
         flashcards={gate(
           'Flashcards',
@@ -467,10 +468,13 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
  */
 function FlashEntry({
   activeProfile,
+  autoStart,
   onBack,
   flashcards,
 }: {
   activeProfile: Profile;
+  /** D6: a Drive launch -- no intro, and it is not marked seen. */
+  autoStart: boolean;
   onBack: () => void;
   flashcards: ReactNode;
 }) {
@@ -482,6 +486,7 @@ function FlashEntry({
       voiceOn: isVoiceOn(),
       search: window.location.search,
       e2e: isE2eAudioMode(),
+      autoStart,
     }),
   );
   if (intro) {
