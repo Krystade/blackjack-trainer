@@ -133,7 +133,7 @@ export const MISS_WHY_RULES: readonly MissWhyRule[] = [
     id: 'hard-stiff-stand',
     tags: ['S'],
     when: (c) => c.section === 'HARD' && total(c) >= 12 && total(c) <= 16 && c.action === 'S' && isLow(c.up),
-    text: (c, rules) => `${bustLine(c.up, rules)} Stand on your stiff and let the dealer take the risk.`,
+    text: (c, rules) => `${bustLine(c.up, rules)} 2–6 are bust cards: stand on your stiff and let the dealer take the risk.`,
   },
   {
     id: 'hard-stiff-hit',

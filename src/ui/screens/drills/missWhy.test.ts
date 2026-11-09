@@ -64,7 +64,7 @@ describe('missWhy', () => {
   });
 
   it('reads as a sentence a beginner can use', () => {
-    expect(missWhy('hard-16-v-6', DEFAULT_RULES)).toMatch(/^Dealer busts \d+% with a 6 up\. Stand on your stiff/);
+    expect(missWhy('hard-16-v-6', DEFAULT_RULES)).toMatch(/^Dealer busts \d+% with a 6 up\. 2–6 are bust cards: stand on your stiff/);
     expect(missWhy('hard-12-v-2', DEFAULT_RULES)).toBe(
       'Only a 10-value card busts a 12, and the dealer busts less with a 2 than with a 4 to 6, so hit.',
     );
