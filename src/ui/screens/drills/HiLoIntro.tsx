@@ -65,7 +65,7 @@ export function HiLoIntro({ onStartEasy, onSkip }: { onStartEasy: () => void; on
               Try it: card {at + 1} of {HILO_TAP_ALONG.length}
             </div>
             <div className="hilo-tap-card">
-              <PlayingCard card={card} size="compact" />
+              <PlayingCard card={card} />
             </div>
             <div className="hilo-tap-buttons" role="group" aria-label="Hi-Lo value">
               {TAGS.map((t) => (
