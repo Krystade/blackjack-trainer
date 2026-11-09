@@ -147,3 +147,43 @@ test('Bet checks on: chips and the In/Out toggle come back', async ({ page }) =>
   await expect(page.locator('.chip-btn').first()).toBeVisible();
   await expect(page.locator('.in-out-toggle')).toBeVisible();
 });
+
+test('D11: Show chips sits in the Play gear and applies live, with no new shoe', async ({ page }) => {
+  await openTable(page);
+  const sheet = await openGear(page);
+  await sheet.getByRole('checkbox', { name: 'Show chips', exact: true }).check();
+  await expect(sheet.getByTestId('tab-sheet-when')).not.toContainText('Changed');
+  const s = await page.evaluate(() => JSON.parse(localStorage.getItem('bjtrainer.settings.v1')!));
+  expect(s.showChips).toBe(true);
+});
+
+test('a reload with a distraction open resumes the shoe cleanly, the check still to come', async ({ page }) => {
+  await openTable(page);
+  const sheet = await openGear(page);
+  await toggle(sheet, 'Count checks').check();
+  await toggle(sheet, 'Distractions').check();
+  await page.keyboard.press('Escape');
+  let roundAtSum = -1;
+  for (let i = 0; i < 9 && roundAtSum < 0; i++) {
+    await page.getByRole('button', { name: 'Deal', exact: true }).click();
+    if (await page.getByTestId('play-distraction-prompt').isVisible()) {
+      roundAtSum = Number((await roundStat(page).innerText()).replace('Round ', ''));
+      break;
+    }
+    if (await page.locator('.bottom-sheet', { hasText: 'Running count?' }).isVisible()) {
+      await typeOnPad(page, 0);
+      const held = page.getByTestId('count-held-deal');
+      if (await held.isVisible()) await held.click();
+    }
+    await playRoundByAdvice(page);
+  }
+  expect(roundAtSum).toBeGreaterThan(0);
+  // Saves skip while the sum is open; the shoe on disk is the settled round.
+  await page.evaluate(() => localStorage.setItem('e2e.noReseed', '1'));
+  await page.reload();
+  await page.locator('.tab-bar').getByRole('button', { name: 'Play', exact: true }).click();
+  await expect(page.locator('.table-screen')).toBeVisible();
+  await expect(page.locator('.error-boundary')).toHaveCount(0);
+  await expect(roundStat(page)).toHaveText(`Round ${roundAtSum}`);
+  await expect(page.getByRole('button', { name: 'Deal', exact: true })).toBeVisible();
+});

@@ -175,10 +175,11 @@ export function resumeKeyFor(profile: Profile, losingShoe: boolean): string {
 
 /**
  * Between rounds, with no check being asked: the only moments a table may be
- * written. Track 1 adds its own open-dialog conditions here (a distraction).
+ * written. Track 1's open Play distraction comes in as `blocked`.
  */
-export function resumeSavable(game: Game): boolean {
-  return game.resumable;
+export function resumeSavable(game: Game, blocked = false): boolean {
+  // T1-1B: `blocked` -- a Play distraction is open (useGame state, not the engine's).
+  return !blocked && game.resumable;
 }
 
 /**
@@ -190,9 +191,11 @@ export function saveTable(t: {
   session: KeptSession;
   key: string;
   now: number;
+  /** T1-1B: something the engine cannot see is open (a Play distraction). */
+  blocked?: boolean;
 }): boolean {
   const { game } = t.playGame;
-  if (game.roundNo === 0 || !resumeSavable(game)) return false;
+  if (game.roundNo === 0 || !resumeSavable(game, t.blocked === true)) return false;
   let state: GameResumeState;
   try {
     state = game.toResume();

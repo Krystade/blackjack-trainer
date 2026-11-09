@@ -553,11 +553,13 @@ export function useGame(
   // change, so a restore that crashes on its next deal is still "unsaved"
   // (tableResume.noteCrash) and is not restored into the same crash again.
   const savedKeyRef = useRef(start ? resumeSaveKey() : '');
+  /** T1-1B: an open Play distraction blocks resume saves (tableResume.resumeSavable). */
+  const distractionOpenRef = useRef(false);
   const saveResume = (force: boolean): void => {
     if (endedRef.current || keepKey === undefined) return;
     const key = resumeSaveKey();
     if (!force && key === savedKeyRef.current) return;
-    if (saveTable({ playGame, session: sessionNow(), key: resumeKey, now: Date.now() })) savedKeyRef.current = key;
+    if (saveTable({ playGame, session: sessionNow(), key: resumeKey, now: Date.now(), blocked: distractionOpenRef.current })) savedKeyRef.current = key;
   };
   /** Mid-round: what has been shown so far, so a round the page dies in is burned, not dealt again. */
   const cutOffKeyRef = useRef('');
@@ -625,6 +627,7 @@ export function useGame(
   distractionsOnRef.current = distractionsOn === true;
   const [tableSeed] = useState(() => readSeed() ?? Date.now());
   const [distraction, setDistraction] = useState<PlayDistractionShown | null>(null);
+  distractionOpenRef.current = distraction !== null;
   const [distractionVerdict, setDistractionVerdict] = useState<PlayDistractionVerdict | null>(null);
   /** The round a distraction followed, so one round never brings two. */
   const distractionRoundRef = useRef(-1);
@@ -731,6 +734,7 @@ export function useGame(
           return false;
         }
         distractionRoundRef.current = game.roundNo;
+        distractionOpenRef.current = true;
         setDistractionVerdict(null);
         pendingDealRef.current = pending;
         setDistraction({ d: makePlayDistraction(game.runningCount, game.roundNo, tableSeed), shownAt: Date.now() });
@@ -1107,6 +1111,7 @@ export function useGame(
       const correct = answer === shown.d.answer;
       const verdict = { round: game.roundNo, correct, answer: shown.d.answer, prompt: shown.d.prompt };
       setDistraction(null);
+      distractionOpenRef.current = false;
       setDistractionVerdict(verdict);
       audio.ding(correct ? 'good' : 'bad');
       if (game.cfg.countCheckEvery > 0) {

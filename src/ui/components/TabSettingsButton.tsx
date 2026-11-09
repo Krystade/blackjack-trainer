@@ -134,6 +134,8 @@ function PlaySheet({ title, ctx, onClosed }: SheetProps) {
         <strong>Training</strong> corrects as you go. <strong>Test</strong> scores at the end.
       </p>
       <DealSpeedControl settings={settings} update={update} />
+      {/* D11: read live, no new shoe -- so not counted in `pending`. */}
+      <Toggle label="Show chips" checked={settings.showChips === true} onChange={(v) => update({ showChips: v })} />
       {/* T1-1B: What to check -- basic strategy always, each switch one more thing. */}
       <h3 className="tab-sheet-group">What to check</h3>
       <p className="settings-note" data-testid="what-to-check-note">

@@ -4,6 +4,7 @@ import type { Card, Rank } from '../engine/cards';
 import type { GameConfig } from '../engine/game';
 import { distractionRow, distractionVerdictText, makePlayDistraction, playDistractionDue, PLAY_DISTRACTION_WINDOW } from './playDistraction';
 import { playResult } from './screens/ladderRules';
+import { resumeSavable } from './tableResume';
 import { EMPTY_STATS } from '../store/types';
 import type { Stats } from '../store/types';
 
@@ -69,6 +70,12 @@ describe('Game.oweCountCheck', () => {
     const fresh = g.events.slice(before);
     expect(fresh.filter((e) => e.kind === 'countCheck')).toHaveLength(1);
     expect(g.countCheckDue).toBe(false);
+  });
+
+  it('T1-1B: an open distraction blocks resume saves', () => {
+    const g = Game.withRiggedShoe(cfg(), rig('10', '9', '6', '8', '5'));
+    expect(resumeSavable(g)).toBe(true);
+    expect(resumeSavable(g, true)).toBe(false);
   });
 
   it('a check already owed keeps its true-count half, and the running count is asked', () => {

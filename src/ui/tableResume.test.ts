@@ -136,7 +136,8 @@ describe('saveTable / takeSavedTable', () => {
     expect(save(mid, p)).toBe(false);
     expect(map.has(TABLE_RESUME_KEY)).toBe(false);
 
-    const checked = table(profileWith({ countCheckEvery: 1 }), 0);
+    // T1-1B: a new profile's Count checks switch is off; turn it on with the cadence.
+    const checked = table(profileWith({ countCheckEvery: 1, playChecks: { count: true } }), 0);
     playRound(checked.game);
     expect(checked.game.poseCountCheck()).toBe(true);
     expect(save(checked, p)).toBe(false);
