@@ -88,6 +88,10 @@ export function playResult(stats: Stats): { best: { graded: number; correct: num
   let best: { graded: number; correct: number } | null = null;
   let passed = false;
   for (const s of recent) {
+    // T1-1B (D7): the rung means playing with the count, so a session graded
+    // on basic strategy alone does not pass it. Rows from before the switches
+    // (no `checks`) count as they always did.
+    if (s.checks && !(s.checks.count && s.checks.deviations)) continue;
     const { plays: graded, correct } = playDecisions(s);
     if (graded >= PLAY_MIN_GRADED && correct / graded >= PLAY_TARGET) passed = true;
     if (!best || graded > best.graded) best = { graded, correct };

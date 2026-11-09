@@ -41,7 +41,7 @@ export type ActionBarMode =
        * round is dealt without the player at the same table (the shoe and the
        * count move on); it stays where it is put until flipped.
        */
-      inOut: { isIn: boolean; onSet: (isIn: boolean) => void; locked?: boolean };
+      inOut?: { isIn: boolean; onSet: (isIn: boolean) => void; locked?: boolean };
       disabled?: boolean;
       /**
        * Wave J: the ramp spreads to two hands, so the round opens with one or
@@ -143,7 +143,10 @@ function PullBack({ mode }: { mode: Extract<ActionBarMode, { kind: 'bet' }> }) {
 function DealRow({ mode }: { mode: Extract<ActionBarMode, { kind: 'bet' }> }) {
   return (
     <div className="deal-row">
-      <InOutToggle isIn={mode.inOut.isIn} onSet={mode.inOut.onSet} disabled={mode.disabled || mode.inOut.locked} />
+      {/* T1-1B: absent with Bet checks off. */}
+      {mode.inOut && (
+        <InOutToggle isIn={mode.inOut.isIn} onSet={mode.inOut.onSet} disabled={mode.disabled || mode.inOut.locked} />
+      )}
       {mode.side && (
         <button
           type="button"
@@ -151,7 +154,7 @@ function DealRow({ mode }: { mode: Extract<ActionBarMode, { kind: 'bet' }> }) {
           aria-pressed={mode.side.on}
           aria-label={`Side bet: ${mode.side.label}, ${mode.side.stake}`}
           data-testid="side-chip"
-          disabled={mode.disabled || !mode.inOut.isIn}
+          disabled={mode.disabled || mode.inOut?.isIn === false}
           onClick={() => mode.side!.onSet(!mode.side!.on)}
         >
           <span className="side-chip-name">{mode.side.label}</span>

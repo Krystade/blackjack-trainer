@@ -68,6 +68,9 @@ export const OWNED_KEYS = [
   // Wave W: the Custom deck's saved lists, one blob (drills/customLists.ts);
   // every change there re-reads before it writes, and the screens re-read.
   'bjtrainer.customLists.v1',
+  // T1-1B: first-run choices (store/onboarding.ts): a suggestion answered in
+  // one tab must not be offered again in the other.
+  'bjtrainer.onboarding.v1',
 ] as const;
 
 export interface ExternalWrite {

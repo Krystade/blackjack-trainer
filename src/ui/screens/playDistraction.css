@@ -1,0 +1,16 @@
+/* T1-1B: a Play distraction (components/PlayDistractionSheet.tsx) and its verdict line.
+   Two classes deep: bottomSheet.css's `.bottom-sheet-body > p` would win otherwise. */
+.bottom-sheet-body > .play-distraction-prompt {
+  padding: var(--space-1) var(--space-4) var(--space-2);
+  font-size: var(--fs-5xl);
+  font-weight: 700;
+  text-align: center;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.play-distraction-verdict {
+  display: block;
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+}

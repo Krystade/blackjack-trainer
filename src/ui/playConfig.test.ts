@@ -1,9 +1,55 @@
 import { describe, it, expect } from 'vitest';
 import { makeDefaultProfile } from '../store/profiles';
 import { playConfigFor } from './playConfig';
+import type { Profile } from '../store/types';
+import { defaultSideBet } from './sideBetConfig';
 
 describe('playConfigFor', () => {
-  const base = makeDefaultProfile();
+  // A profile from before T1-1B's switches: no gates, so the finer values rule.
+  const base: Profile = { ...makeDefaultProfile(), playChecks: undefined };
+
+  describe('T1-1B: What-to-check gates', () => {
+    const jack: Profile = {
+      ...base,
+      countCheckEvery: 8,
+      gradeDeviations: true,
+      betSpreadOn: true,
+      startShoeOut: true,
+      wongInTc: 2,
+      sideBet: { ...defaultSideBet(), enabled: true },
+    };
+
+    it('closed gates build a basic-strategy table: no checks, no deviations, flat bets', () => {
+      const cfg = playConfigFor({ ...jack, playChecks: { count: false, deviations: false, bets: false } }, 100, 1);
+      expect(cfg.countCheckEvery).toBe(0);
+      expect(cfg.gradeDeviations).toBe(false);
+      expect(cfg.betSpreadOn).toBe(false);
+      expect('startShoeOut' in cfg || 'wongInTc' in cfg).toBe(false);
+      expect('sideBet' in cfg).toBe(false);
+    });
+
+    it('open gates use the finer values as stored', () => {
+      const cfg = playConfigFor({ ...jack, playChecks: { count: true, deviations: true, bets: true } }, 100, 1);
+      expect(cfg.countCheckEvery).toBe(8);
+      expect(cfg.gradeDeviations).toBe(true);
+      expect(cfg.betSpreadOn).toBe(true);
+      expect(cfg.startShoeOut).toBe(true);
+      expect(cfg.wongInTc).toBe(2);
+      expect(cfg.sideBet).toBeDefined();
+    });
+
+    it('absent gates keep the table as it was (regression)', () => {
+      const cfg = playConfigFor(jack, 100, 1);
+      expect(cfg.countCheckEvery).toBe(8);
+      expect(cfg.betSpreadOn).toBe(true);
+      expect(cfg.startShoeOut).toBe(true);
+    });
+
+    it('startShoeOut goes with the bets gate even with the ramp off in the editor', () => {
+      const cfg = playConfigFor({ ...jack, betSpreadOn: false, playChecks: { count: true, deviations: true, bets: false } }, 100, 1);
+      expect('startShoeOut' in cfg).toBe(false);
+    });
+  });
 
   it('#3: carries countCheckAsk through, and leaves it absent when the profile has none', () => {
     expect(playConfigFor({ ...base, countCheckAsk: 'true' }, 100, 1).countCheckAsk).toBe('true');

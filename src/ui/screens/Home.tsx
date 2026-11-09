@@ -12,6 +12,7 @@ import type { NextStep, StartTarget } from './nextStep';
 import { buildHomeLadder } from './ladderContext';
 import { launchSettings, reviewIndexesLaunch, reviewLaunch, setDrillLaunch, weakCellsLaunch } from '../drillLaunch';
 import { LadderCard } from './LadderCard';
+import { SwitchSuggestion } from './SwitchSuggestion';
 import { strategyRulesFor } from '../../store/profiles';
 import './nextStep.css';
 import { driveTarget, setDriveAutoStart } from '../driveLaunch';
@@ -164,6 +165,9 @@ export function Home({ onNavigate, activeProfile, settings, onSettingsChange }: 
         onStart={openStep}
         drive={drive ? { label: drive.label, onDrive: startDrive } : undefined}
       />
+
+      {/* T1-1B: the next What-to-check switch, once its rung is passed. */}
+      <SwitchSuggestion ladder={ladder} activeProfile={activeProfile} settings={settings} onSettingsChange={onSettingsChange} />
 
       {/* Below the ladder: above it, it pushed Start under the fold at 320x693. */}
       <BackupNudge />

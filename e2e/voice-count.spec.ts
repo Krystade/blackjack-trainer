@@ -62,7 +62,11 @@ async function countCheckEveryRound(page: Page): Promise<void> {
     const list = Array.isArray(parsed)
       ? parsed
       : ((parsed as { profiles?: unknown[] }).profiles ?? []);
-    for (const p of list as Array<Record<string, unknown>>) p.countCheckEvery = every;
+    // T1-1B: and the Count checks switch on, or the cadence is gated off.
+    for (const p of list as Array<Record<string, unknown>>) {
+      p.countCheckEvery = every;
+      p.playChecks = { ...(p.playChecks as object | undefined), count: true };
+    }
     localStorage.setItem('bjtrainer.profiles.v1', JSON.stringify(parsed));
   }, COUNT_EVERY_ROUND);
 }

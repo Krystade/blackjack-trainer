@@ -9,9 +9,10 @@
  *  - 'system'       the profile, "My system": how you count and bet.
  *  - 'table'        the profile, "The table": the game you practise at.
  *  - 'drill'        a drill's own Options.
+ *  - 'play'         Play's gear: what the table checks (T1-1B, ui/whatToCheck.ts).
  * Shortcuts: the tab gear sheets ('play', 'charts', 'drills').
  */
-export type SettingHome = 'app' | 'system' | 'table' | 'drill';
+export type SettingHome = 'app' | 'system' | 'table' | 'drill' | 'play';
 export type SettingShortcut = 'play' | 'charts' | 'drills';
 
 export interface SettingEntry {
@@ -63,8 +64,9 @@ export const SETTINGS_REGISTRY: readonly SettingEntry[] = [
   p('profile.wongInTc', 'Get in at TC ≥', 'system'),
   p('profile.startShoeOut', 'Start each shoe out', 'system'),
   p('profile.playDepth', null, 'system', ['play']),
-  p('profile.countCheckEvery', 'Count check every', 'system', ['play']),
-  p('profile.countCheckAsk', null, 'system', ['play']),
+  // T1-1B: the cadence and the ask left Play's gear for the What-to-check switch.
+  p('profile.countCheckEvery', 'Count check every', 'system'),
+  p('profile.countCheckAsk', null, 'system'),
   p('profile.gradeDeviations', 'Grade with deviations', 'system'),
   p('profile.cvcx', null, 'system'),
   p('profile.sideBet', null, 'system'),
@@ -92,6 +94,13 @@ export const SETTINGS_REGISTRY: readonly SettingEntry[] = [
   p('settings.dealerPaceSec', 'Dealer pace', 'table'),
   p('settings.dealerMistakesMode', null, 'table'),
   p('settings.losingShoe', 'Losing shoe', 'table', ['play']),
+
+  // ---- Play's gear: What to check (T1-1B) ----
+  p('profile.playChecks.count', 'Count checks', 'play'),
+  p('profile.playChecks.deviations', 'Deviations', 'play'),
+  p('profile.playChecks.bets', 'Bet checks', 'play'),
+  p('settings.tableChecks.dealerMistakes', 'Dealer mistakes', 'play'),
+  p('settings.tableChecks.distractions', 'Distractions', 'play'),
 
   // ---- Drill options (each drill's own Options fold) ----
   ...[

@@ -80,7 +80,11 @@ import './feltWrap.css';
 import './tableVoiceFit.css';
 import { DealerPaceBar } from '../components/DealerPaceBar';
 import { FoulCall } from '../components/FoulCall';
-import { DEALER_TRAINING_REPORT, dealerErrorsValue, dealerMistakesModeIn } from '../dealerErrorCopy';
+import { DEALER_TRAINING_REPORT, dealerErrorsValue } from '../dealerErrorCopy';
+import { betsGateClosed, distractionsOn, tableMistakesMode } from '../whatToCheck';
+import { PlayDistractionSheet } from '../components/PlayDistractionSheet';
+import { distractionVerdictText } from '../playDistraction';
+import './playDistraction.css';
 import './dealerTraining.css';
 import { createDecisionTimer, holdWhileSpeaking, type DecisionTimer } from '../decisionTimer';
 import { dealerPaceMs, isSlowDecision, slowDecisionsText } from '../dealerPace';
@@ -481,6 +485,8 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange, k
   // a toggle forgotten on every navigation is indistinguishable, in a car,
   // from a microphone that failed. See ui/voiceSession.ts.
   const [voiceOn, setVoiceOn] = useVoiceToggle('table');
+  const [eyesFreeSwitch] = useEyesFreeToggle('table');
+  const eyesFree = eyesFreeSwitch || voiceOn;
   const pushToTalkOpen = usePushToTalk();
   const [voiceSupported] = useState(() => detectVoiceSupport().api);
   // A spoken count is a PROPOSAL until it is read back and confirmed. Holding
@@ -515,7 +521,10 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange, k
     setIn,
     dealAnimating,
     skipDeal,
-  } = useGame(settings, activeProfile, audio, keepKey);
+    distraction,
+    distractionVerdict,
+    submitDistraction,
+  } = useGame(settings, activeProfile, audio, keepKey, distractionsOn(settings, eyesFree));
   // Wave X: a round Out is dealt onto the felt card by card, as one in is.
   const sitOutPace = useSitOutPacing(game, settings.dealSpeedMs);
   // Cycle-2 Task 8: one selected bet per player hand. `playerHandsCount`
@@ -676,6 +685,8 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange, k
     // Reaching here with it open would mean a stray word playing a hand
     // behind the prompt.
     if (game.countCheckOpen) return;
+    // T1-1B: likewise a distraction; it is answered on its keypad.
+    if (distraction !== null) return;
     // Wave X (item 2): likewise a Rewind; "yes" (or the wheel's forward) closes its verdict.
     if (rewind !== null) {
       if (command === 'yes' && rewind.stage === 'done') {
@@ -905,6 +916,8 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange, k
   });
 
   const handleDeal = () => {
+    // T1-1B: nothing is dealt behind an open distraction.
+    if (distraction !== null) return;
     // Fix round 1: a deal held by a wrong count is the deal asked for -- shown
     // and dealt in one tap, by the button, the wheel or "deal".
     if (countVerdict?.held) {
@@ -923,9 +936,9 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange, k
       return;
     }
     if (playerHandsCount > 1) {
-      deal(activeProfile.betSpreadOn ? selectedBets : undefined);
+      deal(game.cfg.betSpreadOn ? selectedBets : undefined);
     } else {
-      deal(activeProfile.betSpreadOn ? selectedBets[0] : undefined);
+      deal(game.cfg.betSpreadOn ? selectedBets[0] : undefined);
     }
     setCountStage('rc');
   };
@@ -1019,7 +1032,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange, k
   // dealer's draws before they are shown. Skip has the dock meanwhile.
   // Fix round 1: nor while a wrong count's answer is kept back -- the peek is the answer.
   const peekBlocked =
-    game.countCheckDue || game.countCheckOpen || rewind !== null || sitOutPace.pending || countVerdict?.withheld === true;
+    distraction !== null || game.countCheckDue || game.countCheckOpen || rewind !== null || sitOutPace.pending || countVerdict?.withheld === true;
   useEffect(() => {
     if (peekBlocked) setPeeking(false);
   }, [peekBlocked]);
@@ -1142,10 +1155,8 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange, k
    * (the player phase, on a new hand or a new card) and is held while a modal
    * covers it, and -- eyes-free (the drills' eyes-free switch, or the table's
    * microphone) -- while the app is speaking. ui/decisionTimer.ts.
+   * (`eyesFree` is read above useGame: T1-1B's distractions need it.)
    */
-  const [eyesFreeSwitch] = useEyesFreeToggle('table');
-  const eyesFree = eyesFreeSwitch || voiceOn;
-
   // Track 3: a resumed shoe says so once, eyes-free, before anything is dealt.
   const resumeSaidRef = useRef(false);
   useEffect(() => {
@@ -1173,7 +1184,8 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange, k
   const paceMs = dealerPaceMs(settings, eyesFree);
   // G2 (L-8): read live, like the pace clock -- rounds that settle from here
   // on use it. Off eyes-free. Wave I: at the mode's rate.
-  const mistakesMode = dealerMistakesModeIn(settings, eyesFree);
+  // T1-1B: and only with the Dealer mistakes switch on.
+  const mistakesMode = tableMistakesMode(settings, eyesFree);
   useLayoutEffect(() => {
     game.setDealerMistakes(mistakesMode);
   }, [game, mistakesMode]);
@@ -1288,10 +1300,10 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange, k
     barMode = { kind: 'hidden' };
   } else if (game.phase === 'player') {
     barMode = { kind: 'actions', legal, onAction: timedAct, advice, hand: settings.handedness };
-  } else if ((game.phase === 'idle' || game.phase === 'settled') && !game.countCheckOpen) {
+  } else if ((game.phase === 'idle' || game.phase === 'settled') && !game.countCheckOpen && distraction === null) {
     barMode = {
       kind: 'bet',
-      betSpreadOn: activeProfile.betSpreadOn,
+      betSpreadOn: game.cfg.betSpreadOn,
       // Listed in order of play (#1): row "Hand 1" stakes the rightmost hand,
       // which is dealt first and played first (the dealer deals from their
       // left, the player's right), so it names the same hand as the felt's
@@ -1306,7 +1318,8 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange, k
       ...(chips ? { money: chipsLine() } : {}),
       // Wong-out only makes sense against a spread (the same gate the engine
       // uses to grade it); a flat-bet table hides the Sit Out button entirely.
-      inOut: { isIn: game.isIn, onSet: setIn, locked: losingShoe },
+      // T1-1B: with Bet checks off the In/Out toggle is not drawn at all.
+      ...(betsGateClosed(activeProfile) ? {} : { inOut: { isIn: game.isIn, onSet: setIn, locked: losingShoe } }),
       ...(game.cfg.sideBet
         ? { side: { on: game.sideOn, label: BET_SHORT[game.cfg.sideBet.bet], stake: dollars(game.cfg.sideBet.stake).replace('+', ''), onSet: setSideOn } }
         : {}),
@@ -1331,6 +1344,14 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange, k
     <>
       {/* B2 #13 (R2): a wrong bet or sit decision, said as it is made and
           kept with its round; it never blocks the hand. */}
+      {/* T1-1B: the distraction's sum, kept through the round dealt after it. */}
+      {distractionVerdict && !game.countCheckOpen && game.roundNo <= distractionVerdict.round + 1 && (
+        <ResultStrip id={`distraction-${distractionVerdict.round}`} tone={distractionVerdict.correct ? 'ok' : 'miss'}>
+          <span className="play-distraction-verdict" data-testid="play-distraction-verdict" data-correct={distractionVerdict.correct}>
+            {distractionVerdictText(distractionVerdict)}
+          </span>
+        </ResultStrip>
+      )}
       {betMiss && betMiss.round === game.roundNo && (
         <ResultStrip id={`bet-${betMiss.round}`} tone="miss">
           <span className="bet-miss">{betMiss.text}</span>
@@ -1504,7 +1525,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange, k
       {losingShoe && <LosingShoeBadge />}
       {/* Wave J (review N3): the rig plays solo, so say what it switched off. */}
       {losingShoe &&
-        activeProfile.betSpreadOn &&
+        game.cfg.betSpreadOn &&
         (startShoeOutOf(activeProfile) || spreadHasTwoHands(activeProfile.spread)) && (
           <p className="losing-shoe-solo-note" data-testid="losing-shoe-solo-note">
             The losing shoe plays solo: starting shoes out and two hands are off.
@@ -1817,8 +1838,18 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange, k
         </BottomSheet>
       )}
 
+      {distraction !== null && (
+        <PlayDistractionSheet prompt={distraction.d.prompt} onSubmit={submitDistraction} />
+      )}
+
       {game.countCheckOpen && (
         <BottomSheet title={countStage === 'rc' ? 'Running count?' : 'True count?'}>
+          {/* T1-1B: the sum just answered, then the count it was there to shake. */}
+          {distractionVerdict && (
+            <p className="play-distraction-verdict" data-testid="play-distraction-verdict" data-correct={distractionVerdict.correct}>
+              {distractionVerdictText(distractionVerdict)}
+            </p>
+          )}
           {/* C-R10c: the sheet is stuck to the bottom and covers the felt's
               round banner at 375x812, so the round's result is repeated here
               -- the hand just played is what the count is asked after. */}

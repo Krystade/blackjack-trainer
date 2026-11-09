@@ -30,6 +30,8 @@ export interface SessionRowInput {
   dealerErrors?: { made: number; caught: number; falseCalls: number };
   /** Wave I: some round was dealt with Dealer mistakes on Training. */
   dealerMistakesTraining?: true;
+  /** T1-1B (D7): the effective What-to-check switches the session was graded with. */
+  checks?: { count: boolean; deviations: boolean; bets: boolean };
 }
 
 const isBetDecision = (e: GradedEvent) => e.kind === 'bet' || e.kind === 'wong' || e.kind === 'wongIn';
@@ -65,6 +67,7 @@ export function sessionRowFor(i: SessionRowInput): SessionRow {
     ...(i.provisional ? { provisional: true as const } : {}),
     ...(i.dealerErrors ? { dealerErrors: { ...i.dealerErrors } } : {}),
     ...(i.dealerMistakesTraining ? { dealerMistakesTraining: true as const } : {}),
+    ...(i.checks ? { checks: { ...i.checks } } : {}),
   };
 }
 

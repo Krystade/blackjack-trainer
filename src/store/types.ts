@@ -69,6 +69,12 @@ export interface Settings {
    * (ui/dealerErrorCopy.ts, dealerMistakesSetting).
    */
   dealerMistakesMode?: 'off' | 'occasional' | 'training';
+  /**
+   * T1-1B: Play's table switches. `dealerMistakes` gates `dealerMistakesMode`;
+   * `distractions` puts a quick sum between hands. Absent object = derived
+   * (mistakes from the mode, distractions off); present, a missing key reads false.
+   */
+  tableChecks?: { dealerMistakes?: boolean; distractions?: boolean };
   // C-R3 (W10): the last drill run eyes-free or by voice, for Home's one-tap
   // "Drive" button. `mode` is the Drills mode id; `voice` whether the
   // microphone was on. Absent = no such drill yet (no Drive button).
@@ -575,6 +581,14 @@ export interface Profile {
    * (engine/sideBets). OPTIONAL; absent or `enabled: false` = none.
    */
   sideBet?: ProfileSideBet;
+  /**
+   * T1-1B: Play's "What to check" switches for this profile. Each is a gate
+   * over the finer value above (countCheckEvery, gradeDeviations,
+   * betSpreadOn): Play does the thing only when both are on (ui/whatToCheck.ts).
+   * Absent object = derived from the finer values (a backup from before);
+   * present, a missing key reads false.
+   */
+  playChecks?: { count?: boolean; deviations?: boolean; bets?: boolean };
 }
 
 /** Wave L: one bet's Play decisions and money. */
@@ -877,6 +891,9 @@ export interface Stats {
     // Wave L: the side bet's decisions (right / wrong) and its net in
     // dollars. Present only on a session played with a side bet on.
     sideBet?: { right: number; wrong: number; net: number };
+    // T1-1B (D7): what Play checked this session, the effective switches.
+    // Absent on rows written before the switches existed.
+    checks?: { count: boolean; deviations: boolean; bets: boolean };
   }[];
   /**
    * Wave L: side bets -- Play's decisions and money, per bet, and the side
@@ -932,6 +949,8 @@ export interface Stats {
       answerCorrect: boolean;
       countKept: boolean;
       elapsedMs?: number;
+      // T1-1B: 'play' for a distraction posed at the Play table; absent = the Count drill.
+      source?: 'play';
     }[];
   };
   // R8/TS#6 (docs/BACKLOG.md, pair-cancellation drill): one entry per graded

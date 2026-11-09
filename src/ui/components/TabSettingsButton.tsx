@@ -8,7 +8,8 @@ import { useTabSettings, type TabSettingsContextValue } from '../tabSettingsCont
 import { TabSettingsSheet } from './TabSettingsSheet';
 import { GearIcon } from './icons';
 import { ResetBankrollRow } from './ResetBankrollRow';
-import { CountCheckControls } from './ProfilePlayControls';
+import { WhatToCheckControls } from './ProfilePlayControls';
+import './whatToCheck.css';
 import { DealSpeedControl, LosingShoeControl, PlayDepthControl, PlayersControl } from './TableControls';
 import { playOptionsDiffer } from '../profileOptions';
 import { setProfileLaunch } from '../profileLaunch';
@@ -133,6 +134,17 @@ function PlaySheet({ title, ctx, onClosed }: SheetProps) {
         <strong>Training</strong> corrects as you go. <strong>Test</strong> scores at the end.
       </p>
       <DealSpeedControl settings={settings} update={update} />
+      {/* T1-1B: What to check -- basic strategy always, each switch one more thing. */}
+      <h3 className="tab-sheet-group">What to check</h3>
+      <p className="settings-note" data-testid="what-to-check-note">
+        Play grades your basic strategy. Each switch adds one more thing to check.
+      </p>
+      {changedProfile && (
+        <p className="tab-sheet-when tab-sheet-when-pending" data-testid="what-to-check-when">
+          A new shoe is dealt when you close this.
+        </p>
+      )}
+      <WhatToCheckControls profile={view} onChange={edit} settings={settings} update={update} />
       <h3 className="tab-sheet-group">New shoe</h3>
       <p
         className={`tab-sheet-when${pending ? ' tab-sheet-when-pending' : ''}`}
@@ -145,11 +157,11 @@ function PlaySheet({ title, ctx, onClosed }: SheetProps) {
       </p>
       <PlayersControl profile={view} onChange={edit} />
       <PlayDepthControl profile={view} onChange={edit} />
-      <CountCheckControls profile={view} onChange={edit} />
       <LosingShoeControl settings={settings} update={update} />
       {/* Owner 2026-11-06: the rest lives in the profile only. */}
       <p className="settings-note" data-testid="play-sheet-more">
-        Dealer pace, dealer mistakes, the cut card, the bet ramp and deviations are in the profile.
+        How often count checks come and what they ask, dealer pace and mistake rate, the cut card, the bet
+        ramp and which indexes are in the profile.
       </p>
       <ResetBankrollRow onReset={() => setBankrollReset(true)} />
 

@@ -415,6 +415,8 @@ const NOT_BACKED_UP: Record<string, string> = {
     'B4: sessionStorage, not localStorage -- the undo for the last import in this tab, a copy of keys the backup already carries',
   'bjtrainer.stats.v1.corrupt':
     'written by the reader, not the app, and already carried verbatim by exportAll when present',
+  'bjtrainer.migrations.v1':
+    'T1-1B: a this-device migration marker; a restored backup keeps the setup it was taken with',
 };
 
 describe('every key the app writes is either backed up or deliberately not', () => {

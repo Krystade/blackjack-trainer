@@ -65,9 +65,11 @@ test('profile options are held until the sheet closes, then deal a new shoe', as
 
   await page.getByRole('button', { name: 'Play settings' }).click();
   const sheet = page.getByRole('dialog', { name: 'Play settings' });
-  const ask = sheet.locator('.count-ask-row');
-  await ask.getByRole('button', { name: 'Both', exact: true }).click();
-  await expect(ask.getByRole('button', { name: 'Both', exact: true })).toHaveClass(/segmented-btn-active/);
+  // T1-1B: the count-check cadence left the gear; a What-to-check switch is held the same way.
+  const deviations = sheet.getByTestId('what-to-check').getByRole('checkbox', { name: 'Deviations', exact: true });
+  await expect(deviations).toBeChecked();
+  await deviations.uncheck();
+  await expect(deviations).not.toBeChecked();
   const players = sheet.locator('.settings-row', { hasText: 'Players with you' });
   const playersBefore = Number(await players.locator('.stepper-value').textContent());
   await players.getByRole('button', { name: '+', exact: true }).click();
@@ -76,7 +78,7 @@ test('profile options are held until the sheet closes, then deal a new shoe', as
 
   // Nothing written, and the table untouched, while the sheet is open.
   const before = await storedProfile(page);
-  expect(before.countCheckAsk).toBeUndefined();
+  expect(before.playChecks).toBeUndefined();
   expect(before.playDepth).toBeUndefined();
   await expect(roundStat(page)).toHaveText('Round 1');
 
@@ -84,7 +86,7 @@ test('profile options are held until the sheet closes, then deal a new shoe', as
   await expect(sheet).toHaveCount(0);
 
   const after = await storedProfile(page);
-  expect(after.countCheckAsk).toBe('both');
+  expect(after.playChecks).toEqual({ count: true, deviations: false, bets: false });
   expect(after.playDepth).toBe('quarter');
   expect((after.seats as { bots: number }).bots).toBe(playersBefore + 1);
   // A new table: the round counter starts again.

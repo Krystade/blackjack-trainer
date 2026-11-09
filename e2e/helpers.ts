@@ -83,6 +83,10 @@ export async function withSettings(page: Page, patch: Record<string, unknown>): 
     // The marker lives in STORAGE, not on `window`: init scripts run in the
     // order they were added, so a later script setting a window flag would
     // run after this one had already re-seeded.
+    // T1-1B: a seeded spec has set up its own table; the one-time beginner
+    // migration (store/beginnerPlay.ts) must not close its switches. Written
+    // before the no-reseed return, so a reload never runs it either.
+    window.localStorage.setItem('bjtrainer.migrations.v1', '{"beginnerPlay":1}');
     if (window.localStorage.getItem('e2e.noReseed') === '1') return;
     window.localStorage.setItem('bjtrainer.settings.v1', settingsJson);
   }, json);
@@ -127,6 +131,8 @@ export async function withProfile(page: Page, patch: Record<string, unknown> = {
   const activeId = profile.id;
   await page.addInitScript(
     ({ profilesJson, activeId }) => {
+      // T1-1B: as withSettings -- the seed is the table under test, not migrated.
+      window.localStorage.setItem('bjtrainer.migrations.v1', '{"beginnerPlay":1}');
       window.localStorage.setItem('bjtrainer.profiles.v1', profilesJson);
       window.localStorage.setItem('bjtrainer.activeProfile.v1', activeId);
     },

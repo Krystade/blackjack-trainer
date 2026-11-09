@@ -1,0 +1,21 @@
+/* T1-1B: Home's slim switch nudge (SwitchSuggestion.tsx). Inline, never a modal. */
+.switch-suggest {
+  margin: 0.75rem 0;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 12px;
+  background: var(--surface, transparent);
+}
+.switch-suggest-text {
+  margin: 0 0 0.5rem;
+  color: var(--ink);
+}
+.switch-suggest-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.switch-suggest-actions .u-btn {
+  min-height: 44px;
+}

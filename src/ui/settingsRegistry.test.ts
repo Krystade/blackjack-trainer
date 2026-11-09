@@ -6,6 +6,7 @@ import profileEditor from './screens/ProfileEditor.tsx?raw';
 import playControls from './components/ProfilePlayControls.tsx?raw';
 import tabSheets from './components/TabSettingsButton.tsx?raw';
 import tableControls from './components/TableControls.tsx?raw';
+import whatToCheck from './whatToCheck.ts?raw';
 
 const FILES: Record<string, string> = {
   '../store/types.ts': types,
@@ -14,6 +15,7 @@ const FILES: Record<string, string> = {
   './components/ProfilePlayControls.tsx': playControls,
   './components/TabSettingsButton.tsx': tabSheets,
   './components/TableControls.tsx': tableControls,
+  './whatToCheck.ts': whatToCheck,
 };
 const src = (f: string) => FILES[f]!;
 
@@ -40,6 +42,8 @@ const HOME_FILES: Record<string, string[]> = {
   app: ['./screens/Settings.tsx'],
   system: ['./screens/ProfileEditor.tsx', './components/ProfilePlayControls.tsx', './components/TableControls.tsx'],
   table: ['./screens/ProfileEditor.tsx', './components/ProfilePlayControls.tsx', './components/TableControls.tsx'],
+  // T1-1B: the What-to-check switches; their labels live in whatToCheck.ts.
+  play: ['./components/TabSettingsButton.tsx', './components/ProfilePlayControls.tsx', './whatToCheck.ts'],
 };
 const SHORTCUT_FILES = ['./components/TabSettingsButton.tsx', './components/ProfilePlayControls.tsx', './components/TableControls.tsx'];
 

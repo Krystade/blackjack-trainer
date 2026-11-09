@@ -4,6 +4,8 @@ import type { DealerMistakesMode } from '../../engine/dealerErrors';
 import { Segmented, Stepper, Toggle } from '../screens/Settings';
 import { DEALER_PACE_MAX_SEC, DEALER_PACE_MIN_SEC, dealerPaceSec } from '../dealerPace';
 import { dealerMistakesPatch, dealerMistakesSetting } from '../dealerErrorCopy';
+import { tableChecksOf } from '../whatToCheck';
+import { gateOffNote } from './ProfilePlayControls';
 
 /**
  * Owner 2026-11-06 (settings overhaul): the table's controls, drawn by the
@@ -119,6 +121,11 @@ export function DealerControls({ settings, update }: SettingsProps) {
         <strong>Training</strong> about one in 5. Tap Foul before the next deal to call it. Scored apart
         from your play accuracy. Off eyes-free.
       </p>
+      {!tableChecksOf(settings).dealerMistakes && (
+        <p className="settings-note" data-testid="gate-off-dealerMistakes">
+          {gateOffNote('Dealer mistakes')}
+        </p>
+      )}
 
     </>
   );

@@ -213,6 +213,8 @@ describe('OWNED_KEYS', () => {
     // Wave L (lane v): read-modify-written from storage at every segment and
     // on finishing (never cached whole), and one guided session runs in one tab.
     'bjtrainer.guided.v1': 'read fresh at each write; a guided session belongs to the tab running it',
+    // T1-1B: each tab runs the migration at boot; the second is a no-op once the first has written.
+    'bjtrainer.migrations.v1': 'a boot-time migration marker, read once before React mounts',
   };
 
   /**

@@ -1329,6 +1329,20 @@ export class Game {
     return true;
   }
 
+  /**
+   * T1-1B: a Play distraction was just answered, so the running count is
+   * owed now -- was it kept through the sum? Uses the ordinary check, graded
+   * and recorded like any other. The running count is always asked; a check
+   * already owed keeps its true-count half.
+   */
+  oweCountCheck(): void {
+    if (!this.countCheckDue) {
+      this.countCheckDue = true;
+      this.askTcToo = false;
+    }
+    this.askRc = true;
+  }
+
   // ---- internal helpers ----
 
   /** Construct this round's seats from cfg.seats: `bots` bot seats plus the

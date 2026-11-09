@@ -1,0 +1,7 @@
+/* T1-1B: Play's What to check switches: each toggle with its one line under it. */
+.what-to-check-item + .what-to-check-item {
+  margin-top: 0.25rem;
+}
+.what-to-check-item .profile-play-note {
+  margin-top: 0;
+}

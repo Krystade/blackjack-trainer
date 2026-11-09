@@ -11,6 +11,7 @@ import { registerOfflineWorker } from './offline/registerOffline.ts';
 import { requestPersistentStorage } from './store/storageHealth.ts';
 import { watchViewportGap } from './ui/viewportGap.ts';
 import { rootErrorOptions } from './diag/crashLog.ts';
+import { applyBeginnerPlay } from './store/beginnerPlay.ts';
 
 // OPEN THE VOICE LIST BEFORE ANYTHING WANTS TO SPEAK.
 //
@@ -24,6 +25,9 @@ primeVoices();
 
 // Storage nothing reads any more (see store/persist.ts).
 dropRetiredKeys();
+
+// T1-1B: the one-time beginner Play table, before any table is built (store/beginnerPlay.ts).
+applyBeginnerPlay();
 
 // Serve the app from a cache when there is no network -- a plane, a tunnel, a
 // car park. Production only; see offline/registerOffline.ts.

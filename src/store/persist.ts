@@ -488,6 +488,8 @@ const EXTRA_KEYS: { key: string; field: string; label: string; raw?: true }[] = 
   // Wave L (lane v): finished guided sessions (what improved, two achievements)
   // and today's unfinished one (guided/store.ts).
   { key: 'bjtrainer.guided.v1', field: 'guided', label: 'guided sessions' },
+  // T1-1B: suggestions answered and the switches to turn back on (store/onboarding.ts).
+  { key: 'bjtrainer.onboarding.v1', field: 'onboarding', label: 'first-run choices' },
 ];
 
 /**

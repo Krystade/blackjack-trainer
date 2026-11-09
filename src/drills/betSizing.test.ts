@@ -11,7 +11,7 @@ import {
 
 /** Play's own verdict on one pre-deal decision: every bet/wong event it grades is correct. */
 function playVerdict(profile: Profile, rc: number, cardsDealt: number, taken: BetAnswer): boolean {
-  const cfg = { ...playConfigFor({ ...profile, betSpreadOn: true }, 1000, 1), penetration: 1 };
+  const cfg = { ...playConfigFor({ ...profile, betSpreadOn: true, playChecks: { ...profile.playChecks, bets: true } }, 1000, 1), penetration: 1 };
   const cards: Card[] = Array.from({ length: profile.rules.decks * 52 }, (_, i) => ({ rank: RANKS[i % 13], suit: 's' }));
   const game = Game.withRiggedShoe(cfg, cards);
   game.discardRiggedCards(cardsDealt);

@@ -21,6 +21,8 @@ import { mistakeUnits } from './reportSections';
 import { newSessionId, sessionRowFor, upsertSession } from './sessionRow';
 import { betMissFeedback, type BetMiss } from './betFeedback';
 import { sessionDealerErrors } from './dealerErrorCopy';
+import { distractionRow, makePlayDistraction, playDistractionDue } from './playDistraction';
+import type { Distraction } from '../drills/distraction';
 import { addSideDecisions } from '../store/sideBetStats';
 import { SIDE_OFF_LINE, SIDE_ON_LINE, SIDE_WINS_LINE, sideMissFeedback } from './sideBetFeedback';
 import type { SideMiss } from './sideBetFeedback';
@@ -363,7 +365,28 @@ type PendingDeal = { kind: 'deal'; bets?: number | number[] } | { kind: 'sitOut'
  * dealSpeedMs/drill.* are read directly by the screens). The
  * `?seed=` override remains for deterministic e2e/test runs.
  */
-export function useGame(settings: Settings, profile: Profile, audio: AudioApi, keepKey?: string) {
+/** T1-1B: a Play distraction on screen, and when it was posed (for its elapsed time). */
+export interface PlayDistractionShown {
+  d: Distraction;
+  shownAt: number;
+}
+
+/** T1-1B: the sum's verdict, shown through the round dealt after it (`round` = the round it followed). */
+export interface PlayDistractionVerdict {
+  round: number;
+  correct: boolean;
+  answer: number;
+  prompt: string;
+}
+
+export function useGame(
+  settings: Settings,
+  profile: Profile,
+  audio: AudioApi,
+  keepKey?: string,
+  /** T1-1B: Play's Distractions switch, already off eyes-free (whatToCheck.distractionsOn). */
+  distractionsOn?: boolean,
+) {
   // D3: a shoe set aside on the way to Settings, taken back on the
   // way home (ui/tableKeep.ts). Read on every render but used only by the
   // first, as every useRef initial value below is.
@@ -473,6 +496,12 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi, k
           hotShoe,
           provisional: !final,
           ...sessionDealerErrors(game.dealerErrorTally, game.dealerMistakesUsed, game.dealerMistakesTrainingUsed),
+          // T1-1B (D7): what this table checked, as built (ui/whatToCheck.ts).
+          checks: {
+            count: game.cfg.countCheckEvery > 0,
+            deviations: game.cfg.gradeDeviations !== false,
+            bets: game.cfg.betSpreadOn,
+          },
         }),
       );
       if (side && game.sideDecisions.length > 0) {
@@ -590,6 +619,18 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi, k
    */
   const pendingDealRef = useRef<PendingDeal | null>(null);
 
+  // T1-1B: Play distractions. Read through a ref so the deal callbacks keep
+  // their identity when the switch flips (it commits live, no new shoe).
+  const distractionsOnRef = useRef(distractionsOn === true);
+  distractionsOnRef.current = distractionsOn === true;
+  const [tableSeed] = useState(() => readSeed() ?? Date.now());
+  const [distraction, setDistraction] = useState<PlayDistractionShown | null>(null);
+  const [distractionVerdict, setDistractionVerdict] = useState<PlayDistractionVerdict | null>(null);
+  /** The round a distraction followed, so one round never brings two. */
+  const distractionRoundRef = useRef(-1);
+  /** The answered sum, waiting on the running count that grades `countKept`. */
+  const pendingDistractionRef = useRef<{ kind: Distraction['kind']; answerCorrect: boolean; elapsedMs: number } | null>(null);
+
   /**
    * Wave A: "Shuffling." has been said between rounds (as the cut-card round
    * settled, or as the count check owed on it was answered), so the deal that
@@ -677,7 +718,26 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi, k
    */
   const poseCountCheckBeforeDeal = useCallback(
     (pending: PendingDeal): boolean => {
-      if (!game.poseCountCheck()) return false;
+      if (!game.poseCountCheck()) {
+        // T1-1B: no check owed, so maybe a distraction: between hands (never
+        // on the way to End), once per round, at the drill's cadence.
+        if (
+          pending.kind === 'end' ||
+          !distractionsOnRef.current ||
+          game.phase !== 'settled' ||
+          distractionRoundRef.current === game.roundNo ||
+          !playDistractionDue(game.roundNo, tableSeed)
+        ) {
+          return false;
+        }
+        distractionRoundRef.current = game.roundNo;
+        setDistractionVerdict(null);
+        pendingDealRef.current = pending;
+        setDistraction({ d: makePlayDistraction(game.runningCount, game.roundNo, tableSeed), shownAt: Date.now() });
+        audio.ding('attention');
+        bump();
+        return true;
+      }
       pendingDealRef.current = pending;
       audio.ding('attention');
       // #3: a true-count-only check opens on the true-count question.
@@ -685,7 +745,7 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi, k
       bump();
       return true;
     },
-    [game, audio, bump],
+    [game, audio, bump, tableSeed],
   );
 
   const deal = useCallback(
@@ -987,6 +1047,15 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi, k
       // Wave X (item 2): the cards behind this count, before a right answer clears them.
       const trail = [...game.countTrail];
       const result = game.submitCountCheck(rc, tcGuess);
+      // T1-1B: the check a distraction owed grades whether the count was kept.
+      const owed = pendingDistractionRef.current;
+      pendingDistractionRef.current = null;
+      if (owed && result.rcCorrect !== undefined) {
+        const now = new Date().toISOString();
+        const stats = loadStats();
+        const row = distractionRow({ kind: owed.kind }, owed.answerCorrect, result.rcCorrect, owed.elapsedMs, now);
+        saveStats({ ...stats, distraction: { ...stats.distraction, history: [...stats.distraction.history, row] } });
+      }
       const roundAtCheck = game.roundNo;
       const pending = pendingDealRef.current;
       const rewindable = result.rcCorrect === false && trail.length > 0;
@@ -1023,6 +1092,37 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi, k
     // saveResume reads only refs and what is fixed for the mount (game, keys).
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [game, bump, audio, persistSession, runPendingDeal],
+  );
+
+  /**
+   * T1-1B: answer the distraction. The sum is graded and shown; then, with
+   * count checks on, the running count is asked at once (the deal stays held)
+   * and that answer records whether the count was kept. With them off there
+   * is nothing to grade the count by, so no row is written and the deal runs.
+   */
+  const submitDistraction = useCallback(
+    (answer: number): PlayDistractionVerdict | null => {
+      const shown = distraction;
+      if (!shown) return null;
+      const correct = answer === shown.d.answer;
+      const verdict = { round: game.roundNo, correct, answer: shown.d.answer, prompt: shown.d.prompt };
+      setDistraction(null);
+      setDistractionVerdict(verdict);
+      audio.ding(correct ? 'good' : 'bad');
+      if (game.cfg.countCheckEvery > 0) {
+        pendingDistractionRef.current = { kind: shown.d.kind, answerCorrect: correct, elapsedMs: Date.now() - shown.shownAt };
+        game.oweCountCheck();
+        game.poseCountCheck();
+        audio.say(narrateTableCountPrompt('rc'));
+      } else {
+        const pending = pendingDealRef.current;
+        pendingDealRef.current = null;
+        runPendingDeal(pending);
+      }
+      bump();
+      return verdict;
+    },
+    [distraction, game, audio, runPendingDeal, bump],
   );
 
   /** Fix round 1: run the deal a held answer kept waiting. A no-op with none held. */
@@ -1110,5 +1210,8 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi, k
     fastForwardNarration,
     dealAnimating,
     skipDeal,
+    distraction,
+    distractionVerdict,
+    submitDistraction,
   };
 }

@@ -138,6 +138,8 @@ export function makeDefaultProfile(): Profile {
     countCheckEvery: 5,
     betSpreadOn: false,
     seats: { ...DEFAULT_SEATS },
+    // T1-1B: a new profile's Play checks basic strategy only (ui/whatToCheck.ts).
+    playChecks: { count: false, deviations: false, bets: false },
   };
 }
 
@@ -165,8 +167,12 @@ function buildDefaultFromSettingsBlob(json: string | null): Profile {
       return base;
     }
 
+    // T1-1B: a v1 blob that set the count checks or the ramp keeps them in
+    // force: its gates are left absent, so they derive from those values.
+    const carries = typeof p.countCheckEvery === 'number' || typeof p.betSpreadOn === 'boolean';
+    const { playChecks: _gates, ...unGated } = base;
     return {
-      ...base,
+      ...(carries ? unGated : base),
       spread: Array.isArray(p.spread)
         ? (p.spread as SpreadRow[]).map((row) => ({ ...row }))
         : base.spread,

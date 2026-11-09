@@ -1,4 +1,16 @@
-import type { Profile } from '../../store/types';
+import type { Profile, Settings } from '../../store/types';
+import {
+  CHECK_LABELS,
+  checksShown,
+  playCheckOffPatch,
+  playCheckOnPatch,
+  playChecksOf,
+  tableCheckOffPatch,
+  tableCheckOnPatch,
+  type CheckKey,
+  type PlayCheckKey,
+  type TableCheckKey,
+} from '../whatToCheck';
 import './profilePlayControls.css';
 import { Segmented, Stepper, Toggle } from '../screens/Settings';
 import {
@@ -31,7 +43,7 @@ type ProfileView = Pick<
   Profile,
   'countCheckEvery' | 'countCheckAsk' | 'gradeDeviations' | 'cutDecks' | 'cutVary' | 'penetration' | 'rules'
 > &
-  Partial<Pick<Profile, 'betSpreadOn' | 'wongExitTc' | 'backCount' | 'startShoeOut' | 'wongInTc' | 'seats'>>;
+  Partial<Pick<Profile, 'betSpreadOn' | 'wongExitTc' | 'backCount' | 'startShoeOut' | 'wongInTc' | 'seats' | 'playChecks'>>;
 
 interface ControlProps {
   profile: ProfileView;
@@ -42,10 +54,76 @@ function decksLabel(n: number): string {
   return `${n} ${n === 1 ? 'deck' : 'decks'}`;
 }
 
+/**
+ * T1-1B: what an editor control says when Play's switch for it is off, so the
+ * editor never claims Play does something it does not.
+ */
+export function gateOffNote(label: string): string {
+  return `Off in Play: turn on ${label} in Play's settings to use this.`;
+}
+
+function GateOffNote({ profile, gate }: { profile: ProfileView; gate: PlayCheckKey }) {
+  if (playChecksOf({ betSpreadOn: false, ...profile })[gate]) return null;
+  return (
+    <p className="settings-note profile-play-note" data-testid={`gate-off-${gate}`}>
+      {gateOffNote(CHECK_LABELS[gate])}
+    </p>
+  );
+}
+
+/** T1-1B: each switch's one line, in plain words. */
+export const CHECK_NOTES: Record<CheckKey, string> = {
+  count: 'Every few rounds the table asks what the count is.',
+  deviations: 'Graded on the plays where the count says to leave basic strategy.',
+  bets: 'Your bet and In/Out are graded on your bet ramp.',
+  dealerMistakes: 'Now and then the dealer pays a hand wrong; tap Foul to call it.',
+  distractions: 'Between hands, a quick sum to answer, as table talk would.',
+};
+
+const PLAY_KEYS: readonly PlayCheckKey[] = ['count', 'deviations', 'bets'];
+const TABLE_KEYS: readonly TableCheckKey[] = ['dealerMistakes', 'distractions'];
+
+/**
+ * T1-1B: Play's What to check. Five switches over the finer values (see
+ * ui/whatToCheck.ts). The three profile ones go through `onChange` (held in
+ * the Play sheet's draft, a new shoe on close); the two table ones through
+ * `update` (live).
+ */
+export function WhatToCheckControls({
+  profile,
+  onChange,
+  settings,
+  update,
+}: {
+  profile: Profile;
+  onChange: (patch: Partial<Profile>) => void;
+  settings: Settings;
+  update: (patch: Partial<Settings>) => void;
+}) {
+  const shown = checksShown(profile, settings);
+  const row = (key: CheckKey, set: (v: boolean) => void) => (
+    <div key={key} className="what-to-check-item" data-check={key}>
+      <Toggle label={CHECK_LABELS[key]} checked={shown[key]} onChange={set} />
+      <p className="settings-note profile-play-note">{CHECK_NOTES[key]}</p>
+    </div>
+  );
+  return (
+    <div className="what-to-check" data-testid="what-to-check">
+      {PLAY_KEYS.map((k) =>
+        row(k, (v) => onChange(v ? playCheckOnPatch(k, profile) : playCheckOffPatch(k, profile))),
+      )}
+      {TABLE_KEYS.map((k) =>
+        row(k, (v) => update(v ? tableCheckOnPatch(k, settings) : tableCheckOffPatch(k, settings))),
+      )}
+    </div>
+  );
+}
+
 /** #34: grade with count deviations, or basic strategy only. */
 export function DeviationsControl({ profile, onChange }: ControlProps) {
   return (
     <>
+      <GateOffNote profile={profile} gate="deviations" />
       <Toggle
         label="Grade with deviations"
         checked={gradesDeviations(profile)}
@@ -66,6 +144,7 @@ export function CountCheckControls({ profile, onChange }: ControlProps) {
   const off = profile.countCheckEvery === 0;
   return (
     <>
+      <GateOffNote profile={profile} gate="count" />
       <Stepper
         label="Count check every"
         value={profile.countCheckEvery}

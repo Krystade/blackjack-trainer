@@ -1,6 +1,7 @@
 import { entryTcOf, startShoeOutOf, wongExitTcOf } from '../engine/wong';
 import type { Profile } from '../store/types';
 import { loadProfiles, saveProfiles, getActiveProfile } from '../store/profiles';
+import { playChecksOf } from './whatToCheck';
 
 /**
  * The profile options a tab's gear sheet edits (#33), and the cut card's
@@ -116,6 +117,8 @@ export function playOptionsDiffer(a: Profile, b: Profile): boolean {
     p.seats?.bots ?? 0,
     p.playDepth ?? 'half',
     p.seats?.playerPosition ?? 0,
+    // T1-1B: the What-to-check gates, as Play reads them.
+    playChecksOf(p),
   ];
   return JSON.stringify(effective(a)) !== JSON.stringify(effective(b));
 }
