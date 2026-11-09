@@ -58,6 +58,7 @@ export const ALLOWED: readonly Allowed[] = [
   // Relative or not text at all.
   { file: 'ui/app.css', selector: '.session-assisted', value: '0.75em', reason: 'Relative to the line it annotates' },
   { file: 'ui/screens/Table.tsx', selector: 'topbar-profile-name', value: '0.7em', reason: 'Relative to the topbar line it sits in' },
+  { file: 'ui/glossary/glossary.css', selector: '.term::after', value: '0.6em', reason: 'Glossary "?" badge: scales with the word it marks, from the 13.6px charts ruleset to 24px headings' },
   { file: 'ui/formControls.css', selector: '.settings-toggle', value: '30px', reason: 'Not text: the em basis that sizes the 44px toggle and its tick' },
 
   // One-off display numerals above the scale, each sized to its own box.
