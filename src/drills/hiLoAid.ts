@@ -1,6 +1,7 @@
 import type { Card } from '../engine/cards';
 import { hiLoTag } from '../engine/count';
 import { signed } from './signed';
+import { introAllowed } from './chartIntro';
 import type { Settings, Stats } from '../store/types';
 
 /**
@@ -54,3 +55,40 @@ export const EASY_FIRST_RUN: Partial<Settings['drill']> = {
   // T2-2A: from here the pace steps up as the count holds (countPaceRamp.ts).
   countPaceRamp: true,
 };
+
+/** T2-2B: the "Learn Hi-Lo" card's one-shot seen flag. */
+export const HILO_INTRO_KEY = 'bjtrainer.hiLoIntro.v1';
+
+/**
+ * T2-2B: the "Learn Hi-Lo" card shows in place of the count drill's setup
+ * once basic strategy is done and counting is not, to someone with no count
+ * run on record (the Easy first run audience). Shared intro gate as well:
+ * never in a car session, never on an autoStart (D6), `?intro` under e2e.
+ *
+ * `basicDone`/`countDone` are the ladder's own rung verdicts (homeLadder),
+ * so the card and Home cannot disagree about where you are.
+ */
+export function hiLoIntroDue(input: {
+  seen: boolean;
+  basicDone: boolean;
+  countDone: boolean;
+  easyOffered: boolean;
+  eyesFree: boolean;
+  voiceOn: boolean;
+  autoStart: boolean;
+  search: string;
+  e2e: boolean;
+}): boolean {
+  const { seen, basicDone, countDone, easyOffered, ...gate } = input;
+  return !seen && basicDone && !countDone && easyOffered && introAllowed(gate);
+}
+
+/** The tap-along: six cards whose tags add back to 0. */
+export const HILO_TAP_ALONG: readonly Card[] = [
+  { rank: '5', suit: 'h' },
+  { rank: 'K', suit: 's' },
+  { rank: '9', suit: 'd' },
+  { rank: '2', suit: 'c' },
+  { rank: 'A', suit: 'h' },
+  { rank: '7', suit: 's' },
+];

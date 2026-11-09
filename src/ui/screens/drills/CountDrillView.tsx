@@ -77,7 +77,7 @@ import { VoiceStatusBar } from '../../components/VoiceStatusBar';
 import { CarStatusLine } from '../../components/CarStatusLine';
 import { carMic, carScore, countPrompt, countWheelLabel, type CarStatus } from '../../carStatus';
 import { RungProgressLine } from './RungProgressLine';
-import { DRILL_RUNG } from './rungProgress';
+import { DRILL_RUNG, homeLadder } from './rungProgress';
 import { useVoiceToggle, usePushToTalk, startPushToTalk } from '../../voiceSession';
 import { useEyesFreeToggle } from '../../eyesFreeSession';
 import { DrillPrimaryBar } from '../../components/DrillPrimaryBar';
@@ -93,7 +93,17 @@ import './countTableDeal.css';
 import { tableDealOf, tableHoldMs, tableRoundPlan, tableView, type TableDeal } from '../../countTableDeal';
 import { DEALER_SEAT } from '../../dealSequence';
 import { COUNT_AGAIN_PREFIX, COUNT_HIDE_PAUSED_LINE, COUNT_PAUSED_LINE, COUNT_RESUMING_LINE, countedCardMs, isCountResumeWord } from '../../../drills/countPause';
-import { EASY_FIRST_RUN, hiLoLabel, hiLoShown, offersEasyFirstRun } from '../../../drills/hiLoAid';
+import {
+  EASY_FIRST_RUN,
+  HILO_INTRO_KEY,
+  hiLoIntroDue,
+  hiLoLabel,
+  hiLoShown,
+  offersEasyFirstRun,
+} from '../../../drills/hiLoAid';
+import { loadIntroSeen, saveIntroSeen } from '../../../drills/chartIntro';
+import { isE2eAudioMode } from '../../../audio/speech';
+import { HiLoIntro } from './HiLoIntro';
 import './hiLoAid.css';
 
 function randomSeed(): number {
@@ -316,6 +326,31 @@ export function CountDrillView({
   // from a microphone that failed. See ui/voiceSession.ts.
   const [voiceOn, setVoiceOn] = useVoiceToggle('count-drill');
   const pushToTalkOpen = usePushToTalk();
+  // T2-2B: "Learn Hi-Lo" in place of the setup, once -- when basic strategy
+  // is done, counting is not, and no count run is on record. Read at mount,
+  // from the ladder Home reads, so the two cannot disagree. Held for 1C: the
+  // rung verdicts are `passed` until Track 1's rungDone (passed OR skipped)
+  // lands.
+  const [hiLoIntro, setHiLoIntro] = useState(() => {
+    const stats = loadStats();
+    const rungs = homeLadder(stats, getActiveProfile()).rungs;
+    const passed = (id: string) => rungs.find((r) => r.id === id)?.passed === true;
+    return hiLoIntroDue({
+      seen: loadIntroSeen(HILO_INTRO_KEY),
+      basicDone: passed('basic'),
+      countDone: passed('count'),
+      easyOffered: offersEasyFirstRun(stats),
+      eyesFree,
+      voiceOn,
+      autoStart,
+      search: window.location.search,
+      e2e: isE2eAudioMode(),
+    });
+  });
+  const leaveHiLoIntro = () => {
+    saveIntroSeen(HILO_INTRO_KEY);
+    setHiLoIntro(false);
+  };
   /**
    * A spoken count, heard but not yet submitted.
    *
@@ -2340,7 +2375,16 @@ export function CountDrillView({
         />
       )}
 
-      {phase === 'setup' && (
+      {phase === 'setup' && hiLoIntro && (
+        <HiLoIntro
+          onStartEasy={() => {
+            leaveHiLoIntro();
+            startEasyFirstRun();
+          }}
+          onSkip={leaveHiLoIntro}
+        />
+      )}
+      {phase === 'setup' && !hiLoIntro && (
         <div className="count-setup">
           {tableChoosable && (
             <div className="settings-row">

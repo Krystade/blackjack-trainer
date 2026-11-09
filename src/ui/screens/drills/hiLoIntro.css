@@ -1,0 +1,90 @@
+/* T2-2B: "Learn Hi-Lo", in place of the count setup the first time. */
+.hilo-intro-card {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface, rgba(255, 255, 255, 0.06));
+  text-align: left;
+}
+
+.hilo-intro-title {
+  margin: 0 0 8px;
+  font-size: var(--fs-lg);
+}
+
+.hilo-intro-rule {
+  border-collapse: collapse;
+  margin: 0 0 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.hilo-intro-rule th,
+.hilo-intro-rule td {
+  padding: 3px 14px 3px 0;
+  text-align: left;
+  font-size: var(--fs-md);
+}
+
+.hilo-intro-rule td {
+  font-weight: 700;
+}
+
+.hilo-intro-why {
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.4;
+  color: var(--ink-dim);
+}
+
+.hilo-tap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+}
+
+.hilo-tap-head {
+  font-size: var(--fs-sm);
+  color: var(--ink-dim);
+}
+
+.hilo-tap-buttons {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  width: 100%;
+}
+
+.hilo-tap-btn {
+  min-height: 48px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line);
+  background: var(--raised);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--fs-md);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.hilo-tap-feedback {
+  font-size: var(--fs-sm);
+  font-weight: 700;
+}
+
+.hilo-tap-feedback.is-right {
+  color: var(--good, var(--ink));
+}
+
+.hilo-tap-feedback.is-wrong {
+  color: var(--bad, var(--ink));
+}
+
+.hilo-tap-total {
+  font-size: var(--fs-md);
+  font-variant-numeric: tabular-nums;
+}

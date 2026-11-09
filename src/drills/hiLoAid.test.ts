@@ -1,7 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import type { Rank } from '../engine/cards';
 import { hiLoTag } from '../engine/count';
-import { EASY_FIRST_RUN, EASY_INTERVAL_MS, hiLoLabel, hiLoShown, offersEasyFirstRun } from './hiLoAid';
+import {
+  EASY_FIRST_RUN,
+  EASY_INTERVAL_MS,
+  HILO_TAP_ALONG,
+  hiLoIntroDue,
+  hiLoLabel,
+  hiLoShown,
+  offersEasyFirstRun,
+} from './hiLoAid';
 import { DEFAULT_SETTINGS } from '../store/types';
 
 const RANKS: Rank[] = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
@@ -45,5 +53,37 @@ describe('G1: Easy first run', () => {
       pacePressure: false,
       countTableMode: false,
     });
+  });
+});
+
+describe('T2-2B: hiLoIntroDue', () => {
+  const due = {
+    seen: false,
+    basicDone: true,
+    countDone: false,
+    easyOffered: true,
+    eyesFree: false,
+    voiceOn: false,
+    autoStart: false,
+    search: '',
+    e2e: false,
+  };
+  it('due once basic is done, counting is not, and no count run is on record', () => {
+    expect(hiLoIntroDue(due)).toBe(true);
+  });
+  it('each condition flipped alone turns it off', () => {
+    expect(hiLoIntroDue({ ...due, seen: true })).toBe(false);
+    expect(hiLoIntroDue({ ...due, basicDone: false })).toBe(false);
+    expect(hiLoIntroDue({ ...due, countDone: true })).toBe(false);
+    expect(hiLoIntroDue({ ...due, easyOffered: false })).toBe(false);
+    expect(hiLoIntroDue({ ...due, eyesFree: true })).toBe(false);
+    expect(hiLoIntroDue({ ...due, voiceOn: true })).toBe(false);
+    expect(hiLoIntroDue({ ...due, autoStart: true })).toBe(false);
+    expect(hiLoIntroDue({ ...due, e2e: true, search: '?e2e=1' })).toBe(false);
+    expect(hiLoIntroDue({ ...due, e2e: true, search: '?e2e=1&intro=1' })).toBe(true);
+  });
+  it('the tap-along counts back to 0', () => {
+    expect(HILO_TAP_ALONG.reduce((n, c) => n + hiLoTag(c.rank), 0)).toBe(0);
+    expect(new Set(HILO_TAP_ALONG.map((c) => hiLoTag(c.rank)))).toEqual(new Set([1, 0, -1]));
   });
 });

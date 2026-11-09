@@ -396,6 +396,8 @@ const NOT_BACKED_UP: Record<string, string> = {
     'T2-2B one-shot "seen" flag for the deck estimation worked example; a restore carrying any history suppresses it anyway',
   'bjtrainer.intro.producetc.v1':
     'T2-2B one-shot "seen" flag for the produce-the-true-count worked example; a restore carrying any history suppresses it anyway',
+  'bjtrainer.hiLoIntro.v1':
+    'T2-2B one-shot "seen" flag for the Learn Hi-Lo card; a restore carrying any count run suppresses it anyway',
   'bjtrainer.casinoLog.v3':
     'real casino sessions in dollars: personal financial data with its own deliberate export on the Casino tab -- the training backup is the file a user may hand to someone to debug a drill',
   'bjtrainer.casinoLog.v2':

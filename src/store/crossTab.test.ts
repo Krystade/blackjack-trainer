@@ -183,6 +183,7 @@ describe('OWNED_KEYS', () => {
     'bjtrainer.intro.truecount.v1': 'one-shot seen flag, read once on mount',
     'bjtrainer.intro.deckest.v1': 'one-shot seen flag, read once on mount',
     'bjtrainer.intro.producetc.v1': 'one-shot seen flag, read once on mount',
+    'bjtrainer.hiLoIntro.v1': 'one-shot seen flag, read once on mount',
     // Bounded to one challenge in one tab and cleared when it ends.
     'bjtrainer.masteryrun.v1': 'single in-flight challenge, cleared on finish',
     // Track 3: the open Play table, written at each round boundary and read
