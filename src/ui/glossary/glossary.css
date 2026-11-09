@@ -1,7 +1,7 @@
 /* T2-2B: a tappable word and the sheet it opens. */
 
-/* Inline, in the text's own font: only the dotted underline says it can be
-   tapped. */
+/* Inline, in the text's own font, with no underline: a small circled "?"
+   just after the word says it can be tapped. */
 .term {
   position: relative;
   display: inline;
@@ -15,24 +15,65 @@
   /* A button does not inherit it: in an uppercase heading the word stayed mixed case. */
   text-transform: inherit;
   text-align: inherit;
-  text-decoration: underline dotted;
-  text-decoration-color: var(--accent);
-  text-underline-offset: 3px;
-  text-decoration-thickness: 1.5px;
+  text-decoration: none;
+  /* The word and its badge move as one: the "?" never wraps onto a line of its own. */
+  white-space: nowrap;
   cursor: help;
   -webkit-tap-highlight-color: transparent;
 }
 
 /* A 44px-tall hit area without changing the line's layout: padding on an
-   inline button would push the text around it. */
-.term::after {
+   inline button would push the text around it.
+   44px is taller than a line, so on wrapped text a word's hit area reaches
+   over the words on the lines above and below it -- and, painted later, took
+   their taps (with the badges, "S17" in the charts ruleset opened "No
+   surrender"). So the hit area sits UNDER the text: z-index -1 within the
+   word's own line of copy (isolated below, so it cannot drop behind a card's
+   background), while the button's text paints above it. Every word keeps its
+   own glyphs; a hit area only catches taps on the empty space around them. */
+.term::before {
   content: '';
   position: absolute;
+  z-index: -1;
   left: -4px;
   right: -4px;
   top: 50%;
   height: 44px;
   transform: translateY(-50%);
+}
+
+:has(> .term) {
+  isolation: isolate;
+}
+
+/* The badge. Generated content, not a DOM node, so the copy's text (and every
+   assertion on it) is unchanged; the empty alt after the slash keeps it out
+   of the button's accessible name, which stays the word. Browsers without the
+   alt syntax drop that line and take the plain one above it.
+   Under 1em tall, so it never grows the line; its own case, spacing and
+   weight, so an uppercase heading still shows a plain "?". */
+.term::after {
+  content: '?';
+  content: '?' / '';
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  /* 0.6em glyph in a 1.4em circle: about 0.85em of the word's size. */
+  width: 1.4em;
+  height: 1.4em;
+  margin-left: 0.3em;
+  vertical-align: 0.15em;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  color: var(--ink-dim);
+  font-size: 0.6em;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0;
+  text-transform: none;
+  text-indent: 0;
 }
 
 .term:focus-visible {
@@ -41,8 +82,8 @@
   border-radius: 3px;
 }
 
-.term[aria-expanded='true'] {
-  text-decoration-style: solid;
+.term[aria-expanded='true']::after {
+  color: var(--accent);
 }
 
 /* Clear, not dimmed (shared-device rule): the screen behind stays readable.

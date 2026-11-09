@@ -8,10 +8,11 @@ import './glossary.css';
 /**
  * T2-2B: a word you can tap for a plain definition.
  *
- * Renders its children (or the term's label) as a button with a dotted
- * underline. Tapping it opens the definition in a BottomSheet fixed to the
- * foot of the screen -- never a centred modal: the device is passed round
- * and glanced at, so the board stays readable above it. A clear scrim above
+ * Renders its children (or the term's label) as a button marked by a small
+ * circled "?" after the word (glossary.css; no underline). Tapping it opens
+ * the definition in a BottomSheet fixed to the foot of the screen -- never a
+ * centred modal: the device is passed round and glanced at, so the board
+ * stays readable above it. A clear scrim above
  * the sheet closes it on a tap, so a tap meant to dismiss it cannot land on
  * an answer button behind it (the same rule as TabSettingsSheet).
  *

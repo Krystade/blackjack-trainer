@@ -2,7 +2,7 @@ import type { TermId } from './terms';
 
 /**
  * T2-2B: plain copy with its glossary words made tappable -- the first time
- * each term appears, so a sentence never turns into a row of underlines.
+ * each term appears, so a sentence never turns into a row of "?" badges.
  * Only for text OUTSIDE a button: a Term is a button, and a button inside a
  * button is invalid (and the outer one would swallow the tap).
  */

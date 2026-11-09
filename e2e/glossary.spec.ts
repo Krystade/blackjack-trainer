@@ -2,8 +2,8 @@ import { test, expect, type Page } from '@playwright/test';
 import { withProfile } from './helpers';
 
 /**
- * T2-2B: the glossary. A dotted word opens a plain definition in a sheet at
- * the foot of the screen; one sheet at a time; Escape, the Close button or a
+ * T2-2B: the glossary. A word marked with a circled "?" opens a plain
+ * definition in a sheet at the foot of the screen; one sheet at a time; Escape, the Close button or a
  * tap above the sheet closes it. Inside a settings toggle row the word opens
  * the sheet and does NOT flip the switch, while the rest of the row still
  * does.
@@ -34,6 +34,14 @@ test('Charts: the ruleset line keeps its text, and S17 opens its definition at t
 
   const word = page.locator('.charts-ruleset .term', { hasText: 'S17' });
   await expect(word).toHaveAttribute('aria-expanded', 'false');
+  // Marked by a circled "?" and no underline; the "?" is not part of its name.
+  await expect(page.getByRole('button', { name: 'S17', exact: true })).toHaveCount(1);
+  expect(
+    await word.evaluate((el) => ({
+      badge: getComputedStyle(el, '::after').content,
+      line: getComputedStyle(el).textDecorationLine,
+    })),
+  ).toEqual({ badge: '"?" / ""', line: 'none' });
   await word.click();
   await expect(sheet(page)).toBeVisible();
   await expect(sheet(page).locator('.bottom-sheet-title')).toHaveText('S17 (dealer stands on soft 17)');
