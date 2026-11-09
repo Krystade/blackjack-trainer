@@ -1,3 +1,4 @@
+import { TermText } from '../glossary';
 import type { Ladder, NextStep, StartTarget } from './nextStep';
 import './driveButton.css';
 import './ladderSkipped.css';
@@ -25,8 +26,13 @@ export function LadderCard({
       <span className="readiness-label">Next step</span>
       <div className="next-step-head">
         <div className="next-step-text">
-          <h2 className="next-step-title">{step.title}</h2>
-          <p className="next-step-why">{step.why}</p>
+          {/* T2-2B: the step's jargon is tappable here, where it is not inside a button (the rows are). */}
+          <h2 className="next-step-title">
+            <TermText text={step.title} />
+          </h2>
+          <p className="next-step-why">
+            <TermText text={step.why} />
+          </p>
         </div>
         {/* W13: the one gold primary on Home. */}
         <button

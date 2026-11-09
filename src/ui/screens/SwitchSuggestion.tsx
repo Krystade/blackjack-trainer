@@ -1,3 +1,4 @@
+import { TermText } from '../glossary';
 import { useState } from 'react';
 import type { Profile, Settings } from '../../store/types';
 import { RUNG_LABELS, rungDone, type Ladder } from './nextStep';
@@ -80,7 +81,7 @@ export function SwitchSuggestion({
     return (
       <section className="switch-suggest" aria-label="Play's checks" data-testid="migrated-off-card">
         <p className="switch-suggest-text">
-          Play now checks basic strategy only. Turn back on:
+          <TermText text="Play now checks basic strategy only. Turn back on:" />
         </p>
         <div className="switch-suggest-actions">
           {back.map((k) => (
@@ -105,7 +106,7 @@ export function SwitchSuggestion({
   return (
     <section className="switch-suggest" aria-label="Next switch" data-testid="switch-suggestion" data-rung={s.rung}>
       <p className="switch-suggest-text">
-        You passed {RUNG_LABELS[s.rung].toLowerCase()}. Turn on {CHECK_LABELS[s.check]} in Play?
+        <TermText text={`You passed ${RUNG_LABELS[s.rung].toLowerCase()}. Turn on ${CHECK_LABELS[s.check]} in Play?`} />
       </p>
       <div className="switch-suggest-actions">
         <button

@@ -9,6 +9,12 @@ import indexTest from '../screens/drills/IndexTestView.tsx?raw';
 import sideCount from '../screens/drills/SideCountDrillView.tsx?raw';
 import countDrill from '../screens/drills/CountDrillView.tsx?raw';
 import betSizing from '../screens/drills/BetSizingView.tsx?raw';
+import ladderCard from '../screens/LadderCard.tsx?raw';
+import drills from '../screens/Drills.tsx?raw';
+import welcome from '../screens/WelcomeCard.tsx?raw';
+import switchSuggestion from '../screens/SwitchSuggestion.tsx?raw';
+import playControls from '../components/ProfilePlayControls.tsx?raw';
+import tabSettings from '../components/TabSettingsButton.tsx?raw';
 import { TERMS } from './terms';
 
 /**
@@ -25,11 +31,17 @@ const WIRED: Record<string, string> = {
   'IndexTestView.tsx': indexTest,
   'SideCountDrillView.tsx': sideCount,
   'CountDrillView.tsx': countDrill,
+  'LadderCard.tsx': ladderCard,
+  'Drills.tsx': drills,
+  'WelcomeCard.tsx': welcome,
+  'SwitchSuggestion.tsx': switchSuggestion,
+  'ProfilePlayControls.tsx': playControls,
+  'TabSettingsButton.tsx': tabSettings,
 };
 
 describe('glossary wiring', () => {
   it.each(Object.entries(WIRED))('%s renders a Term', (_name, src) => {
-    expect(src).toMatch(/<Term\b/);
+    expect(src).toMatch(/<Term(Text)?\b/);
   });
 
   it('every literal Term id in the wired screens is a real term', () => {

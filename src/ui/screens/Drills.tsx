@@ -1,3 +1,4 @@
+import { Term } from '../glossary';
 import { startTransition, useEffect, useRef, useState, type ReactNode } from 'react';
 import { takeDrillLaunch, takeFlashHandOver, takeReviewIndexes } from '../drillLaunch';
 import { SpeedDrillView } from './drills/SpeedDrillView';
@@ -428,20 +429,27 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
           are three different abilities you build in roughly that order. */}
       <div className="drills-nav">
         {/* Owner 2026-11-06: in the order you learn them, the most used first in each group. */}
-        <h2 className="drills-group-title">Basic strategy</h2>
+        {/* T2-2B: the group titles carry the glossary words; the drill rows are buttons, so their lines cannot. */}
+        <h2 className="drills-group-title">
+          <Term id="basic-strategy">Basic strategy</Term>
+        </h2>
         {entry('flash', 'Flashcards', 'Learn basic strategy: the right play for each hand, one hand at a time.')}
         {entry('mastery', 'Mastery challenge', 'Every basic-strategy hand once, with no mistakes. One miss starts it over.')}
         {entry('speed', 'Speed', 'Quick yes-or-no questions against the clock: double here? Split? Surrender?')}
         {entry('custom', 'Custom', 'Paint the chart cells you want, then drill just those in Flashcards, Mastery or Mixed.')}
 
-        <h2 className="drills-group-title">Keeping the count</h2>
+        <h2 className="drills-group-title">
+          Keeping <Term id="rc">the count</Term>
+        </h2>
         {entry('count', 'Count drill', 'Keep the running count as cards are dealt. Every bet and play starts from it.')}
         {entry('paircancel', 'Pair cancellation', 'Spot two cards that cancel out, like a 5 and a king, so you can keep up with a fast dealer.')}
         {entry('deckest', 'Deck estimation', 'Judge how many decks are left from the discard tray. You need it for the true count.')}
         {entry('truecount', 'True count drill', 'Divide the running count by the decks left. The result, the true count, sets your bet.')}
         {entry('producetc', 'Produce the true count', 'Count the cards, read the tray and give the true count, as at a real table.')}
 
-        <h2 className="drills-group-title">Deviations</h2>
+        <h2 className="drills-group-title">
+          <Term id="deviation">Deviations</Term>
+        </h2>
         {entry('quiz', 'Deviation quiz', 'Hands where the count changes the right play, like standing on 16 against a 10.')}
         {/* R2/R4: interleaving is a DESIRABLE difficulty -- it helps once the
             base skill is there and costs accuracy before it. Soft, like every
@@ -449,7 +457,9 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
             works, and its "After:" label (Track 1) says what comes first. */}
         {entry('mixed', 'Mixed', 'Basic-strategy and count-changed hands shuffled together, so you learn when the count matters.')}
 
-        <h2 className="drills-group-title">Betting</h2>
+        <h2 className="drills-group-title">
+          <Term id="bet-ramp">Betting</Term>
+        </h2>
         {entry('betsizing', BET_SIZING_DRILL, BET_SIZING_PICKER)}
 
         <h2 className="drills-group-title">Other games and rules</h2>

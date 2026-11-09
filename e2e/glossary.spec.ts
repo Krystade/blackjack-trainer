@@ -117,3 +117,35 @@ test('Flashcards: the rules chip opens its term, and a key typed in the sheet is
   await expect(page.getByRole('button', { name: 'Hit', exact: true })).toBeEnabled();
   await expect(page.locator('[data-testid="result-strip"] .hand-result')).toHaveCount(0);
 });
+
+test('Home: the Next step copy and the welcome carry tappable words', async ({ page }) => {
+  await page.goto('/?e2e=1');
+  await expect(page.locator('.home-screen')).toBeVisible();
+  await expect(page.locator('.next-step-title')).toHaveText('Learn basic strategy');
+  await page.locator('.next-step-title .term').click();
+  await expect(sheet(page).locator('.bottom-sheet-title')).toHaveText('Basic strategy');
+  await page.keyboard.press('Escape');
+  await expect(sheet(page)).toHaveCount(0);
+
+  const words = page.getByTestId('welcome-words');
+  await expect(words).toHaveText('New words? Tap one: basic strategy, counting, deviations.');
+  await words.locator('.term', { hasText: 'deviations' }).click();
+  await expect(sheet(page)).toBeVisible();
+  // Reading a word is not a welcome choice: the card stays.
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('welcome-card')).toBeVisible();
+});
+
+test('Play gear: the What to check note opens its word over the sheet, and Escape closes only the word', async ({
+  page,
+}) => {
+  await page.goto('/?seed=7&e2e=1');
+  await page.locator('.tab-bar').getByRole('button', { name: 'Play', exact: true }).click();
+  await page.getByRole('button', { name: 'Play settings' }).click();
+  const gear = page.getByRole('dialog', { name: 'Play settings' });
+  await gear.getByTestId('what-to-check-note').locator('.term').click();
+  await expect(sheet(page).locator('.bottom-sheet-title')).toHaveText('Basic strategy');
+  await page.keyboard.press('Escape');
+  await expect(sheet(page)).toHaveCount(0);
+  await expect(gear).toBeVisible();
+});

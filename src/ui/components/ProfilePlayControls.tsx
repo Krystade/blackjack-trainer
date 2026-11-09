@@ -1,3 +1,4 @@
+import { TermText } from '../glossary';
 import type { Profile, Settings } from '../../store/types';
 import {
   CHECK_LABELS,
@@ -104,7 +105,9 @@ export function WhatToCheckControls({
   const row = (key: CheckKey, set: (v: boolean) => void) => (
     <div key={key} className="what-to-check-item" data-check={key}>
       <Toggle label={CHECK_LABELS[key]} checked={shown[key]} onChange={set} />
-      <p className="settings-note profile-play-note">{CHECK_NOTES[key]}</p>
+      <p className="settings-note profile-play-note">
+        <TermText text={CHECK_NOTES[key]} />
+      </p>
     </div>
   );
   return (

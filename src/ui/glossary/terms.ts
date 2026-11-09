@@ -54,7 +54,8 @@ export type TermId =
   | 'risk-of-ruin'
   | 'score'
   | 'push'
-  | 'natural';
+  | 'natural'
+  | 'basic-strategy';
 
 export interface TermEntry {
   /** The word as the sheet titles it. */
@@ -263,6 +264,10 @@ export const TERMS: Record<TermId, TermEntry> = {
   natural: {
     label: 'Blackjack (natural)',
     def: 'An ace and a 10-value card as your first two cards. It usually pays 3 for 2.',
+  },
+  'basic-strategy': {
+    label: 'Basic strategy',
+    def: 'The best play for every hand against every dealer card, worked out by computer for the rules at your table. It is the chart, and everything else builds on it.',
   },
 };
 

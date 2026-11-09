@@ -1,3 +1,4 @@
+import { Term } from '../glossary';
 import type { Profile } from '../../store/types';
 import { patchOnboarding, type WelcomeChoice } from '../../store/onboarding';
 import type { RungId } from './nextStep';
@@ -48,6 +49,11 @@ export function WelcomeCard({ activeProfile, onChosen }: { activeProfile: Profil
           </button>
         ))}
       </div>
+      {/* T2-2B: the words the choices use, tappable (the choices are buttons, so not inside them). */}
+      <p className="welcome-words" data-testid="welcome-words">
+        New words? Tap one: <Term id="basic-strategy">basic strategy</Term>, <Term id="hi-lo">counting</Term>,{' '}
+        <Term id="deviation">deviations</Term>.
+      </p>
       <button type="button" className="welcome-skip" onClick={() => choose('skipped')}>
         Skip
       </button>

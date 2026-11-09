@@ -1,3 +1,4 @@
+import { TermText } from '../glossary';
 import { useRef, useState } from 'react';
 import type { Profile, Settings } from '../../store/types';
 import type { RuleSet } from '../../engine/ruleset';
@@ -139,7 +140,7 @@ function PlaySheet({ title, ctx, onClosed }: SheetProps) {
       {/* T1-1B: What to check -- basic strategy always, each switch one more thing. */}
       <h3 className="tab-sheet-group">What to check</h3>
       <p className="settings-note" data-testid="what-to-check-note">
-        Play grades your basic strategy. Each switch adds one more thing to check.
+        <TermText text="Play grades your basic strategy. Each switch adds one more thing to check." />
       </p>
       {changedProfile && (
         <p className="tab-sheet-when tab-sheet-when-pending" data-testid="what-to-check-when">
