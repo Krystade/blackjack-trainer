@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { makeDistraction, isDistractionPoint } from './distraction';
+import { makeDistraction, isDistractionPoint, isDistractionPointEvery, distractionSpeech, type DistractionDifficulty } from './distraction';
 
 /**
  * Anti-drift parsing helper for tests only (mirrors the true-count drill's
@@ -243,6 +243,111 @@ describe('isDistractionPoint per run', () => {
   it('a seed of 0 keeps the old positions', () => {
     for (let i = 0; i < 60; i++) {
       expect(isDistractionPoint(i, 'occasional', 0)).toBe(isDistractionPoint(i, 'occasional'));
+    }
+  });
+});
+
+describe('difficulty (owner 2026-11-09)', () => {
+  const counts = [-15, -7, -2, 0, 1, 3, 7, 12, 20];
+  const all = (mode: 'near-count' | 'generic', diff: DistractionDifficulty) =>
+    counts.flatMap((rc) => Array.from({ length: 200 }, (_, seed) => makeDistraction(rc, mode, seed, diff)));
+
+  it('normal is the default and draws exactly what it drew before', () => {
+    for (let seed = 0; seed < 50; seed++) {
+      expect(makeDistraction(5, 'near-count', seed, 'normal')).toEqual(makeDistraction(5, 'near-count', seed));
+      expect(makeDistraction(5, 'generic', seed, 'normal')).toEqual(makeDistraction(5, 'generic', seed));
+    }
+  });
+
+  it.each(['easy', 'normal', 'hard'] as const)('%s: every answer matches its printed prompt, in the parsers shape', (diff) => {
+    for (const mode of ['near-count', 'generic'] as const) {
+      for (const d of all(mode, diff)) {
+        expect(evalParsed(parsePrompt(d.prompt)), d.prompt).toBe(d.answer);
+        expect(d.kind).toBe(mode);
+      }
+    }
+  });
+
+  it('easy generic is a single-digit sum', () => {
+    for (const d of all('generic', 'easy')) {
+      const p = parsePrompt(d.prompt);
+      expect(p.op).toBe('+');
+      expect(p.a).toBeLessThan(10);
+      expect(p.b).toBeLessThan(10);
+    }
+  });
+
+  it('easy near-count steps 1..4 from an operand within 2 of the count', () => {
+    for (const rc of counts) {
+      for (let seed = 0; seed < 100; seed++) {
+        const p = parsePrompt(makeDistraction(rc, 'near-count', seed, 'easy').prompt);
+        expect(Math.abs(p.a - rc)).toBeLessThanOrEqual(2);
+        expect(p.b).toBeGreaterThanOrEqual(1);
+        expect(p.b).toBeLessThanOrEqual(4);
+        expect(p.op).not.toBe('×');
+      }
+    }
+  });
+
+  it('hard generic always has a two-digit operand, and all three ops appear', () => {
+    const ops = new Set<string>();
+    for (const d of all('generic', 'hard')) {
+      const p = parsePrompt(d.prompt);
+      ops.add(p.op);
+      expect(Math.max(Math.abs(p.a), Math.abs(p.b))).toBeGreaterThanOrEqual(12);
+      if (p.op === '-') expect(d.answer).toBeGreaterThan(0);
+    }
+    expect([...ops].sort()).toEqual(['+', '-', '×']);
+  });
+
+  it('hard near-count keeps an operand near the count, and uses both shapes', () => {
+    const ops = new Set<string>();
+    for (const rc of counts) {
+      for (let seed = 0; seed < 100; seed++) {
+        const p = parsePrompt(makeDistraction(rc, 'near-count', seed, 'hard').prompt);
+        ops.add(p.op);
+        expect(Math.abs(p.a - rc)).toBeLessThanOrEqual(3);
+        if (p.op === '×') expect(p.b).toBeGreaterThanOrEqual(3);
+        else expect(p.b).toBeGreaterThanOrEqual(11);
+      }
+    }
+    expect(ops.has('×')).toBe(true);
+    expect(ops.has('+') || ops.has('-')).toBe(true);
+  });
+
+  it('hard answers stay within 99, so a spoken answer is one the voice parser accepts', () => {
+    for (const mode of ['near-count', 'generic'] as const) {
+      for (const d of all(mode, 'hard')) expect(Math.abs(d.answer), d.prompt).toBeLessThanOrEqual(99);
+    }
+  });
+});
+
+describe('distractionSpeech', () => {
+  it('says signs and the times sign as words', () => {
+    expect(distractionSpeech('8 + 6')).toBe('8 plus 6');
+    expect(distractionSpeech('-3 - (-6)')).toBe('minus 3 minus negative 6');
+    expect(distractionSpeech('17 × 5')).toBe('17 times 5');
+    expect(distractionSpeech('-5 × 7')).toBe('minus 5 times 7');
+    expect(distractionSpeech('84 - 37')).toBe('84 minus 37');
+  });
+
+  it('every generated prompt, at every difficulty, comes out as words with no symbol left', () => {
+    for (const diff of ['easy', 'normal', 'hard'] as const) {
+      for (const mode of ['near-count', 'generic'] as const) {
+        for (let seed = 0; seed < 200; seed++) {
+          const said = distractionSpeech(makeDistraction(-4, mode, seed, diff).prompt);
+          expect(said, said).toMatch(/^(minus )?\d+ (plus|minus|times) (negative )?\d+$/);
+        }
+      }
+    }
+  });
+});
+
+describe('isDistractionPointEvery', () => {
+  it('matches isDistractionPoint at its own intervals', () => {
+    for (let i = 0; i < 80; i++) {
+      expect(isDistractionPointEvery(i, 7, 99)).toBe(isDistractionPoint(i, 'occasional', 99));
+      expect(isDistractionPointEvery(i, 3, 99)).toBe(isDistractionPoint(i, 'relentless', 99));
     }
   });
 });

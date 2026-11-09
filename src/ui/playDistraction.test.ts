@@ -2,7 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { Game, DEFAULT_SPREAD } from '../engine/game';
 import type { Card, Rank } from '../engine/cards';
 import type { GameConfig } from '../engine/game';
-import { distractionRow, distractionVerdictText, makePlayDistraction, playDistractionDue, PLAY_DISTRACTION_WINDOW } from './playDistraction';
+import {
+  distractionRow,
+  distractionVerdictText,
+  makePlayDistraction,
+  playDistractionDue,
+  playDistractionPrefs,
+  PLAY_DISTRACTION_INTERVAL,
+  PLAY_DISTRACTION_WINDOW,
+} from './playDistraction';
+import { isDistractionPoint } from '../drills/distraction';
 import { playResult } from './screens/ladderRules';
 import { resumeSavable } from './tableResume';
 import { EMPTY_STATS } from '../store/types';
@@ -28,6 +37,50 @@ describe('Play distractions', () => {
       expect(typeof d.answer).toBe('number');
     }
     expect([...kinds].sort()).toEqual(['generic', 'near-count']);
+  });
+
+  it('owner 2026-11-09: exactly one per window at every frequency, never round 0', () => {
+    expect(PLAY_DISTRACTION_INTERVAL).toEqual({ rare: 12, normal: 7, often: 4 });
+    for (const freq of ['rare', 'normal', 'often'] as const) {
+      const w = PLAY_DISTRACTION_INTERVAL[freq];
+      for (const seed of [1, 42, 99_999]) {
+        expect(playDistractionDue(0, seed, freq)).toBe(false);
+        for (let k = 0; k < 10; k++) {
+          let n = 0;
+          for (let r = k * w; r < (k + 1) * w; r++) if (playDistractionDue(r, seed, freq)) n++;
+          expect(n, `${freq} seed ${seed} window ${k}`).toBe(1);
+        }
+      }
+    }
+  });
+
+  it('normal (the default) stops on exactly the rounds, with the sums, it did before the choice', () => {
+    for (const seed of [1, 42, 99_999]) {
+      for (let r = 1; r < 100; r++) {
+        expect(playDistractionDue(r, seed, 'normal')).toBe(isDistractionPoint(r, 'occasional', seed));
+        expect(playDistractionDue(r, seed)).toBe(playDistractionDue(r, seed, 'normal'));
+        expect(makePlayDistraction(3, r, seed)).toEqual(makePlayDistraction(3, r, seed, 'normal', 'normal'));
+      }
+    }
+  });
+
+  it('difficulty reaches the sum: easy is single-digit, hard has a two-digit operand or a product', () => {
+    const nums = (p: string) => (p.match(/\d+/g) ?? []).map(Number);
+    for (let r = 1; r < 60; r++) {
+      expect(Math.max(...nums(makePlayDistraction(0, r, 5, 'normal', 'easy').prompt))).toBeLessThan(10);
+      const hard = makePlayDistraction(0, r, 5, 'normal', 'hard').prompt;
+      // Near the count of 0, Hard's other shape is a small number times 3..9.
+      expect(Math.max(...nums(hard)) >= 11 || hard.includes('×'), hard).toBe(true);
+    }
+  });
+
+  it('stored choices read safely: absent or unknown is normal', () => {
+    expect(playDistractionPrefs({})).toEqual({ freq: 'normal', difficulty: 'normal' });
+    expect(playDistractionPrefs({ playDistractionFreq: 'often', playDistractionDifficulty: 'hard' })).toEqual({ freq: 'often', difficulty: 'hard' });
+    expect(playDistractionPrefs({ playDistractionFreq: 'weekly' as never, playDistractionDifficulty: 'insane' as never })).toEqual({
+      freq: 'normal',
+      difficulty: 'normal',
+    });
   });
 
   it('the stats row is marked as Play', () => {

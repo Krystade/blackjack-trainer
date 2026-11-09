@@ -24,6 +24,9 @@ import {
   type CountCheckAsk,
 } from '../profileOptions';
 import { signed } from '../../drills/signed';
+import { DIFFICULTY_NOTES, type DistractionDifficulty } from '../../drills/distraction';
+import { PLAY_DISTRACTION_INTERVAL, playDistractionPrefs } from '../playDistraction';
+import type { PlayDistractionFreq } from '../../store/types';
 import {
   WONG_EXIT_MAX,
   WONG_EXIT_MIN,
@@ -118,6 +121,49 @@ export function WhatToCheckControls({
       {TABLE_KEYS.map((k) =>
         row(k, (v) => update(v ? tableCheckOnPatch(k, settings) : tableCheckOffPatch(k, settings))),
       )}
+      {shown.distractions && <PlayDistractionOptions settings={settings} update={update} />}
+    </div>
+  );
+}
+
+/**
+ * Owner 2026-11-09: how often Play's distractions come and how hard the sums
+ * are. Under the Distractions switch, only while it is on; live, like it.
+ */
+function PlayDistractionOptions({ settings, update }: { settings: Settings; update: (patch: Partial<Settings>) => void }) {
+  const { freq, difficulty } = playDistractionPrefs(settings);
+  return (
+    <div className="what-to-check-sub" data-testid="play-distraction-options">
+      <div className="settings-row">
+        <span className="settings-label">{'How often'}</span>
+        <Segmented<PlayDistractionFreq>
+          options={[
+            { value: 'rare', label: 'Rare' },
+            { value: 'normal', label: 'Normal' },
+            { value: 'often', label: 'Often' },
+          ]}
+          value={freq}
+          onChange={(v) => update({ playDistractionFreq: v })}
+        />
+      </div>
+      <p className="settings-note profile-play-note" data-testid="play-distraction-freq-note">
+        About one every {PLAY_DISTRACTION_INTERVAL[freq]} rounds.
+      </p>
+      <div className="settings-row">
+        <span className="settings-label">{'Difficulty'}</span>
+        <Segmented<DistractionDifficulty>
+          options={[
+            { value: 'easy', label: 'Easy' },
+            { value: 'normal', label: 'Normal' },
+            { value: 'hard', label: 'Hard' },
+          ]}
+          value={difficulty}
+          onChange={(v) => update({ playDistractionDifficulty: v })}
+        />
+      </div>
+      <p className="settings-note profile-play-note" data-testid="play-distraction-difficulty-note">
+        {DIFFICULTY_NOTES[difficulty]}
+      </p>
     </div>
   );
 }

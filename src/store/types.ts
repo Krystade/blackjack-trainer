@@ -7,7 +7,7 @@ import type { TcRounding } from '../engine/count';
 import type { ManualPace } from '../drills/manualPace';
 import type { PlayDepth } from '../engine/game';
 import type { SpeedTier } from '../drills/countSpeed';
-import type { DistractionMode, DistractionFreq } from '../drills/distraction';
+import type { DistractionMode, DistractionFreq, DistractionDifficulty } from '../drills/distraction';
 import type { CheckpointFreq } from '../drills/countCheckpoints';
 import type { CountDrillBias } from '../drills/countDrill';
 import type { DepthResolution } from '../drills/depthResolution';
@@ -25,6 +25,9 @@ export interface CustomSelection {
 }
 /** #31: marker colours. */
 export type MarkerColour = 'red' | 'amber' | 'green' | 'blue';
+
+/** Owner 2026-11-09: Play's distraction cadence (ui/playDistraction.ts). */
+export type PlayDistractionFreq = 'rare' | 'normal' | 'often';
 
 export interface Settings {
   version: 1;
@@ -75,6 +78,15 @@ export interface Settings {
    * (mistakes from the mode, distractions off); present, a missing key reads false.
    */
   tableChecks?: { dealerMistakes?: boolean; distractions?: boolean };
+  /**
+   * Owner 2026-11-09: how often Play's distractions come, once the switch is
+   * on (ui/playDistraction.ts PLAY_DISTRACTION_INTERVAL): about one round in
+   * 12, 7 or 4. 'normal' is the cadence before the choice existed. Backfilled
+   * from DEFAULT_SETTINGS for a blob that predates it.
+   */
+  playDistractionFreq: PlayDistractionFreq;
+  /** Owner 2026-11-09: how hard Play's sums are (drills/distraction.ts). 'normal' = the sums as they were. */
+  playDistractionDifficulty: DistractionDifficulty;
   // C-R3 (W10): the last drill run eyes-free or by voice, for Home's one-tap
   // "Drive" button. `mode` is the Drills mode id; `voice` whether the
   // microphone was on. Absent = no such drill yet (no Drive button).
@@ -176,6 +188,9 @@ export interface Settings {
     // the operator's key insight) or 'generic' (a table-talk simulacrum).
     // Defaults to 'near-count', the more realistic/harder mode.
     distractionMode: DistractionMode;
+    // Owner 2026-11-09: how hard the arithmetic is (drills/distraction.ts's
+    // DistractionDifficulty). 'normal' is the sums as they were.
+    distractionDifficulty: DistractionDifficulty;
     // R8/CM#1 (docs/BACKLOG.md, adversarial shoe composition): deliberately
     // cluster same-sign Hi-Lo cards toward the front of the count drill's shoe
     // to force counting-through-zero / sign-reversal reps (see
@@ -416,6 +431,8 @@ export const DEFAULT_SETTINGS: Settings = {
   countCheckEvery: 5,
   penetration: 0.75,
   dealSpeedMs: 300,
+  playDistractionFreq: 'normal',
+  playDistractionDifficulty: 'normal',
   drill: {
     flashCategory: 'all',
     countGroup: 1,
@@ -428,6 +445,7 @@ export const DEFAULT_SETTINGS: Settings = {
     timedAdaptive: true,
     distractionFreq: 'off',
     distractionMode: 'near-count',
+    distractionDifficulty: 'normal',
     countBias: 'none',
     countCheckpoints: 'off',
     flashByConfusability: false,

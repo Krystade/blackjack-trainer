@@ -2,6 +2,27 @@ import { mulberry32 } from '../engine/cards';
 
 export type DistractionMode = 'near-count' | 'generic';
 
+/**
+ * Owner 2026-11-09: how hard the arithmetic is, for the Count drill and Play
+ * alike. 'normal' is the sums as they were before the choice existed, drawn
+ * from the seed in the same order, so a stored run replays unchanged.
+ *
+ * - easy: one small step. Generic is a single-digit sum (2..9 + 2..9);
+ *   near-count is an operand near the count, plus or minus 1..4.
+ * - hard: two-digit work, every answer within +/-99 so a spoken answer is
+ *   still one the voice parser accepts (voiceNumber.ts MAX_COUNT). Generic is
+ *   a two-digit sum, a two-digit difference, or a teen times a single digit;
+ *   near-count is an operand near the count times 3..9, or plus or minus a
+ *   two-digit number.
+ *
+ * Always two operands and one operator, the shape every prompt parser and the
+ * spoken form (distractionSpeech) read.
+ */
+export type DistractionDifficulty = 'easy' | 'normal' | 'hard';
+
+/** Hard answers stay sayable: voiceNumber.ts refuses anything past 99. */
+const HARD_MAX_ANSWER = 99;
+
 export interface Distraction {
   prompt: string;
   answer: number;
@@ -56,6 +77,64 @@ function makeNearCount(runningCount: number, rng: () => number): Distraction {
   return { prompt: buildPrompt(a, op, b), answer, kind: 'near-count' };
 }
 
+/** An integer in [lo, hi]. */
+function between(rng: () => number, lo: number, hi: number): number {
+  return lo + Math.floor(rng() * (hi - lo + 1));
+}
+
+/** Easy near-count: one operand near the count, then a small step either way. */
+function makeNearCountEasy(runningCount: number, rng: () => number): Distraction {
+  const a = runningCount + between(rng, -2, 2);
+  const b = between(rng, 1, 4);
+  const op: '+' | '-' = rng() < 0.5 ? '+' : '-';
+  return { prompt: buildPrompt(a, op, b), answer: op === '+' ? a + b : a - b, kind: 'near-count' };
+}
+
+/**
+ * Hard near-count: an operand near the count times 3..9, or plus/minus a
+ * two-digit number. The multiplier is capped so the product stays within
+ * HARD_MAX_ANSWER; an operand too close to zero to make a product worth the
+ * name (or too far out for any multiplier to fit) takes the two-digit step.
+ */
+function makeNearCountHard(runningCount: number, rng: () => number): Distraction {
+  const a = runningCount + between(rng, -3, 3);
+  const maxMult = Math.min(9, Math.floor(HARD_MAX_ANSWER / Math.max(1, Math.abs(a))));
+  if (rng() < 0.5 && Math.abs(a) >= 2 && maxMult >= 3) {
+    const b = between(rng, 3, maxMult);
+    return { prompt: buildPrompt(a, '×', b), answer: a * b, kind: 'near-count' };
+  }
+  const op: '+' | '-' = rng() < 0.5 ? '+' : '-';
+  // Keep |a ± b| within the cap when the count allows it (it always does at a real table).
+  const room = HARD_MAX_ANSWER - Math.abs(a);
+  const b = between(rng, 11, Math.max(11, Math.min(39, room)));
+  return { prompt: buildPrompt(a, op, b), answer: op === '+' ? a + b : a - b, kind: 'near-count' };
+}
+
+/** Easy generic: a single-digit sum. */
+function makeGenericEasy(rng: () => number): Distraction {
+  const a = between(rng, 2, 9);
+  const b = between(rng, 2, 9);
+  return { prompt: buildPrompt(a, '+', b), answer: a + b, kind: 'generic' };
+}
+
+/** Hard generic: a two-digit sum or difference, or a teen times a single digit, all within 99. */
+function makeGenericHard(rng: () => number): Distraction {
+  const pick = rng();
+  if (pick < 1 / 3) {
+    const a = between(rng, 12, 49);
+    const b = between(rng, 12, 49);
+    return { prompt: buildPrompt(a, '+', b), answer: a + b, kind: 'generic' };
+  }
+  if (pick < 2 / 3) {
+    const a = between(rng, 30, 99);
+    const b = between(rng, 11, a - 11);
+    return { prompt: buildPrompt(a, '-', b), answer: a - b, kind: 'generic' };
+  }
+  const a = between(rng, 12, 19);
+  const b = between(rng, 3, Math.floor(HARD_MAX_ANSWER / a));
+  return { prompt: buildPrompt(a, '×', b), answer: a * b, kind: 'generic' };
+}
+
 /**
  * generic: small multiplication/addition unrelated to the running count --
  * a table-talk simulacrum that occupies the verbal loop without the
@@ -82,9 +161,38 @@ function makeGeneric(rng: () => number): Distraction {
  * `prompt` -- never independently -- so the generator can't drift from its
  * own displayed arithmetic.
  */
-export function makeDistraction(runningCount: number, mode: DistractionMode, seed?: number): Distraction {
+export function makeDistraction(
+  runningCount: number,
+  mode: DistractionMode,
+  seed?: number,
+  difficulty: DistractionDifficulty = 'normal',
+): Distraction {
   const rng = mulberry32(seed ?? Date.now());
-  return mode === 'near-count' ? makeNearCount(runningCount, rng) : makeGeneric(rng);
+  if (mode === 'near-count') {
+    if (difficulty === 'easy') return makeNearCountEasy(runningCount, rng);
+    if (difficulty === 'hard') return makeNearCountHard(runningCount, rng);
+    return makeNearCount(runningCount, rng);
+  }
+  if (difficulty === 'easy') return makeGenericEasy(rng);
+  if (difficulty === 'hard') return makeGenericHard(rng);
+  return makeGeneric(rng);
+}
+
+/**
+ * The prompt as it is said aloud (eyes-free Count drill). Signs and the
+ * times sign are spoken as words rather than left to the voice's punctuation
+ * handling, which reads "-3" inconsistently and "×" not at all on some voices
+ * -- the same reason speakableCount spells out the count's sign. A negative
+ * second operand, printed "(-6)", is said "negative 6" so "7 - (-6)" is not
+ * heard as "7 minus minus 6".
+ */
+export function distractionSpeech(prompt: string): string {
+  const m = /^(-?\d+) ([+\-×]) \(?(-?\d+)\)?$/.exec(prompt);
+  if (!m) return prompt;
+  const first = m[1]!.startsWith('-') ? `minus ${m[1]!.slice(1)}` : m[1]!;
+  const op = m[2] === '+' ? 'plus' : m[2] === '-' ? 'minus' : 'times';
+  const second = m[3]!.startsWith('-') ? `negative ${m[3]!.slice(1)}` : m[3]!;
+  return `${first} ${op} ${second}`;
 }
 
 /**
@@ -126,8 +234,17 @@ const FREQ_INTERVAL: Record<Exclude<DistractionFreq, 'off'>, number> = {
  * and one run is still reproducible; 0 gives the old fixed positions.
  */
 export function isDistractionPoint(shownIndex: number, freq: DistractionFreq, runSeed = 0): boolean {
-  if (freq === 'off' || shownIndex < 0) return false;
-  const interval = FREQ_INTERVAL[freq];
+  if (freq === 'off') return false;
+  return isDistractionPointEvery(shownIndex, FREQ_INTERVAL[freq], runSeed);
+}
+
+/**
+ * isDistractionPoint at any window size: exactly one stop per `interval`
+ * indices, jittered and seeded as above. Play's frequency choice
+ * (ui/playDistraction.ts) uses windows the Count drill's two settings do not.
+ */
+export function isDistractionPointEvery(shownIndex: number, interval: number, runSeed = 0): boolean {
+  if (shownIndex < 0 || !(interval >= 2)) return false;
   const windowIndex = Math.floor(shownIndex / interval);
   const seed = ((windowIndex * 0x9e3779b1 + 1) ^ Math.imul(runSeed | 0, 0x85ebca6b)) >>> 0;
   let firePos = Math.floor(mulberry32(seed)() * interval);
@@ -136,3 +253,10 @@ export function isDistractionPoint(shownIndex: number, freq: DistractionFreq, ru
   if (windowIndex === 0 && firePos === 0) firePos = 1;
   return shownIndex % interval === firePos;
 }
+
+/** Owner 2026-11-09: one line per difficulty, the same under Play's gear and the Count drill's options. */
+export const DIFFICULTY_NOTES: Record<DistractionDifficulty, string> = {
+  easy: 'Single-digit sums, like 4 + 7.',
+  normal: 'Sums and times tables up to 12, like 8 × 7.',
+  hard: 'Two-digit sums and differences, and teens times a digit, like 17 × 5.',
+};

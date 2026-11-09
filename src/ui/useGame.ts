@@ -21,7 +21,7 @@ import { mistakeUnits } from './reportSections';
 import { newSessionId, sessionRowFor, upsertSession } from './sessionRow';
 import { betMissFeedback, type BetMiss } from './betFeedback';
 import { sessionDealerErrors } from './dealerErrorCopy';
-import { distractionRow, makePlayDistraction, playDistractionDue } from './playDistraction';
+import { distractionRow, makePlayDistraction, playDistractionDue, playDistractionPrefs } from './playDistraction';
 import type { Distraction } from '../drills/distraction';
 import { addSideDecisions } from '../store/sideBetStats';
 import { SIDE_OFF_LINE, SIDE_ON_LINE, SIDE_WINS_LINE, sideMissFeedback } from './sideBetFeedback';
@@ -625,6 +625,9 @@ export function useGame(
   // their identity when the switch flips (it commits live, no new shoe).
   const distractionsOnRef = useRef(distractionsOn === true);
   distractionsOnRef.current = distractionsOn === true;
+  // Owner 2026-11-09: how often and how hard, live like the switch.
+  const distractionPrefsRef = useRef(playDistractionPrefs(settings));
+  distractionPrefsRef.current = playDistractionPrefs(settings);
   const [tableSeed] = useState(() => readSeed() ?? Date.now());
   const [distraction, setDistraction] = useState<PlayDistractionShown | null>(null);
   distractionOpenRef.current = distraction !== null;
@@ -729,7 +732,7 @@ export function useGame(
           !distractionsOnRef.current ||
           game.phase !== 'settled' ||
           distractionRoundRef.current === game.roundNo ||
-          !playDistractionDue(game.roundNo, tableSeed)
+          !playDistractionDue(game.roundNo, tableSeed, distractionPrefsRef.current.freq)
         ) {
           return false;
         }
@@ -737,7 +740,13 @@ export function useGame(
         distractionOpenRef.current = true;
         setDistractionVerdict(null);
         pendingDealRef.current = pending;
-        setDistraction({ d: makePlayDistraction(game.runningCount, game.roundNo, tableSeed), shownAt: Date.now() });
+        setDistraction({ d: makePlayDistraction(
+            game.runningCount,
+            game.roundNo,
+            tableSeed,
+            distractionPrefsRef.current.freq,
+            distractionPrefsRef.current.difficulty,
+          ), shownAt: Date.now() });
         audio.ding('attention');
         bump();
         return true;

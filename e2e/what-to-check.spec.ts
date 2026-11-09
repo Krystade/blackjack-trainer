@@ -191,3 +191,41 @@ test('a reload with a distraction open resumes the shoe cleanly, the check still
   await expect(roundStat(page)).toHaveText(`Round ${roundAtSum}`);
   await expect(page.getByRole('button', { name: 'Deal', exact: true })).toBeVisible();
 });
+
+test('owner 2026-11-09: How often and Difficulty sit under Distractions only while it is on, and Often + Hard reach the table', async ({ page }) => {
+  await openTable(page);
+  const sheet = await openGear(page);
+  await expect(sheet.getByTestId('play-distraction-options')).toHaveCount(0);
+  await toggle(sheet, 'Distractions').check();
+  const opts = sheet.getByTestId('play-distraction-options');
+  await expect(opts).toBeVisible();
+  await expect(opts.getByRole('button', { name: 'Normal', exact: true })).toHaveCount(2);
+  for (const b of await opts.getByRole('button', { name: 'Normal', exact: true }).all()) await expect(b).toHaveAttribute('aria-pressed', 'true');
+  await expect(sheet.getByTestId('play-distraction-freq-note')).toHaveText('About one every 7 rounds.');
+  await opts.getByRole('button', { name: 'Often', exact: true }).click();
+  await opts.getByRole('button', { name: 'Hard', exact: true }).click();
+  await expect(sheet.getByTestId('play-distraction-freq-note')).toHaveText('About one every 4 rounds.');
+  await expect(sheet.getByTestId('play-distraction-difficulty-note')).toContainText('Two-digit');
+  await page.keyboard.press('Escape');
+  const settings = await page.evaluate(() => JSON.parse(localStorage.getItem('bjtrainer.settings.v1')!));
+  expect(settings.playDistractionFreq).toBe('often');
+  expect(settings.playDistractionDifficulty).toBe('hard');
+
+  const prompts: string[] = [];
+  const seen = await playRounds(page, 8, async () => {
+    const text = (await page.getByTestId('play-distraction-prompt').innerText()).replace(/−/g, '-');
+    prompts.push(text);
+    await typeOnPad(page, await solveDistraction(page));
+  });
+  // One in every 4-round window: rounds 1-3 and 4-7 each bring one.
+  expect(seen.distractions).toBeGreaterThanOrEqual(2);
+  for (const p of prompts) {
+    const nums = (p.match(/\d+/g) ?? []).map(Number);
+    expect(Math.max(...nums) >= 11 || p.includes('×'), p).toBe(true);
+  }
+
+  // Off again: the options go with the switch.
+  const again = await openGear(page);
+  await toggle(again, 'Distractions').uncheck();
+  await expect(again.getByTestId('play-distraction-options')).toHaveCount(0);
+});

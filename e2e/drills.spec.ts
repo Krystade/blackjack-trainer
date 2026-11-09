@@ -1973,3 +1973,36 @@ for (const { category, enabled } of [
     else await expect(surrender).toBeDisabled();
   });
 }
+
+test('count drill: distraction Difficulty "Hard" is chosen in the options and poses two-digit sums', async ({ page }) => {
+  await page.addInitScript(() => {
+    Math.random = () => 0.42;
+  });
+  await withSettings(page, {
+    drill: {
+      countIntervalMs: 150,
+      countLengthCards: 4,
+      countGroup: 1,
+      distractionFreq: 'relentless',
+      distractionMode: 'generic',
+    },
+  });
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Count drill', exact: true }).click();
+  await openCountOptions(page);
+
+  const row = page.getByTestId('count-distraction-difficulty');
+  await expect(row.getByRole('button', { name: 'Normal', exact: true })).toHaveClass(/segmented-btn-active/);
+  await row.getByRole('button', { name: 'Hard', exact: true }).click();
+  await expect(row.getByRole('button', { name: 'Hard', exact: true })).toHaveClass(/segmented-btn-active/);
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('bjtrainer.settings.v1')!));
+  expect(stored.drill.distractionDifficulty).toBe('hard');
+
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+  await expect(page.locator('.distraction-area')).toBeVisible({ timeout: 10_000 });
+  const prompt = (await page.locator('.distraction-prompt').innerText()).replace(/−/g, '-');
+  const m = /^(\d+) ([+\-×]) (\d+)$/.exec(prompt);
+  expect(m, prompt).not.toBeNull();
+  expect(Math.max(Number(m![1]), Number(m![3]))).toBeGreaterThanOrEqual(12);
+});

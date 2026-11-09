@@ -101,13 +101,16 @@ export const SETTINGS_REGISTRY: readonly SettingEntry[] = [
   p('profile.playChecks.bets', 'Bet checks', 'play'),
   p('settings.tableChecks.dealerMistakes', 'Dealer mistakes', 'play'),
   p('settings.tableChecks.distractions', 'Distractions', 'play'),
+  // Owner 2026-11-09: under the Distractions switch, while it is on.
+  p('settings.playDistractionFreq', 'How often', 'play'),
+  p('settings.playDistractionDifficulty', 'Difficulty', 'play'),
 
   // ---- Drill options (each drill's own Options fold) ----
   ...[
     'flashCategory', 'scopes', 'deck', 'custom', 'customListId', 'markers', 'fallbacks', 'withCount', 'speedMode',
     'countTableMode', 'countTableRounds', 'countTableDeal', 'countShowHiLo', 'countGroup', 'countIntervalMs',
     'countLengthCards', 'countManual', 'quizIndex', 'quizAsk', 'countTimedStartMs', 'quizDistractorPct', 'timedAdaptive',
-    'distractionFreq', 'distractionMode', 'countBias', 'countCheckpoints', 'flashByConfusability',
+    'distractionFreq', 'distractionMode', 'distractionDifficulty', 'countBias', 'countCheckpoints', 'flashByConfusability',
     'depthResolution', 'messyCards', 'pacePressure', 'wheelMode',
     'countPaceRamp',
   ].map((k) => p(`settings.drill.${k}`, null, 'drill')),

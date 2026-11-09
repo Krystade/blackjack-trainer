@@ -187,6 +187,29 @@ describe('store/persist', () => {
       expect(reloaded.drill.distractionMode).toBe('generic');
     });
 
+    test('a blob from before distraction frequency/difficulty backfills them to normal (owner 2026-11-09)', () => {
+      storage['bjtrainer.settings.v1'] = JSON.stringify({
+        version: 1,
+        tableChecks: { dealerMistakes: false, distractions: true },
+        drill: { distractionFreq: 'occasional', distractionMode: 'generic' },
+      });
+      const loaded = loadSettings();
+      expect(loaded.playDistractionFreq).toBe('normal');
+      expect(loaded.playDistractionDifficulty).toBe('normal');
+      expect(loaded.drill.distractionDifficulty).toBe('normal');
+      expect(loaded.drill.distractionMode).toBe('generic');
+      storage['bjtrainer.settings.v1'] = JSON.stringify({
+        version: 1,
+        playDistractionFreq: 'rare',
+        playDistractionDifficulty: 'hard',
+        drill: { distractionDifficulty: 'easy' },
+      });
+      const reloaded = loadSettings();
+      expect(reloaded.playDistractionFreq).toBe('rare');
+      expect(reloaded.playDistractionDifficulty).toBe('hard');
+      expect(reloaded.drill.distractionDifficulty).toBe('easy');
+    });
+
     test('backfills audio settings when the stored blob predates cycle 3', () => {
       storage['bjtrainer.settings.v1'] = JSON.stringify({
         version: 1,

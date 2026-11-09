@@ -8,7 +8,7 @@ import type { Card } from '../../../engine/cards';
 import { hiLoTag } from '../../../engine/count';
 import { makeCountDrill, makeCountdown, runningCountThrough } from '../../../drills/countDrill';
 import type { CountDrillRound, CountdownRound } from '../../../drills/countDrill';
-import { makeDistraction, isDistractionPoint } from '../../../drills/distraction';
+import { makeDistraction, isDistractionPoint, distractionSpeech, DIFFICULTY_NOTES } from '../../../drills/distraction';
 import type { Distraction } from '../../../drills/distraction';
 import {
   checkpointIndices,
@@ -613,7 +613,7 @@ export function CountDrillView({
     lastCardAtRef.current = null;
     const rc = runningCountThrough(groups, idxAtTrigger);
     const seed = runSeedRef.current + idxAtTrigger;
-    const d = makeDistraction(rc, settings.drill.distractionMode, seed);
+    const d = makeDistraction(rc, settings.drill.distractionMode, seed, settings.drill.distractionDifficulty ?? 'normal');
     setDistraction(d);
     distractionShownAtRef.current = performance.now();
     pendingResumeRef.current = isLast ? 'finish' : idxAtTrigger + 1;
@@ -621,7 +621,7 @@ export function CountDrillView({
     if (eyesFree) {
       // Live TTS, not a clip/narration helper -- the math is dynamic per
       // trigger, so no pre-rendered clip could ever cover it.
-      speak(d.prompt, speechOptsFrom(settings.audio, { interrupt: true }));
+      speak(distractionSpeech(d.prompt), speechOptsFrom(settings.audio, { interrupt: true }));
     }
   };
 
@@ -1991,13 +1991,13 @@ export function CountDrillView({
         }
         if (action === 'no') {
           setPendingCount(null);
-          if (distraction) sayBack(distraction.prompt, true);
+          if (distraction) sayBack(distractionSpeech(distraction.prompt), true);
           return;
         }
         if (action === 'repeat') {
           sayBack(
             pendingCount === null
-              ? (distraction?.prompt ?? '')
+              ? (distraction ? distractionSpeech(distraction.prompt) : '')
               : narrateReadback(pendingCount),
             true,
           );
@@ -2731,6 +2731,21 @@ export function CountDrillView({
                       value={settings.drill.distractionMode}
                       onChange={(v) => updateDrill({ distractionMode: v })}
                     />
+                  </div>
+                  <div className="settings-row" data-testid="count-distraction-difficulty">
+                    <span className="settings-label">Difficulty</span>
+                    <Segmented
+                      options={[
+                        { value: 'easy', label: 'Easy' },
+                        { value: 'normal', label: 'Normal' },
+                        { value: 'hard', label: 'Hard' },
+                      ]}
+                      value={settings.drill.distractionDifficulty ?? 'normal'}
+                      onChange={(v) => updateDrill({ distractionDifficulty: v })}
+                    />
+                  </div>
+                  <div className="settings-row settings-note-row">
+                    {DIFFICULTY_NOTES[settings.drill.distractionDifficulty ?? 'normal']}
                   </div>
                 </>
               )}
