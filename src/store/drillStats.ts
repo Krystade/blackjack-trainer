@@ -146,8 +146,11 @@ export interface DistractionSummary {
 }
 
 export function distractionSummary(
-  history: { answerCorrect: boolean; countKept: boolean }[],
+  all: { answerCorrect: boolean; countKept: boolean; source?: 'play' }[],
 ): DistractionSummary {
+  // T1-1B: the Count drill's figure. Play's distractions (source 'play') are
+  // graded by a count check after one sum, not over a run, so they stay out.
+  const history = all.filter((h) => h.source !== 'play');
   const attempts = history.length;
   if (attempts === 0) {
     return { attempts: 0, answerAccuracyPct: null, countKeptPct: null };

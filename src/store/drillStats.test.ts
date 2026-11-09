@@ -147,6 +147,15 @@ describe('medianLatency', () => {
 });
 
 describe('distractionSummary', () => {
+  it("T1-1B: leaves Play's distractions (source 'play') out of the Count drill's figure", () => {
+    expect(
+      distractionSummary([
+        { answerCorrect: true, countKept: true },
+        { answerCorrect: false, countKept: false, source: 'play' },
+      ]),
+    ).toEqual({ attempts: 1, answerAccuracyPct: 100, countKeptPct: 100 });
+  });
+
   it('reports zero attempts / null percentages for an empty history', () => {
     expect(distractionSummary([])).toEqual({
       attempts: 0,

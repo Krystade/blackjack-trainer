@@ -1330,6 +1330,22 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange, k
   }
 
   const multiHand = game.hands.length > 1;
+  /**
+   * The settled round's result as one line, repeated inside a sheet that
+   * covers the felt's banner (C-R10c; T1-1B: the distraction sheet too).
+   * countSheetBanner.css hides the felt's copy while one is shown.
+   */
+  const settledBannerText = (): string =>
+    game.hands.length === 0
+      ? 'Out — no bet.'
+      : game.hands
+          .map((h, i) => ({ h, i }))
+          .reverse()
+          .map(({ h, i }) => {
+            const b = roundBanner(h, handPlayNumber(i, game.hands.length), multiHand, game.dealerCards, game.holeRevealed, chips?.unit);
+            return `${b.head} · ${b.totals}`;
+          })
+          .join(' / ');
   /*
    * Wave O (review B1/S1): the bet and side-bet miss lines, said as a round
    * opens and kept with it. They sit in the message strip, which a short
@@ -1839,7 +1855,11 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange, k
       )}
 
       {distraction !== null && (
-        <PlayDistractionSheet prompt={distraction.d.prompt} onSubmit={submitDistraction} />
+        <PlayDistractionSheet
+          prompt={distraction.d.prompt}
+          onSubmit={submitDistraction}
+          banner={game.phase === 'settled' ? settledBannerText() : null}
+        />
       )}
 
       {game.countCheckOpen && (
@@ -1855,16 +1875,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange, k
               -- the hand just played is what the count is asked after. */}
           {game.phase === 'settled' && (
             <p className="count-sheet-banner" data-testid="count-sheet-banner">
-              {game.hands.length === 0
-                ? 'Out — no bet.'
-                : game.hands
-                    .map((h, i) => ({ h, i }))
-                    .reverse()
-                    .map(({ h, i }) => {
-                      const b = roundBanner(h, handPlayNumber(i, game.hands.length), multiHand, game.dealerCards, game.holeRevealed, chips?.unit);
-                      return `${b.head} · ${b.totals}`;
-                    })
-                    .join(' / ')}
+              {settledBannerText()}
             </p>
           )}
           {/* The spoken proposal, shown as well as said. A driver glancing

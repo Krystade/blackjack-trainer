@@ -111,6 +111,10 @@ test('Distractions on (live): a quick sum within 7 rounds, then the running coun
 
   let kept: boolean | null = null;
   const seen = await playRounds(page, 8, async () => {
+    // The round's result is repeated in the sheet; the felt's copy, which the
+    // sheet would slice through, is hidden meanwhile.
+    await expect(page.getByTestId('distraction-sheet-banner')).toBeVisible();
+    for (const b of await page.locator('.table-screen .round-banner').all()) await expect(b).toBeHidden();
     await typeOnPad(page, await solveDistraction(page));
     // The running count is asked straight after, the sum's verdict above it.
     const check = page.locator('.bottom-sheet', { hasText: 'Running count?' });
