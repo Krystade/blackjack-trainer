@@ -1,6 +1,8 @@
 import { Term } from '../../glossary';
 import { CountWeighting } from './CountWeighting';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { DrillIntroCard, TRUECOUNT_INTRO_KEY, useDrillIntro } from './DrillIntroCard';
+import { trueCountExample } from '../../../drills/workedExamples';
 import { sayMomentAtPause } from '../../../habits/moment';
 import type { Profile, Settings } from '../../../store/types';
 import { makeTrueCountQuestion, trueCountDrillDepths } from '../../../drills/trueCountDrill';
@@ -223,6 +225,14 @@ export function TrueCountDrillView({
   // from a microphone that failed. See ui/voiceSession.ts.
   const [voiceOn, setVoiceOn] = useVoiceToggle('true-count-drill');
   const pushToTalkOpen = usePushToTalk();
+  // T2-2B: the worked example, once, before the first run (D6: never on an autoStart).
+  const intro = useDrillIntro(TRUECOUNT_INTRO_KEY, () => ({
+    historyEmpty: loadStats().trueCount.history.length === 0,
+    eyesFree,
+    voiceOn,
+    autoStart,
+  }));
+  const tcExample = useMemo(() => trueCountExample(rounding), [rounding]);
   /**
    * A spoken true count, heard but not yet submitted.
    *
@@ -353,6 +363,7 @@ export function TrueCountDrillView({
   const questionShownAtRef = useRef(performance.now());
 
   const start = () => {
+    intro.dismiss();
     runIdRef.current += 1;
     questionShownAtRef.current = performance.now();
     // Wave E E3 (W2-12): trays no deeper than Play's cut, and more of the
@@ -697,6 +708,7 @@ export function TrueCountDrillView({
 
       {phase === 'setup' && (
         <div className="count-setup">
+          <DrillIntroCard example={tcExample} open={intro.open} onDismiss={intro.dismiss} />
           <CountWeighting settings={settings} onSettingsChange={onSettingsChange} />
           <Stepper
             label="Max decks remaining"

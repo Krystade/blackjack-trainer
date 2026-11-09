@@ -1,5 +1,7 @@
 import { Term } from '../../glossary';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { DECKEST_INTRO_KEY, DrillIntroCard, useDrillIntro } from './DrillIntroCard';
+import { deckEstimationExample } from '../../../drills/workedExamples';
 import type { Profile, Settings } from '../../../store/types';
 import { makeDeckEstimationQuestion } from '../../../drills/deckEstimation';
 import type { DeckEstimationQuestion } from '../../../drills/deckEstimation';
@@ -99,6 +101,15 @@ export function DeckEstimationView({
   onSettingsChange: (settings: Settings) => void;
 }) {
   const resolution = settings.drill.depthResolution;
+  // T2-2B: the worked example, once, before the first run. Visual only, so
+  // there is no eyes-free, voice or autoStart to rule out.
+  const intro = useDrillIntro(DECKEST_INTRO_KEY, () => ({
+    historyEmpty: loadStats().deckEstimation.history.length === 0,
+    eyesFree: false,
+    voiceOn: false,
+    autoStart: false,
+  }));
+  const deckExample = useMemo(() => deckEstimationExample(resolution), [resolution]);
   // CountDrillView's precedent: a drill-local control edits the same persisted
   // setting the Settings screen does, and has to write BOTH -- onSettingsChange
   // is App's React state only.
@@ -123,6 +134,7 @@ export function DeckEstimationView({
   const resultShownAtRef = useRef(performance.now());
 
   const start = () => {
+    intro.dismiss();
     const q = makeDeckEstimationQuestion(randomSeed(), { totalDecks });
     setQuestion(q);
     setTyped('');
@@ -232,6 +244,7 @@ export function DeckEstimationView({
 
       {phase === 'setup' && (
         <div className="count-setup">
+          <DrillIntroCard example={deckExample} open={intro.open} onDismiss={intro.dismiss} />
           <Stepper
             label="Shoe size"
             value={totalDecks}

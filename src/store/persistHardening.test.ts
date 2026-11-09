@@ -390,6 +390,12 @@ const NOT_BACKED_UP: Record<string, string> = {
     'written and deleted inside one run of the device check, to find out whether this browser can store anything at all -- it holds no state to back up',
   'bjtrainer.chartIntro.v1':
     'B7 one-shot "seen" flag for the first-run chart intro; a restore carrying any hand history suppresses the intro anyway',
+  'bjtrainer.intro.truecount.v1':
+    'T2-2B one-shot "seen" flag for the true count worked example; a restore carrying any true count history suppresses it anyway',
+  'bjtrainer.intro.deckest.v1':
+    'T2-2B one-shot "seen" flag for the deck estimation worked example; a restore carrying any history suppresses it anyway',
+  'bjtrainer.intro.producetc.v1':
+    'T2-2B one-shot "seen" flag for the produce-the-true-count worked example; a restore carrying any history suppresses it anyway',
   'bjtrainer.casinoLog.v3':
     'real casino sessions in dollars: personal financial data with its own deliberate export on the Casino tab -- the training backup is the file a user may hand to someone to debug a drill',
   'bjtrainer.casinoLog.v2':

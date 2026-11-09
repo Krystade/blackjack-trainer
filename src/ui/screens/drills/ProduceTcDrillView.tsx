@@ -1,6 +1,8 @@
 import { Term } from '../../glossary';
 import { CountWeighting } from './CountWeighting';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { DrillIntroCard, PRODUCETC_INTRO_KEY, useDrillIntro } from './DrillIntroCard';
+import { produceTcExample } from '../../../drills/workedExamples';
 import { sayMomentAtPause } from '../../../habits/moment';
 import type { Profile, Settings } from '../../../store/types';
 import {
@@ -176,6 +178,14 @@ export function ProduceTcDrillView({
 
   const [voiceOn, setVoiceOn] = useVoiceToggle('produce-tc-drill');
   const pushToTalkOpen = usePushToTalk();
+  // T2-2B: the worked example, once, before the first run (D6: never on an autoStart).
+  const intro = useDrillIntro(PRODUCETC_INTRO_KEY, () => ({
+    historyEmpty: loadStats().produceTc.history.length === 0,
+    eyesFree,
+    voiceOn,
+    autoStart,
+  }));
+  const produceExample = useMemo(() => produceTcExample(rounding), [rounding]);
   const voiceSupport = detectVoiceSupport();
 
   /**
@@ -355,6 +365,7 @@ export function ProduceTcDrillView({
   };
 
   const start = () => {
+    intro.dismiss();
     runIdRef.current += 1;
     setRound(
       makeProduceTcRound(
@@ -539,6 +550,7 @@ export function ProduceTcDrillView({
 
       {phase === 'setup' && (
         <div className="count-setup">
+          <DrillIntroCard example={produceExample} open={intro.open} onDismiss={intro.dismiss} />
           <CountWeighting settings={settings} onSettingsChange={onSettingsChange} />
           <label className="count-toggle">
             <input

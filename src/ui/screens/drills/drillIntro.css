@@ -1,0 +1,80 @@
+/* T2-2B: the worked example on a drill setup -- a card once, then a fold. */
+.drill-intro-card,
+.drill-intro-fold {
+  width: 100%;
+  box-sizing: border-box;
+  text-align: left;
+  border-radius: 12px;
+  background: var(--surface, rgba(255, 255, 255, 0.06));
+  border: 1px solid var(--line);
+}
+
+.drill-intro-card {
+  padding: 12px 14px;
+}
+
+.drill-intro-title {
+  margin: 0 0 6px;
+  font-size: var(--fs-md);
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.drill-intro-line {
+  margin: 0 0 6px;
+  font-size: var(--fs-sm);
+  line-height: 1.4;
+  color: var(--ink);
+}
+
+.drill-intro-examples {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0 0;
+}
+
+.drill-intro-example {
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--bg-sunken);
+  color: var(--ink);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.drill-intro-tray {
+  margin: 6px 0 2px;
+}
+
+.drill-intro-ok {
+  display: block;
+  margin: 10px 0 0 auto;
+  min-width: 96px;
+  min-height: 44px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.drill-intro-fold {
+  padding: 0 14px;
+}
+
+.drill-intro-fold > summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  color: var(--ink-dim);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+}
+
+.drill-intro-fold[open] {
+  padding-bottom: 12px;
+}

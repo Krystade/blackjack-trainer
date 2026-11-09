@@ -20,30 +20,56 @@ export function chartIntroDue(input: {
   voiceOn: boolean;
   search: string;
   e2e: boolean;
+  /** D6: a guided or Drive launch. Optional so the existing caller is unchanged. */
+  autoStart?: boolean;
 }): boolean {
-  const { stats, seen, eyesFree, voiceOn, search, e2e } = input;
-  return (
-    !seen &&
-    !hasHandHistory(stats) &&
-    !eyesFree &&
-    !voiceOn &&
-    (!e2e || new URLSearchParams(search).has('intro'))
-  );
+  const { stats, seen, eyesFree, voiceOn, search, e2e, autoStart = false } = input;
+  return !seen && !hasHandHistory(stats) && introAllowed({ eyesFree, voiceOn, autoStart, search, e2e });
 }
 
-/** Blocked storage reads as "seen", so the screen can never loop. */
-export function loadChartIntroSeen(): boolean {
+/**
+ * T2-2B: one-shot "seen" flags for the first-run intros (the chart intro, the
+ * Hi-Lo card, the worked examples). Each has its own key; blocked storage
+ * reads as "seen", so an intro can never loop.
+ */
+export function loadIntroSeen(key: string): boolean {
   try {
-    return window.localStorage.getItem(CHART_INTRO_KEY) === '1';
+    return window.localStorage.getItem(key) === '1';
   } catch {
     return true;
   }
 }
 
-export function saveChartIntroSeen(): void {
+export function saveIntroSeen(key: string): void {
   try {
-    window.localStorage.setItem(CHART_INTRO_KEY, '1');
+    window.localStorage.setItem(key, '1');
   } catch {
     // Blocked storage: nothing to remember it in; load reads "seen" anyway.
   }
+}
+
+/**
+ * T2-2B, D6: the gate every first-run intro shares. Never in a car session
+ * (eyes-free or voice), never on an autoStart (guided or Drive -- the run
+ * starts itself and an intro would sit in front of it), and under the e2e
+ * harness only when the URL asks for it with `?intro`.
+ */
+export function introAllowed(input: {
+  eyesFree: boolean;
+  voiceOn: boolean;
+  autoStart: boolean;
+  search: string;
+  e2e: boolean;
+}): boolean {
+  const { eyesFree, voiceOn, autoStart, search, e2e } = input;
+  return !eyesFree && !voiceOn && !autoStart && (!e2e || new URLSearchParams(search).has('intro'));
+}
+
+/** Blocked storage reads as "seen", so the screen can never loop. */
+export function loadChartIntroSeen(): boolean {
+  return loadIntroSeen(CHART_INTRO_KEY);
+}
+
+export function saveChartIntroSeen(): void {
+  saveIntroSeen(CHART_INTRO_KEY);
 }
