@@ -1,7 +1,8 @@
 import { Term } from '../../glossary';
 import { CountWeighting } from './CountWeighting';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { DrillIntroCard, TRUECOUNT_INTRO_KEY, useDrillIntro } from './DrillIntroCard';
+import { DrillIntroCard } from './DrillIntroCard';
+import { TRUECOUNT_INTRO_KEY, useDrillIntro } from './useDrillIntro';
 import { trueCountExample } from '../../../drills/workedExamples';
 import { sayMomentAtPause } from '../../../habits/moment';
 import type { Profile, Settings } from '../../../store/types';

@@ -1,6 +1,7 @@
 import { Term } from '../../glossary';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { DECKEST_INTRO_KEY, DrillIntroCard, useDrillIntro } from './DrillIntroCard';
+import { DrillIntroCard } from './DrillIntroCard';
+import { DECKEST_INTRO_KEY, useDrillIntro } from './useDrillIntro';
 import { deckEstimationExample } from '../../../drills/workedExamples';
 import type { Profile, Settings } from '../../../store/types';
 import { makeDeckEstimationQuestion } from '../../../drills/deckEstimation';
