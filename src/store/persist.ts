@@ -490,6 +490,9 @@ const EXTRA_KEYS: { key: string; field: string; label: string; raw?: true }[] = 
   { key: 'bjtrainer.guided.v1', field: 'guided', label: 'guided sessions' },
   // T1-1B: suggestions answered and the switches to turn back on (store/onboarding.ts).
   { key: 'bjtrainer.onboarding.v1', field: 'onboarding', label: 'first-run choices' },
+  // Track 3 (3B): when each rung was proven and its re-test schedule
+  // (drills/rust.ts) -- elapsed time, like the SR decks, so not rebuildable.
+  { key: 'bjtrainer.rust.v1', field: 'rust', label: 'rung re-tests' },
 ];
 
 /**

@@ -125,7 +125,16 @@ export const SR_DUE_HOUR = 4;
  * nothing: it is still 4am local on the due day.
  */
 export function scheduleDueAt(now: number, box: number): number {
-  const days = Math.round((BOX_INTERVALS_MS[box] ?? 0) / DAY_MS);
+  return dueAfterDays(now, Math.round((BOX_INTERVALS_MS[box] ?? 0) / DAY_MS));
+}
+
+/**
+ * 4am local on the `days`-th calendar day after `now` (B17 / R7 above); `now`
+ * itself for 0 or fewer. Track 3 (3B): the rung re-tests share it, so a
+ * re-test due "in 14 days" turns over with the review decks, not at the
+ * minute the rung was passed.
+ */
+export function dueAfterDays(now: number, days: number): number {
   if (days <= 0) return now;
   const day = new Date(now);
   return new Date(day.getFullYear(), day.getMonth(), day.getDate() + days, SR_DUE_HOUR).getTime();

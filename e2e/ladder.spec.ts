@@ -7,7 +7,9 @@ import { shot, withSettings } from './helpers';
 test.use({ viewport: { width: 375, height: 812 } });
 
 const CELLS = generateAllCells().map((c) => c.id);
-const D = '2026-10-16T10:00:00.000Z';
+// 3B: yesterday, not a fixed date -- a rung practised more than 14 days ago
+// reads rusty and its re-test becomes the step (e2e/rust.spec.ts).
+const D = new Date(Date.now() - 86_400_000).toISOString();
 const STRONG = { 'hard-16-v-10': { right: 30, wrong: 0, lastAt: D }, 'soft-18-v-9': { right: 30, wrong: 0, lastAt: D }, 'pair-8-v-A': { right: 30, wrong: 0, lastAt: D } };
 const IDS = ['ins', '16v10', '15v10', 'TTv5', 'TTv6', '10v10', '12v3', '12v2', '11vA', '9v2', '10vA', '9v7', '16v9', '13v2', '12v4', '12v5', '12v6', '13v3', '14v10', '15v9', '15vA'];
 const many = <T,>(n: number, row: T) => Array.from({ length: n }, () => row);

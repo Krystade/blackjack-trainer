@@ -69,3 +69,19 @@ describe('planInputFor: reached rungs (D1)', () => {
     expect(reachedOf(ladderOf([...ORDER])).currentRung).toBeNull();
   });
 });
+
+// Track 3 (3B, D1): a rusty rung is reached, still passed, and planned as weak.
+describe('planInputFor: rusty rungs (3B)', () => {
+  it('carries a rusty rung as rusty, passed and reached', () => {
+    const ORDER = ['basic', 'repair', 'count', 'tc', 'deviations', 'betramp', 'play'] as const;
+    const lad: Ladder = {
+      rungs: ORDER.map((id) => ({ id, label: id, passed: true, ...(id === 'count' ? { rust: 'rusty' as const } : {}), progress: '', start: { kind: 'flash' as const } })),
+      current: null,
+      step: { card: 'retest', kind: 'count', title: '', why: '' },
+    };
+    const inp = planInputFor(structuredClone(EMPTY_STATS), makeDefaultProfile(), NOW, lad);
+    expect(inp.rungsRusty).toEqual({ count: true });
+    expect(inp.rungsPassed.count).toBe(true);
+    expect(inp.rungsReached?.count).toBe(true);
+  });
+});

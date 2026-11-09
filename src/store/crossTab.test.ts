@@ -220,6 +220,10 @@ describe('OWNED_KEYS', () => {
     'bjtrainer.guided.v1': 'read fresh at each write; a guided session belongs to the tab running it',
     // T1-1B: each tab runs the migration at boot; the second is a no-op once the first has written.
     'bjtrainer.migrations.v1': 'a boot-time migration marker, read once before React mounts',
+    // Track 3 (3B): re-read from storage on every ladder build (never cached),
+    // and written only by Home as the deterministic advance of the same stats,
+    // so two tabs write the same document.
+    'bjtrainer.rust.v1': 'read fresh on every ladder build; Home writes the advance of shared stats',
   };
 
   /**

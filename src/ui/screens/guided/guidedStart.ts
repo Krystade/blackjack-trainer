@@ -24,10 +24,13 @@ export function planInputFor(stats: Stats, profile: Profile, now: number, built?
   const rungsPassed: Partial<Record<GuidedRung, boolean>> = {};
   const rungsReached: Partial<Record<GuidedRung, boolean>> = {};
   const rungsSkipped: Partial<Record<GuidedRung, boolean>> = {};
+  const rungsRusty: Partial<Record<GuidedRung, boolean>> = {};
   lad.rungs.forEach((r, i) => {
     if (r.id === 'play') return;
     rungsPassed[r.id] = r.passed;
     if (r.skipped) rungsSkipped[r.id] = true;
+    // D1 / 3B: a rusty rung stays passed and reached, and is planned as weak.
+    if (r.rust === 'rusty') rungsRusty[r.id] = true;
     // D1: reached = passed, skipped, or at or before the current rung.
     rungsReached[r.id] = rungDone(r) || lad.current === null || i <= lad.current;
   });
@@ -36,6 +39,7 @@ export function planInputFor(stats: Stats, profile: Profile, now: number, built?
     rungsPassed,
     rungsReached,
     rungsSkipped,
+    rungsRusty,
     currentRung: lad.current === null ? null : lad.rungs[lad.current]!.id,
     dueCells: orderDueCells(due.cells, flashSr, now),
     weakCells: weakCells(stats).map((w) => w.id),

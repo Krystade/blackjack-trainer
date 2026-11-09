@@ -69,8 +69,9 @@ export function LadderCard({
       <ol className="ladder">
         {rungs.map((rung, i) => {
           // 1C: a rung the welcome skipped is muted and marked, never ticked.
-          const state = rung.passed ? 'done' : rung.skipped ? 'skipped' : i === current ? 'current' : 'locked';
-          const suffix = state === 'done' ? 'done' : state === 'skipped' ? 'skipped' : state === 'current' ? 'current' : 'not yet';
+          // 3B: a passed rung whose re-test is due reads rusty (still passed).
+          const state = rung.rust === 'rusty' ? 'rusty' : rung.passed ? 'done' : rung.skipped ? 'skipped' : i === current ? 'current' : 'locked';
+          const suffix = state === 'rusty' ? 'rusty: re-test due' : state === 'done' ? 'done' : state === 'skipped' ? 'skipped' : state === 'current' ? 'current' : 'not yet';
           return (
             <li key={rung.id}>
               <button
@@ -83,11 +84,11 @@ export function LadderCard({
                 onClick={() => onStart(rung.start)}
               >
                 <span className="ladder-mark" aria-hidden="true">
-                  {state === 'done' ? '✓' : state === 'skipped' ? '–' : i + 1}
+                  {state === 'done' ? '✓' : state === 'skipped' ? '–' : state === 'rusty' ? '↻' : i + 1}
                 </span>
                 <span className="ladder-label">{rung.label}</span>
                 {state === 'skipped' && <span className="ladder-skipped">skipped</span>}
-                {state === 'current' && <span className="ladder-progress">{rung.progress}</span>}
+                {(state === 'current' || state === 'rusty') && <span className="ladder-progress">{rung.progress}</span>}
               </button>
             </li>
           );

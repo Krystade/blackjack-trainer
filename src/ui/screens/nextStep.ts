@@ -12,6 +12,7 @@ import { MIN_INDEX_ANSWERS, activeIndices, indexPractised } from './readiness';
 import { COUNT_RUNS_JUDGED, COUNT_RUNS_NEEDED, FLUENCY_RULE_TEXT, countFluency } from '../../drills/fluencyGate';
 import type { IndexRules } from './readiness';
 import type { SrDeck } from '../../drills/spacedRepetition';
+import { rustMarks, type RustMark, type RustStore } from '../../drills/rust';
 import { PLAY_MIN_GRADED, REVIEW_DUE_MIN, betRampResult, deckTcResult, dueForReview, playResult, reviewIndexMin, stalestSkill } from './ladderRules';
 
 
@@ -84,6 +85,11 @@ export interface RungResult {
    * until the welcome ships.
    */
   skipped?: boolean;
+  /**
+   * Track 3 (3B): 'rusty' -- passed, but its re-test is due (still passed);
+   * 'needsWork' -- it missed its re-test, so it reads not passed until one passes.
+   */
+  rust?: 'rusty' | 'needsWork';
   progress: string;
   start: StartTarget;
 }
@@ -93,7 +99,7 @@ export function rungDone(r: Pick<RungResult, 'passed' | 'skipped'>): boolean {
   return r.passed || r.skipped === true;
 }
 
-export type CardKind = 'rung' | 'review' | 'stale';
+export type CardKind = 'rung' | 'review' | 'stale' | 'retest';
 
 export interface NextStep extends StartTarget {
   card: CardKind;
@@ -115,6 +121,8 @@ export interface Ladder {
   rungs: RungResult[];
   current: number | null;
   step: NextStep;
+  /** 3B: the re-test store this ladder was judged on, for Home to save. */
+  rust?: RustStore;
 }
 
 export interface LadderContext {
@@ -126,6 +134,8 @@ export interface LadderContext {
   now?: number;
   /** Track 1 (1C): rungs the welcome skipped (store/onboarding.ts skippedRungs). */
   skipped?: readonly RungId[];
+  /** Track 3 (3B): the re-test store, already advanced (drills/rust.ts advanceRust). */
+  rust?: RustStore;
 }
 
 // W3: the category and cell thresholds live with the shared figures Home and
@@ -409,22 +419,46 @@ export function ladder(stats: Stats, ctx: LadderContext): Ladder {
     },
   ];
 
+  const now = ctx.now ?? Date.now();
+  const activeIds = active.map((d) => d.id);
+  // 3B: rust only marks a rung its own rule passes. A missed re-test turns
+  // it back into a card (passed false); a due one keeps it passed.
+  const marks: Partial<Record<RungId, RustMark>> = rustMarks(ctx.rust, stats, { activeIds, quizSr: ctx.quizSr }, now);
+  const retestCards: Partial<Record<RungId, Card>> = {};
+  for (const d of drafts) {
+    const m = marks[d.id];
+    // A rung its own rule fails is not rusty (its card is the step), but a
+    // missed re-test still says so.
+    if (!m || (m.state === 'rusty' && d.card !== null)) continue;
+    const card: Card = {
+      ...d.passedStart,
+      title: `Re-test: ${RUNG_LABELS[d.id]}`,
+      why: m.why,
+      // The deviations re-test asks every active index.
+      ...(d.id === 'deviations' ? { reviewIndexes: activeIds } : {}),
+    };
+    retestCards[d.id] = card;
+    if (m.state === 'needsWork') {
+      d.card = card;
+      d.progress = m.progress;
+    }
+  }
   const skipped = new Set(ctx.skipped ?? []);
   const rungs: RungResult[] = drafts.map((d) => ({
     id: d.id,
     label: RUNG_LABELS[d.id],
     passed: d.card === null,
     // 1C: a skip never passes a rung; one passed since reads passed.
-    ...(d.card !== null && skipped.has(d.id) ? { skipped: true } : {}),
-    progress: d.progress,
+    ...(d.card !== null && skipped.has(d.id) && !retestCards[d.id] ? { skipped: true } : {}),
+    ...(retestCards[d.id] ? { rust: marks[d.id]!.state } : {}),
+    progress: d.card === null && retestCards[d.id] ? marks[d.id]!.progress : d.progress,
     start: d.card
       ? { kind: d.card.kind, ...(d.card.scope ? { scope: d.card.scope } : {}), ...(d.card.reviewIndexes ? { reviewIndexes: d.card.reviewIndexes } : {}) }
       : d.passedStart,
   }));
   const first = rungs.findIndex((r) => !rungDone(r));
   const current = first === -1 ? null : first;
-  const now = ctx.now ?? Date.now();
-  const activeIds = active.map((d) => d.id);
+  const rust = ctx.rust ? { rust: ctx.rust } : {};
   const flashSr = ctx.flashSr ?? {};
   const quizSr = ctx.quizSr ?? {};
   // s02: every step carries the three categories.
@@ -442,6 +476,7 @@ export function ladder(stats: Stats, ctx: LadderContext): Ladder {
     return {
       rungs,
       current,
+      ...rust,
       step: {
         card: 'review',
         kind: flash ? 'flash' : 'quiz',
@@ -455,7 +490,14 @@ export function ladder(stats: Stats, ctx: LadderContext): Ladder {
       },
     };
   }
-  if (current !== null) return { rungs, current, step: { card: 'rung', ...drafts[current]!.card!, progress: cats } };
+  // 3B: the earliest of the current rung and the first rusty one.
+  const rusty = rungs.findIndex((r) => r.rust === 'rusty');
+  const at = rusty !== -1 && (current === null || rusty < current) ? rusty : current;
+  if (at !== null) {
+    const id = rungs[at]!.id;
+    const card = at === current ? drafts[at]!.card! : retestCards[id]!;
+    return { rungs, current, ...rust, step: { card: retestCards[id] ? 'retest' : 'rung', ...card, progress: cats } };
+  }
   const stale = stalestSkill(stats, quizSr, activeIds);
   // B20: CALENDAR days, as the casino tab counts them -- 24h blocks called
   // last night's practice "today" and never said "yesterday". agoText reads
@@ -464,6 +506,7 @@ export function ladder(stats: Stats, ctx: LadderContext): Ladder {
   return {
     rungs,
     current,
+    ...rust,
     step: {
       card: 'stale',
       kind: stale.kind,

@@ -124,6 +124,11 @@
   color: var(--accent);
 }
 
+/* 3B: passed, re-test due -- the accent ring, not the done green. */
+.ladder-row[data-state='rusty'] .ladder-mark {
+  color: var(--accent);
+}
+
 .ladder-row[data-state='locked'] {
   color: var(--ink-dim);
 }

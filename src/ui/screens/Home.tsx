@@ -32,6 +32,7 @@ import { withAudioEnabled } from '../audioGate';
 import { useDayTick } from '../useDayTick';
 import { StreakCard } from '../components/StreakCard';
 import { GuidedCard } from './guided/GuidedCard';
+import { saveRust } from '../../drills/rust';
 
 interface HomeProps {
   onNavigate: (screen: Screen) => void;
@@ -73,6 +74,11 @@ export function Home({ onNavigate, activeProfile, settings, onSettingsChange }: 
   // D3: the one context builder, shared with the guided card and Drills.
   const ladder = buildHomeLadder(stats, activeProfile, Date.now());
   const step = ladder.step;
+  // 3B: Home is the one writer of the re-test store, saving what it shows.
+  const rustJson = ladder.rust ? JSON.stringify(ladder.rust) : '';
+  useEffect(() => {
+    if (rustJson) saveRust(JSON.parse(rustJson));
+  }, [rustJson]);
   // 1C: re-read on every render, so the first answer (or a welcome choice) reshapes Home.
   const [, setOnboardingTick] = useState(0);
   const onboarding = loadOnboarding();
