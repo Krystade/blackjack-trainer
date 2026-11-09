@@ -75,8 +75,8 @@ async function awaitReview(page: Page, before: number): Promise<void> {
 /**
  * Hard totals only, seeded rather than clicked.
  *
- * Keeps the dealt hands to plain two-card hard totals, which is the shape
- * shownHandRightPlay reads.
+ * Keeps the dealt hands to hard totals (two cards, or three to five for a
+ * hard 12-16), which shownHandRightPlay reads.
  */
 const HARD_ONLY = { drill: { flashCategory: 'hard' } };
 

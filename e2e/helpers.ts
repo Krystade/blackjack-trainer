@@ -1,7 +1,7 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 import { FIELD_TEST_CONDITIONS } from '../src/diag/fieldTest';
 import { basicPlay } from '../src/engine/strategy';
-import { FULL_CTX } from '../src/drills/fallbackHand';
+import { FULL_CTX, THREE_CARD_CTX } from '../src/drills/fallbackHand';
 import { DEFAULT_RULES, type RuleSet } from '../src/engine/ruleset';
 import type { Rank } from '../src/engine/cards';
 
@@ -510,8 +510,10 @@ export async function submitZero(page: Page): Promise<void> {
 const ACTION_LABEL = { hit: 'Hit', stand: 'Stand', double: 'Double', split: 'Split', surrender: 'Surrender' } as const;
 
 /**
- * The action-bar label of the basic-strategy play for the two-card hand a
- * hand drill is showing. Lets a test give a right (or a known-wrong) answer
+ * The action-bar label of the basic-strategy play for the hand a hand drill
+ * is showing. Two cards are a fresh hand (everything allowed); three or more
+ * are graded as the drill grades them, with no double, split or surrender
+ * (THREE_CARD_CTX -- Flashcards deals a hard 12-16 H/S cell as 3-5 cards). Lets a test give a right (or a known-wrong) answer
  * on purpose instead of repeating one action until the draw obliges -- the
  * E2 learning step re-deals missed cards, so "answer Stand until right" can
  * loop on Stand-is-wrong hands.
@@ -519,8 +521,9 @@ const ACTION_LABEL = { hit: 'Hit', stand: 'Stand', double: 'Double', split: 'Spl
 export async function shownHandRightPlay(page: Page, rules: RuleSet = DEFAULT_RULES): Promise<string> {
   const ranks = (await page.locator('.hands-row .card-rank').allTextContents()) as Rank[];
   const [up] = (await page.locator('.dealer-area .card-rank').allTextContents()) as Rank[];
-  if (ranks.length !== 2 || !up) throw new Error(`unexpected hand on screen: ${ranks.join(',')} v ${up}`);
-  return ACTION_LABEL[basicPlay(ranks.map((rank) => ({ rank, suit: 's' as const })), up, FULL_CTX, rules).action];
+  if (ranks.length < 2 || !up) throw new Error(`unexpected hand on screen: ${ranks.join(',')} v ${up}`);
+  const ctx = ranks.length === 2 ? FULL_CTX : THREE_CARD_CTX;
+  return ACTION_LABEL[basicPlay(ranks.map((rank) => ({ rank, suit: 's' as const })), up, ctx, rules).action];
 }
 
 /**
