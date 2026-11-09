@@ -90,10 +90,19 @@ test('Flashcards: the chips and goal line fold into one line after the first ans
   const box = (await summary(page).boundingBox())!;
   expect(box.height).toBeLessThanOrEqual(34);
   // Drawn 32px tall, it still takes a tap 44px tall: 6px above and below.
-  const hit = await page.evaluate(([x, top, bottom]) => {
+  // Measured unscrolled: when the first answer is a miss, revealAboveBar
+  // scrolls the miss strip up (36px here), and the sticky drill top bar then
+  // sits over the top of the summary's slop -- the bar is meant to win there.
+  // Which answer is a miss depends on the dealt hand, so without this the
+  // check failed on roughly half the hands.
+  // Scroll and measure in one synchronous step, so nothing moves in between.
+  const hit = await page.evaluate(() => {
+    window.scrollTo(0, 0);
+    const r = document.querySelector('[data-testid="controls-summary"]')!.getBoundingClientRect();
+    const x = r.left + r.width / 2;
     const at = (y: number) => document.elementFromPoint(x, y)?.closest('[data-testid="controls-summary"]') !== null;
-    return { above: at(top - 5), below: at(bottom + 5), outside: at(top - 8) };
-  }, [box.x + box.width / 2, box.y, box.y + box.height]);
+    return { above: at(r.top - 5), below: at(r.bottom + 5), outside: at(r.top - 8) };
+  });
   expect(hit).toEqual({ above: true, below: true, outside: false });
 
   await expectToggles(page, () => chips(page));
