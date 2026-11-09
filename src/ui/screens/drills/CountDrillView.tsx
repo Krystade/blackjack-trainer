@@ -1,3 +1,4 @@
+import { Term } from '../../glossary';
 import { formatClock, manualPace, paceBests, type ManualPace, type PaceBestKey } from '../../../drills/manualPace';
 import { diag } from '../../../diag/diagnosticLog';
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
@@ -2443,7 +2444,7 @@ export function CountDrillView({
               checked={countdownMode}
               onChange={(e) => setCountdownMode(e.target.checked)}
             />
-            Countdown (one deck with a card held back: name its tag)
+            <Term id="countdown">Countdown</Term> (one deck with a card held back: name its tag)
           </label>
 
           {/* Owner 2026-11-06: Options in four groups. */}
@@ -2634,7 +2635,7 @@ export function CountDrillView({
                 checked={settings.drill.countShowHiLo === true}
                 onChange={(e) => updateDrill({ countShowHiLo: e.target.checked })}
               />
-              Show Hi-Lo values (+1, 0 or &minus;1 under each card, and the count after each card at the end)
+              Show <Term id="hi-lo">Hi-Lo</Term> values (+1, 0 or &minus;1 under each card, and the count after each card at the end)
             </label>
           )}
 

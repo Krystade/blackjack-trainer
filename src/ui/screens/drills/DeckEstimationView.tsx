@@ -1,3 +1,4 @@
+import { Term } from '../../glossary';
 import { useEffect, useRef, useState } from 'react';
 import type { Profile, Settings } from '../../../store/types';
 import { makeDeckEstimationQuestion } from '../../../drills/deckEstimation';
@@ -241,7 +242,7 @@ export function DeckEstimationView({
             onChange={setTotalDecks}
           />
           <div className="settings-row">
-            <span className="settings-label">Resolution</span>
+            <span className="settings-label"><Term id="resolution">Resolution</Term></span>
             <Segmented
               options={[
                 { value: 'half', label: 'Half' },

@@ -1,3 +1,4 @@
+import { Term } from '../../glossary';
 import { SrBadge } from '../../components/SrBadge';
 import { useEffect, useRef, useState } from 'react';
 import { sayMomentAtPause } from '../../../habits/moment';
@@ -301,7 +302,7 @@ export function IndexTestView({
         <button type="button" className="drill-back-btn" onClick={handleBack}>
           Back
         </button>
-        <div className="drill-heading">Deviation quiz</div>
+        <div className="drill-heading"><Term id="deviation">Deviation</Term> quiz</div>
         {settings.audio.enabled && (
           <button type="button" className="repeat-btn" onClick={audio.replay}>
             Repeat

@@ -1,3 +1,4 @@
+import { Term } from '../../glossary';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Profile, Settings } from '../../../store/types';
 import { loadStats, saveStats } from '../../../store/persist';
@@ -377,7 +378,7 @@ export function SideCountDrillView({
         <button type="button" className="drill-back-btn" onClick={leave}>
           Back
         </button>
-        <div className="drill-heading">Side count</div>
+        <div className="drill-heading"><Term id="side-count">Side count</Term></div>
       </div>
 
       {voiceOn && <VoiceStatusBar status={voice.status} hint={<>Say: the count, &ldquo;yes&rdquo; to confirm &middot; &ldquo;yes&rdquo; / &ldquo;no&rdquo; to bet</>} />}

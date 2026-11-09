@@ -14,6 +14,7 @@ import type { Screen } from '../App';
 import type { Profile } from '../../store/types';
 import { getChart } from '../../engine/charts';
 import { FloatingBackPill } from '../components/FloatingBackPill';
+import { Term, type TermId } from '../glossary';
 import { strategyRulesFor } from '../../store/profiles';
 import { hardCellAction, indexList, indexesAtCell, surrenderComesFirst } from './indexChart';
 import type { IndexEntry } from './indexChart';
@@ -111,11 +112,60 @@ function surrenderFirstLine(plays: readonly string[]): string {
   return `Surrender comes first while it’s allowed. The ${names} index is for when it isn’t, e.g. after a hit.`;
 }
 
-const INDEX_GROUPS: readonly { id: IndexEntry['group']; title: string }[] = [
-  { id: 'illustrious', title: 'Illustrious 18' },
-  { id: 'fab4', title: 'Fab 4 surrenders' },
-  { id: 'extra', title: 'BJA H17 extras' },
+const INDEX_GROUPS: readonly { id: IndexEntry['group']; title: string; term: TermId }[] = [
+  { id: 'illustrious', title: 'Illustrious 18', term: 'illustrious-18' },
+  { id: 'fab4', title: 'Fab 4 surrenders', term: 'fab-4' },
+  { id: 'extra', title: 'BJA H17 extras', term: 'bja-extras' },
 ];
+
+/**
+ * T2-2B: the glossary word for each part of the ruleset line
+ * (chartRows.ts rulesetSummary). Split here, at render, so the line's text --
+ * which specs and the caption read -- stays exactly the summary's.
+ */
+const RULESET_PART_TERMS: Record<string, TermId> = {
+  S17: 's17',
+  H17: 'h17',
+  DAS: 'das',
+  'No DAS': 'das',
+  'Late surrender': 'ls',
+  'No surrender': 'surrender',
+};
+
+function RulesetLine({ summary }: { summary: string }) {
+  const parts = summary.split(' · ');
+  return (
+    <p className="charts-ruleset">
+      {parts.map((part, i) => {
+        const term = RULESET_PART_TERMS[part];
+        return (
+          <Fragment key={part}>
+            {i > 0 && ' · '}
+            {term ? <Term id={term}>{part}</Term> : part}
+          </Fragment>
+        );
+      })}
+    </p>
+  );
+}
+
+/** The legend's first word, where it is a play the glossary explains. */
+const LEGEND_LEAD_TERMS: readonly [string, TermId][] = [
+  ['Double', 'double'],
+  ['Split', 'split'],
+  ['Surrender', 'surrender'],
+];
+
+function LegendText({ label }: { label: string }) {
+  const lead = LEGEND_LEAD_TERMS.find(([word]) => label === word || label.startsWith(`${word} `));
+  if (!lead) return <>{label}</>;
+  return (
+    <>
+      <Term id={lead[1]}>{lead[0]}</Term>
+      {label.slice(lead[0].length)}
+    </>
+  );
+}
 
 interface ChartsProps {
   onNavigate: (screen: Screen) => void;
@@ -388,7 +438,7 @@ export function Charts({
         <VariantCharts preset={shownVariant} order={order} onPreset={chooseVariant} />
       ) : (
       <>
-      <p className="charts-ruleset">{rulesetSummary(activeProfile.rules)}</p>
+      <RulesetLine summary={rulesetSummary(activeProfile.rules)} />
       {canTest && (
         <div className="charts-modes" role="group" aria-label="Charts mode">
           {(['chart', 'test'] as const).map((value) => (
@@ -450,7 +500,9 @@ export function Charts({
                   <span className="chart-code" data-action={entry.code} aria-hidden="true">
                     {entry.code}
                   </span>
-                  <span className="chart-legend-text">{entry.label}</span>
+                  <span className="chart-legend-text">
+                    <LegendText label={entry.label} />
+                  </span>
                 </li>
               ))}
             </ul>
@@ -607,8 +659,8 @@ export function Charts({
             <h2 className="chart-section-title" id="chart-indexes-title">
               Indexes
               <span className="chart-section-blurb">
-                Plays the true count changes. Once the count reaches the index, make that play;
-                otherwise play the chart.
+                Plays the <Term id="tc">true count</Term> changes. Once the count reaches the{' '}
+                <Term id="index">index</Term>, make that play; otherwise play the chart.
               </span>
             </h2>
             {/* Owner 2026-11-06: study them by the count they change at. */}
@@ -631,7 +683,9 @@ export function Charts({
               if (entries.length === 0) return null;
               return (
                 <div className="index-group" key={group.id} data-group={group.id}>
-                  <h3 className="index-group-title">{group.title}</h3>
+                  <h3 className="index-group-title">
+                    <Term id={group.term}>{group.title}</Term>
+                  </h3>
                   <ul className="index-list">
                     {entries.map((e) => (
                       <li className="index-item" key={e.id} data-index-id={e.id}>

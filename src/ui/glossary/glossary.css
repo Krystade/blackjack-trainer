@@ -1,0 +1,105 @@
+/* T2-2B: a tappable word and the sheet it opens. */
+
+/* Inline, in the text's own font: only the dotted underline says it can be
+   tapped. */
+.term {
+  position: relative;
+  display: inline;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: inherit;
+  text-decoration: underline dotted;
+  text-decoration-color: var(--accent);
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1.5px;
+  cursor: help;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* A 44px-tall hit area without changing the line's layout: padding on an
+   inline button would push the text around it. */
+.term::after {
+  content: '';
+  position: absolute;
+  left: -4px;
+  right: -4px;
+  top: 50%;
+  height: 44px;
+  transform: translateY(-50%);
+}
+
+.term:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+.term[aria-expanded='true'] {
+  text-decoration-style: solid;
+}
+
+/* Clear, not dimmed (shared-device rule): the screen behind stays readable.
+   A tap above the sheet closes it rather than answering the drill. */
+.glossary-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: transparent;
+}
+
+/* BottomSheet is sticky inside the flow; this layer pins it to the foot of
+   the viewport instead, above the tab bar and the drill's action bar. */
+.glossary-layer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: var(--vp-gap, 0px);
+  z-index: 81;
+  max-width: 480px;
+  margin: 0 auto;
+  padding-bottom: var(--safe-bottom, 0px);
+  background: var(--bg-sunken);
+  border-radius: 14px 14px 0 0;
+  box-shadow: 0 -10px 24px -8px rgb(0 0 0 / 55%);
+}
+
+.glossary-layer .bottom-sheet {
+  position: static;
+  border-top: 1px solid var(--line);
+  padding-top: var(--space-3);
+}
+
+.glossary-layer .bottom-sheet-body > p.glossary-def {
+  color: var(--ink);
+  font-size: var(--fs-md);
+  line-height: 1.45;
+}
+
+.glossary-layer .bottom-sheet-body > p.glossary-aka {
+  color: var(--ink-dim);
+  font-size: var(--fs-sm);
+}
+
+.glossary-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 var(--space-2) var(--space-2);
+}
+
+.glossary-close {
+  min-width: 88px;
+  min-height: 44px;
+  padding: 0 var(--space-4);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}

@@ -1,3 +1,4 @@
+import { Term } from '../../glossary';
 import { CountWeighting } from './CountWeighting';
 import { useEffect, useRef, useState } from 'react';
 import { sayMomentAtPause } from '../../../habits/moment';
@@ -531,7 +532,7 @@ export function ProduceTcDrillView({
         <button type="button" className="drill-back-btn" onClick={handleBack}>
           Back
         </button>
-        <div className="drill-heading">Produce the true count</div>
+        <div className="drill-heading">Produce the <Term id="tc">true count</Term></div>
       </div>
 
       {(voiceOn || pushToTalkOpen) && <VoiceStatusBar status={voice.status} />}

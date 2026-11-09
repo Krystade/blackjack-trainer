@@ -1,3 +1,4 @@
+import { Term, termForRuleLabel } from '../glossary';
 import './rulesChip.css';
 
 /**
@@ -5,17 +6,23 @@ import './rulesChip.css';
  * "Surrender OK", "No double"), shown before the answer, beside the TC.
  * The labels come from the pure helpers in drills/legalActions.ts and
  * drills/deviationQuiz.ts, so the chip states the grader's own context.
+ *
+ * T2-2B: each label is a glossary word -- a tap says what surrender or
+ * doubling is.
  */
 export function RulesChip({ labels }: { labels: string[] }) {
   if (labels.length === 0) return null;
   return (
     <div className="rules-chip-row">
       <div className="rules-chip-stack" data-testid="rules-chip">
-        {labels.map((l) => (
-          <span key={l} className={`rules-chip${l.startsWith('No ') ? ' rules-chip--off' : ''}`}>
-            {l}
-          </span>
-        ))}
+        {labels.map((l) => {
+          const term = termForRuleLabel(l);
+          return (
+            <span key={l} className={`rules-chip${l.startsWith('No ') ? ' rules-chip--off' : ''}`}>
+              {term ? <Term id={term}>{l}</Term> : l}
+            </span>
+          );
+        })}
       </div>
     </div>
   );

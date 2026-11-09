@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { setLeaveGuard } from '../leaveGuard';
 import './profileEditorSave.css';
 import './profileRamp.css';
@@ -6,6 +6,7 @@ import { plainNumber } from '../../drills/signed';
 import { takeProfileLaunch } from '../profileLaunch';
 import { isFloorRow, spreadTcText, stepMinTc } from '../spreadRows';
 import { CollapsibleSection } from '../components/CollapsibleSection';
+import { Term, type TermId } from '../glossary';
 import { SideBetControl } from '../components/SideBetControl';
 import type { Screen } from '../App';
 import type { Profile, Settings } from '../../store/types';
@@ -45,23 +46,56 @@ function sortSpread(rows: SpreadRow[]): SpreadRow[] {
   return [...rows].sort((a, b) => a.minTc - b.minTc);
 }
 
+/**
+ * T2-2B: a settings label with one glossary word in it. `termText` is the
+ * part of the label that opens the sheet (the whole label when absent); the
+ * rest stays plain, so in a toggle row a tap on it still flips the switch.
+ * The label string itself is unchanged, so the row's text is too.
+ */
+function TermLabel({ label, term, termText }: { label: string; term?: TermId; termText?: string }) {
+  if (!term) return <>{label}</>;
+  const word = termText ?? label;
+  const at = label.indexOf(word);
+  if (at < 0) return <>{label}</>;
+  return (
+    <>
+      {label.slice(0, at)}
+      <Term id={term}>{word}</Term>
+      {label.slice(at + word.length)}
+    </>
+  );
+}
+
 function Toggle({
   label,
   checked,
   onChange,
   disabled = false,
+  term,
+  termText,
 }: {
   label: string;
+  /** T2-2B: the glossary word in the label (see TermLabel). */
+  term?: TermId;
+  termText?: string;
   checked: boolean;
   onChange: (v: boolean) => void;
   /** Greys the row out AND stops the input firing — used where the setting is
    *  meaningless under the profile's current rules (see surrender indices). */
   disabled?: boolean;
 }) {
+  // T2-2B: tied by id, not by nesting alone. A wrapping label labels its
+  // FIRST labelable descendant, and a glossary word is a button -- so
+  // without `htmlFor` a tap on the row's text would go to the word, not the
+  // switch.
+  const id = useId();
   return (
-    <label className={disabled ? 'settings-toggle-row is-disabled' : 'settings-toggle-row'}>
-      <span className="settings-label">{label}</span>
+    <label className={disabled ? 'settings-toggle-row is-disabled' : 'settings-toggle-row'} htmlFor={id}>
+      <span className="settings-label">
+        <TermLabel label={label} term={term} termText={termText} />
+      </span>
       <input
+        id={id}
         type="checkbox"
         className="settings-toggle"
         checked={checked}
@@ -76,14 +110,20 @@ function OptionalNumberField({
   label,
   value,
   onChange,
+  term,
+  termText,
 }: {
   label: string;
+  term?: TermId;
+  termText?: string;
   value: number | undefined;
   onChange: (v: number | undefined) => void;
 }) {
   return (
     <div className="settings-row">
-      <span className="settings-label">{label}</span>
+      <span className="settings-label">
+        <TermLabel label={label} term={term} termText={termText} />
+      </span>
       <input
         type="number"
         className="profile-number-input"
@@ -427,7 +467,9 @@ function ProfileEditForm({
             />
           </div>
           <div className="settings-row">
-            <span className="settings-label">Dealer soft 17</span>
+            <span className="settings-label">
+              Dealer <Term id={draft.rules.s17 ? 's17' : 'h17'}>soft 17</Term>
+            </span>
             <Segmented
               options={[
                 { value: 'true', label: 'S17' },
@@ -439,21 +481,29 @@ function ProfileEditForm({
           </div>
           <Toggle
             label="Double after split (DAS)"
+            term="das"
+            termText="DAS"
             checked={draft.rules.das}
             onChange={(v) => updateRules({ das: v })}
           />
           <Toggle
             label="Late surrender (LS)"
+            term="ls"
+            termText="LS"
             checked={draft.rules.ls}
             onChange={(v) => updateRules({ ls: v })}
           />
           <Toggle
             label="Resplit aces (RSA)"
+            term="rsa"
+            termText="RSA"
             checked={draft.rules.rsa}
             onChange={(v) => updateRules({ rsa: v })}
           />
           <Toggle
             label="6:5 blackjack payout"
+            term="six-five"
+            termText="6:5 blackjack"
             checked={draft.rules.bj65}
             onChange={(v) => updateRules({ bj65: v })}
           />
@@ -466,6 +516,8 @@ function ProfileEditForm({
           */}
           <Toggle
             label="Dealer always shows the hole card"
+            term="hole-card"
+            termText="hole card"
             checked={draft.dealerAlwaysPlaysOut ?? false}
             onChange={(v) => update({ dealerAlwaysPlaysOut: v })}
           />
@@ -527,6 +579,8 @@ function ProfileEditForm({
               labelled and never carry their bankroll. */}
           <Toggle
             label="Hot shoe (practice)"
+            term="hot-shoe"
+            termText="Hot shoe"
             checked={draft.hotShoe === true}
             onChange={(v) => update({ hotShoe: v })}
           />
@@ -555,7 +609,9 @@ function ProfileEditForm({
               in the ramp section first, where exactly those players could not
               reach it. */}
           <div className="settings-row">
-            <span className="settings-label">True count rounding</span>
+            <span className="settings-label">
+              <Term id="tc-rounding">True count rounding</Term>
+            </span>
             <Segmented
               options={[
                 { value: 'floor', label: 'Floor' },
@@ -589,6 +645,8 @@ function ProfileEditForm({
               control would be a lie. */}
           <Toggle
             label="Surrender indices (Fab 4)"
+            term="fab-4"
+            termText="Fab 4"
             checked={draft.surrenderIndices === true && draft.rules.ls && draft.rules.decks >= FAB_4_MIN_DECKS}
             disabled={!draft.rules.ls || draft.rules.decks < FAB_4_MIN_DECKS}
             onChange={(v) => update({ surrenderIndices: v })}
@@ -616,6 +674,8 @@ function ProfileEditForm({
               late surrender. */}
           <Toggle
             label="BJA H17 extra indices"
+            term="bja-extras"
+            termText="BJA H17"
             checked={draft.bjaExtras === true && !draft.rules.s17}
             disabled={draft.rules.s17}
             onChange={(v) => update({ bjaExtras: v })}
@@ -792,6 +852,8 @@ function ProfileEditForm({
                 be graded is a judgment, not a rule of the game. */}
             <Toggle
               label="Cover bets: allow one step off the ramp"
+              term="cover"
+              termText="Cover bets"
               checked={draft.coverBets ?? false}
               onChange={(v) => update({ coverBets: v })}
             />
@@ -889,16 +951,20 @@ function ProfileEditForm({
       >
           <OptionalNumberField
             label="Score"
+            term="score"
             value={draft.cvcx?.score}
             onChange={(v) => updateCvcx({ score: v })}
           />
           <OptionalNumberField
             label="EV per hour"
+            term="ev"
+            termText="EV"
             value={draft.cvcx?.evPerHour}
             onChange={(v) => updateCvcx({ evPerHour: v })}
           />
           <OptionalNumberField
             label="Risk of ruin"
+            term="risk-of-ruin"
             value={draft.cvcx?.riskOfRuin}
             onChange={(v) => updateCvcx({ riskOfRuin: v })}
           />

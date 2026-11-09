@@ -1,3 +1,4 @@
+import { Term } from '../../glossary';
 import { CountWeighting } from './CountWeighting';
 import { useEffect, useRef, useState } from 'react';
 import { sayMomentAtPause } from '../../../habits/moment';
@@ -676,7 +677,7 @@ export function TrueCountDrillView({
         <button type="button" className="drill-back-btn" onClick={handleBack}>
           Back
         </button>
-        <div className="drill-heading">True count drill</div>
+        <div className="drill-heading"><Term id="tc">True count</Term> drill</div>
       </div>
 
       {/* Deliberately NOT the full command vocabulary: the play words do
