@@ -24,25 +24,42 @@ export interface WorkedExample {
 
 const VERB: Record<TcRounding, string> = { floor: 'floors', truncate: 'truncates', round: 'rounds' };
 const RULE: Record<TcRounding, string> = {
-  floor: 'always down',
-  truncate: 'toward zero, dropping the fraction',
-  round: 'to the nearest whole number',
+  floor: 'always rounds down',
+  truncate: 'rounds toward zero, dropping the fraction',
+  round: 'rounds to the nearest whole number',
 };
+
+/**
+ * "truncate and round would both give −3" / "floor would give −4" /
+ * "floor would give −4, and round would give −3": the other conventions
+ * that disagree with the profile, grouped by the answer they give.
+ */
+export function roundingContrast(rounding: TcRounding, rc: number, decks: number): string {
+  const mine = trueCount(rc, decks, rounding);
+  const byValue = new Map<number, TcRounding[]>();
+  for (const r of ['floor', 'truncate', 'round'] as const) {
+    if (r === rounding) continue;
+    const v = trueCount(rc, decks, r);
+    if (v === mine) continue;
+    byValue.set(v, [...(byValue.get(v) ?? []), r]);
+  }
+  const parts = [...byValue].map(([v, rs]) =>
+    rs.length === 1 ? `${rs[0]} would give ${signedTc(v)}` : `${rs.join(' and ')} would both give ${signedTc(v)}`,
+  );
+  return parts.join(', and ');
+}
 
 /** The example whose rounding matters: −5 ÷ 1.5 = −3.33 (floor −4, truncate and round −3). */
 export const NEGATIVE_EXAMPLE = { runningCount: -5, decksRemaining: 1.5 } as const;
 
 export function trueCountExample(rounding: TcRounding): WorkedExample {
   const { runningCount: rc, decksRemaining: d } = NEGATIVE_EXAMPLE;
-  const others = (['floor', 'truncate', 'round'] as const).filter(
-    (r) => r !== rounding && trueCount(rc, d, r) !== trueCount(rc, d, rounding),
-  );
-  const contrast = others.map((r) => `${r} would give ${signedTc(trueCount(rc, d, r))}`).join(', ');
+  const contrast = roundingContrast(rounding, rc, d);
   return {
     title: 'How the true count works',
     lines: [
       'True count = running count ÷ decks left.',
-      `Your profile ${VERB[rounding]}: it rounds ${RULE[rounding]}. Set it in Profile › True count rounding.`,
+      `Your profile ${VERB[rounding]}: it ${RULE[rounding]}. Set it in Profile › True count rounding.`,
       ...(contrast ? [`Below zero the rounding matters: ${contrast}.`] : []),
     ],
     examples: [tcWorking(6, 3, rounding), tcWorking(rc, d, rounding)],

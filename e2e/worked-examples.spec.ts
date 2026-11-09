@@ -78,7 +78,7 @@ test("True count: the example follows the profile's rounding (truncate)", async 
   await openDrill(page, 'True count drill');
   await expect(card(page)).toContainText('Your profile truncates');
   await expect(card(page)).toContainText('→ truncate −3');
-  await expect(card(page)).toContainText('floor would give −4');
+  await expect(card(page)).toContainText('Below zero the rounding matters: floor would give −4.');
 });
 
 test('Produce the true count: the example follows the profile rounding', async ({ page }) => {

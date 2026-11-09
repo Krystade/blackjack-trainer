@@ -7,6 +7,7 @@ import {
   TRAY_EXAMPLE,
   deckEstimationExample,
   produceTcExample,
+  roundingContrast,
   trueCountExample,
 } from './workedExamples';
 
@@ -28,11 +29,44 @@ describe('worked examples', () => {
     expect(ex.lines.join(' ')).toContain(`Your profile ${verb}`);
   });
 
-  it('true count: the contrast line names only conventions that give a different answer', () => {
-    expect(trueCountExample('floor').lines.join(' ')).toContain('truncate would give −3, round would give −3');
-    const t = trueCountExample('truncate').lines.join(' ');
-    expect(t).toContain('floor would give −4');
-    expect(t).not.toContain('round would give');
+  it.each([
+    [
+      'floor',
+      'Your profile floors: it always rounds down. Set it in Profile › True count rounding.',
+      'Below zero the rounding matters: truncate and round would both give −3.',
+    ],
+    [
+      'truncate',
+      'Your profile truncates: it rounds toward zero, dropping the fraction. Set it in Profile › True count rounding.',
+      'Below zero the rounding matters: floor would give −4.',
+    ],
+    [
+      'round',
+      'Your profile rounds: it rounds to the nearest whole number. Set it in Profile › True count rounding.',
+      'Below zero the rounding matters: floor would give −4.',
+    ],
+  ] as const)('true count (%s): the profile and contrast lines read naturally', (r, profileLine, contrastLine) => {
+    const lines = trueCountExample(r).lines;
+    expect(lines[1]).toBe(profileLine);
+    expect(lines[2]).toBe(contrastLine);
+  });
+
+  it('roundingContrast: agreeing alternatives are grouped, and no contrast when all agree', () => {
+    // −5 ÷ 1.5 = −3.33: floor −4, truncate −3, round −3.
+    expect(roundingContrast('floor', -5, 1.5)).toBe('truncate and round would both give −3');
+    // +5 ÷ 1.5 = 3.33: all three give +3.
+    expect(roundingContrast('floor', 5, 1.5)).toBe('');
+    // −8 ÷ 3 = −2.67: floor −3, truncate −2, round −3.
+    expect(roundingContrast('truncate', -8, 3)).toBe('floor and round would both give −3');
+    expect(roundingContrast('round', -8, 3)).toBe('truncate would give −2');
+    // +8 ÷ 3 = 2.67: floor +2, truncate +2, round +3.
+    expect(roundingContrast('round', 8, 3)).toBe('floor and truncate would both give +2');
+  });
+
+  it('roundingContrast: never a run-on list (round always equals floor or truncate)', () => {
+    for (const rc of [-13, -10, -8, -7, -5, 5, 7, 8, 10, 13])
+      for (const d of [1.5, 2, 2.5, 3])
+        for (const r of ROUNDINGS) expect(roundingContrast(r, rc, d)).not.toContain(',');
   });
 
   it('deck estimation: the text matches the tray it draws, and follows the resolution', () => {
