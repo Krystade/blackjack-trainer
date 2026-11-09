@@ -12,6 +12,8 @@
   color: inherit;
   font: inherit;
   letter-spacing: inherit;
+  /* A button does not inherit it: in an uppercase heading the word stayed mixed case. */
+  text-transform: inherit;
   text-align: inherit;
   text-decoration: underline dotted;
   text-decoration-color: var(--accent);
