@@ -89,6 +89,40 @@ describe('applyBeginnerPlay', () => {
     expect(loadProfiles()[0]!.playChecks).toEqual({ count: false, deviations: false, bets: false });
   });
 
+  it('a cold install writes the marker and nothing else', () => {
+    expect(applyBeginnerPlay()).toBe(true);
+    expect(store.writes).toEqual([MIGRATIONS_KEY]);
+    // And the defaults it relied on are the beginner table.
+    expect(loadProfiles()[0]!.seats.bots).toBe(0);
+    expect(loadSettings().losingShoe ?? false).toBe(false);
+  });
+
+  it('patches a partial stored settings blob in place, never filling in defaults', () => {
+    store.map.set('bjtrainer.settings.v1', JSON.stringify({ version: 1, audio: { answerPauseMs: 0 }, dealerMistakesMode: 'occasional' }));
+    expect(applyBeginnerPlay()).toBe(true);
+    expect(JSON.parse(store.map.get('bjtrainer.settings.v1')!)).toEqual({
+      version: 1,
+      audio: { answerPauseMs: 0 },
+      dealerMistakesMode: 'occasional',
+      tableChecks: { dealerMistakes: false, distractions: false },
+    });
+  });
+
+  it('a settings-only install (from before profiles) still has its profile migrated', () => {
+    store.map.set('bjtrainer.settings.v1', JSON.stringify({ version: 1 }));
+    expect(applyBeginnerPlay()).toBe(true);
+    const stored = JSON.parse(store.map.get('bjtrainer.profiles.v1')!) as Profile[];
+    expect(stored[0]!.playChecks).toEqual({ count: false, deviations: false, bets: false });
+  });
+
+  it('blobs that would not change are not written', () => {
+    const p: Profile = { ...jackLike('a'), playChecks: { count: false, deviations: false, bets: false }, seats: { ...jackLike('a').seats, bots: 0, playerPosition: 0 } };
+    seed([p], { tableChecks: { dealerMistakes: false, distractions: false } });
+    store.writes = [];
+    expect(applyBeginnerPlay()).toBe(true);
+    expect(store.writes).toEqual([MIGRATIONS_KEY]);
+  });
+
   it('writes the marker last', () => {
     seed([jackLike('a')], {});
     store.writes = [];
