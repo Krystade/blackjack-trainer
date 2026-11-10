@@ -111,12 +111,19 @@ describe('applyBeginnerPlay', () => {
   it('leaves the distraction frequency and difficulty as stored (owner 2026-11-09)', () => {
     store.map.set(
       'bjtrainer.settings.v1',
-      JSON.stringify({ version: 1, playDistractionFreq: 'often', playDistractionDifficulty: 'hard', drill: { distractionDifficulty: 'easy' } }),
+      JSON.stringify({
+        version: 1,
+        playDistractionFreq: 'often',
+        playDistractionDifficulty: 'hard',
+        playDistractionType: 'table',
+        drill: { distractionDifficulty: 'easy' },
+      }),
     );
     expect(applyBeginnerPlay()).toBe(true);
     const s = JSON.parse(store.map.get('bjtrainer.settings.v1')!) as Record<string, unknown>;
     expect(s.playDistractionFreq).toBe('often');
     expect(s.playDistractionDifficulty).toBe('hard');
+    expect(s.playDistractionType).toBe('table');
     expect(s.drill).toEqual({ distractionDifficulty: 'easy' });
     expect(loadSettings().playDistractionFreq).toBe('often');
   });

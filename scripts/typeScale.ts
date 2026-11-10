@@ -47,8 +47,8 @@ export const ALLOWED: readonly Allowed[] = [
   { file: 'ui/app.css', selector: '.zone-pad-quad', value: 'clamp(1.6rem, 8vmin, 2.4rem)', reason: 'Fluid: eyes-free pad labels scale with the pad' },
   { file: 'ui/app.css', selector: '.zone-pad-circle', value: 'clamp(0.85rem, 4.5cqmin, 1.4rem)', reason: 'Fluid: scales with its container' },
   { file: 'ui/app.css', selector: '.zone-pad-half', value: 'clamp(1.8rem, 9vmin, 2.6rem)', reason: 'Fluid: eyes-free pad labels scale with the pad' },
-  { file: 'ui/components/cardSize.css', selector: ':is(.table-screen .dealer-area, .table-screen .hands-row, .count-flash-cards, .pair-cancel-cards) .card:not(.card-compact) .card-rank', value: 'calc(var(--card-w) * 0.34)', reason: "A card's rank scales with the card" },
-  { file: 'ui/components/cardSize.css', selector: ':is(.table-screen .dealer-area, .table-screen .hands-row, .count-flash-cards, .pair-cancel-cards) .card:not(.card-compact) .card-suit', value: 'calc(var(--card-w) * 0.38)', reason: "A card's suit scales with the card" },
+  { file: 'ui/components/cardSize.css', selector: ':is(.table-screen .dealer-area, .table-screen .hands-row, .count-flash-cards, .pair-cancel-cards, .other-table) .card:not(.card-compact) .card-rank', value: 'calc(var(--card-w) * 0.34)', reason: "A card's rank scales with the card" },
+  { file: 'ui/components/cardSize.css', selector: ':is(.table-screen .dealer-area, .table-screen .hands-row, .count-flash-cards, .pair-cancel-cards, .other-table) .card:not(.card-compact) .card-suit', value: 'calc(var(--card-w) * 0.38)', reason: "A card's suit scales with the card" },
   { file: 'ui/screens/tableRewind.css', selector: '.rewind-replay .rewind-card .card-rank', value: 'calc(var(--card-w) * 0.34)', reason: "Wave X Rewind: the replayed card's rank scales with the card, as cardSize.css's do" },
   { file: 'ui/screens/tableRewind.css', selector: '.rewind-replay .rewind-card .card-suit', value: 'calc(var(--card-w) * 0.38)', reason: "Wave X Rewind: the replayed card's suit scales with the card, as cardSize.css's do" },
 

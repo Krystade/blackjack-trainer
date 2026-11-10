@@ -26,7 +26,8 @@ import {
 import { signed } from '../../drills/signed';
 import { DIFFICULTY_NOTES, type DistractionDifficulty } from '../../drills/distraction';
 import { PLAY_DISTRACTION_INTERVAL, playDistractionPrefs } from '../playDistraction';
-import type { PlayDistractionFreq } from '../../store/types';
+import { OTHER_TABLE_DIFFICULTY_NOTES } from '../../drills/otherTable';
+import type { PlayDistractionFreq, PlayDistractionType } from '../../store/types';
 import {
   WONG_EXIT_MAX,
   WONG_EXIT_MIN,
@@ -81,7 +82,7 @@ export const CHECK_NOTES: Record<CheckKey, string> = {
   deviations: 'Graded on the plays where the count says to leave basic strategy.',
   bets: 'Your bet and In/Out are graded on your bet ramp.',
   dealerMistakes: 'Now and then the dealer pays a hand wrong; tap Foul to call it.',
-  distractions: 'Between hands, a quick sum to answer, as table talk would.',
+  distractions: 'Between hands, a quick sum or another table to count, as table talk would.',
 };
 
 const PLAY_KEYS: readonly PlayCheckKey[] = ['count', 'deviations', 'bets'];
@@ -126,14 +127,43 @@ export function WhatToCheckControls({
   );
 }
 
+/** Owner 2026-11-10: one line per Kind. */
+const KIND_NOTES: Record<PlayDistractionType, string> = {
+  sums: 'A quick sum to answer.',
+  table: 'Another table to count, then back to yours.',
+  mix: 'A sum or another table, at random.',
+};
+
 /**
  * Owner 2026-11-09: how often Play's distractions come and how hard the sums
  * are. Under the Distractions switch, only while it is on; live, like it.
+ * Owner 2026-11-10: and what kind they are, first.
  */
 function PlayDistractionOptions({ settings, update }: { settings: Settings; update: (patch: Partial<Settings>) => void }) {
-  const { freq, difficulty } = playDistractionPrefs(settings);
+  const { freq, difficulty, type } = playDistractionPrefs(settings);
+  const difficultyNote =
+    type === 'sums'
+      ? DIFFICULTY_NOTES[difficulty]
+      : type === 'table'
+        ? OTHER_TABLE_DIFFICULTY_NOTES[difficulty]
+        : `${DIFFICULTY_NOTES[difficulty]} ${OTHER_TABLE_DIFFICULTY_NOTES[difficulty]}`;
   return (
     <div className="what-to-check-sub" data-testid="play-distraction-options">
+      <div className="settings-row">
+        <span className="settings-label">{'Kind'}</span>
+        <Segmented<PlayDistractionType>
+          options={[
+            { value: 'sums', label: 'Sums' },
+            { value: 'table', label: 'Other table' },
+            { value: 'mix', label: 'Mix' },
+          ]}
+          value={type}
+          onChange={(v) => update({ playDistractionType: v })}
+        />
+      </div>
+      <p className="settings-note profile-play-note" data-testid="play-distraction-kind-note">
+        {KIND_NOTES[type]}
+      </p>
       <div className="settings-row">
         <span className="settings-label">{'How often'}</span>
         <Segmented<PlayDistractionFreq>
@@ -163,7 +193,7 @@ function PlayDistractionOptions({ settings, update }: { settings: Settings; upda
         />
       </div>
       <p className="settings-note profile-play-note" data-testid="play-distraction-difficulty-note">
-        {DIFFICULTY_NOTES[difficulty]}
+        {difficultyNote}
       </p>
     </div>
   );

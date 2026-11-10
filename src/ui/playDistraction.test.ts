@@ -10,7 +10,12 @@ import {
   playDistractionPrefs,
   PLAY_DISTRACTION_INTERVAL,
   PLAY_DISTRACTION_WINDOW,
+  makePlayStop,
+  playDistractionIsTable,
+  type OtherTableDistraction,
 } from './playDistraction';
+import { otherTableCount } from '../drills/otherTable';
+import { distractionSummary } from '../store/drillStats';
 import { isDistractionPoint } from '../drills/distraction';
 import { playResult } from './screens/ladderRules';
 import { resumeSavable } from './tableResume';
@@ -75,13 +80,18 @@ describe('Play distractions', () => {
   });
 
   it('stored choices read safely: absent or unknown is normal', () => {
-    expect(playDistractionPrefs({})).toEqual({ freq: 'normal', difficulty: 'normal' });
-    expect(playDistractionPrefs({ playDistractionFreq: 'often', playDistractionDifficulty: 'hard' })).toEqual({ freq: 'often', difficulty: 'hard' });
-    expect(playDistractionPrefs({ playDistractionDifficulty: 'expert' })).toEqual({ freq: 'normal', difficulty: 'expert' });
+    expect(playDistractionPrefs({})).toEqual({ freq: 'normal', difficulty: 'normal', type: 'sums' });
+    expect(playDistractionPrefs({ playDistractionFreq: 'often', playDistractionDifficulty: 'hard' })).toEqual({ freq: 'often', difficulty: 'hard', type: 'sums' });
+    expect(playDistractionPrefs({ playDistractionDifficulty: 'expert' })).toEqual({ freq: 'normal', difficulty: 'expert', type: 'sums' });
     expect(playDistractionPrefs({ playDistractionFreq: 'weekly' as never, playDistractionDifficulty: 'insane' as never })).toEqual({
       freq: 'normal',
       difficulty: 'normal',
+      type: 'sums',
     });
+    // Owner 2026-11-10: the Kind, likewise: absent or unknown is Sums.
+    expect(playDistractionPrefs({ playDistractionType: 'table' }).type).toBe('table');
+    expect(playDistractionPrefs({ playDistractionType: 'mix' }).type).toBe('mix');
+    expect(playDistractionPrefs({ playDistractionType: 'cards' as never }).type).toBe('sums');
   });
 
   it('the stats row is marked as Play', () => {
@@ -97,6 +107,77 @@ describe('Play distractions', () => {
 
   it('the verdict line uses real minus signs', () => {
     expect(distractionVerdictText({ correct: false, prompt: '-3 - (-6)', answer: 3 })).toBe('Sum ✗ −3 − (−6) = 3');
+  });
+});
+
+describe('owner 2026-11-10: the other table', () => {
+  const prefs = (type: 'sums' | 'table' | 'mix', difficulty: 'easy' | 'normal' | 'hard' | 'expert' = 'normal') =>
+    ({ freq: 'normal', difficulty, type }) as const;
+
+  it('Sums deals exactly what makePlayDistraction always did', () => {
+    for (const seed of [1, 42, 99_999]) {
+      for (let r = 1; r < 60; r++) {
+        for (const d of ['easy', 'normal', 'hard', 'expert'] as const) {
+          expect(makePlayStop(3, r, seed, prefs('sums', d))).toEqual(makePlayDistraction(3, r, seed, 'normal', d));
+        }
+      }
+    }
+  });
+
+  it('Other table: every stop is a table, asked in plain words, whose answer is its Hi-Lo count', () => {
+    for (let r = 1; r < 40; r++) {
+      const d = makePlayStop(5, r, 7, prefs('table'));
+      expect(d.kind).toBe('other-table');
+      expect(d.prompt).toBe("What's the count at this table?");
+      expect(d.halves).toBeUndefined();
+      if (d.kind !== 'other-table') throw new Error('not a table');
+      expect(d.answer).toBe(otherTableCount(d.table));
+      expect(d.table.seats).toHaveLength(6);
+      // The main count is not an input: the same stop at another count deals the same table.
+      expect(makePlayStop(-9, r, 7, prefs('table'))).toEqual(d);
+    }
+    expect((makePlayStop(5, 3, 7, prefs('table', 'easy')) as OtherTableDistraction).table.seats).toHaveLength(3);
+    expect((makePlayStop(5, 3, 7, prefs('table', 'expert')) as OtherTableDistraction).table.hideAfterMs).toBe(5000);
+  });
+
+  it('Mix: both kinds, seeded per stop', () => {
+    const kinds = new Set<string>();
+    let tables = 0;
+    for (let r = 1; r < 200; r++) {
+      const d = makePlayStop(2, r, 11, prefs('mix'));
+      kinds.add(d.kind === 'other-table' ? 'table' : 'sum');
+      if (d.kind === 'other-table') tables++;
+      expect(playDistractionIsTable('mix', r, 11)).toBe(d.kind === 'other-table');
+      expect(makePlayStop(2, r, 11, prefs('mix'))).toEqual(d);
+    }
+    expect([...kinds].sort()).toEqual(['sum', 'table']);
+    // Roughly half and half, not a near-constant.
+    expect(tables).toBeGreaterThan(60);
+    expect(tables).toBeLessThan(140);
+  });
+
+  it("the row keeps its kind and is Play's; the verdict says the table count, signed", () => {
+    expect(distractionRow({ kind: 'other-table' }, false, true, 900, 'd')).toEqual({
+      date: 'd',
+      kind: 'other-table',
+      answerCorrect: false,
+      countKept: true,
+      elapsedMs: 900,
+      source: 'play',
+    });
+    expect(distractionVerdictText({ kind: 'other-table', correct: true, prompt: '', answer: 3 })).toBe('Other table ✓ count = +3');
+    expect(distractionVerdictText({ kind: 'other-table', correct: false, prompt: '', answer: -2 })).toBe('Other table ✗ count = −2');
+    expect(distractionVerdictText({ kind: 'other-table', correct: true, prompt: '', answer: 0 })).toBe('Other table ✓ count = 0');
+    // A sum's line is unchanged.
+    expect(distractionVerdictText({ kind: 'generic', correct: true, prompt: '4 + 7', answer: 11 })).toBe('Sum ✓ 4 + 7 = 11');
+  });
+
+  it('the Count drill summary still leaves Play rows out, the table kind included', () => {
+    const rows = [
+      distractionRow({ kind: 'other-table' }, true, true, 1, 'd'),
+      { date: 'd', kind: 'generic' as const, answerCorrect: false, countKept: false },
+    ];
+    expect(distractionSummary(rows)).toEqual({ attempts: 1, answerAccuracyPct: 0, countKeptPct: 0 });
   });
 });
 

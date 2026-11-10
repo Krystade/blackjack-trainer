@@ -13,16 +13,16 @@
   --card-w: clamp(32px, calc((min(100vw, 480px) - var(--felt-fixed)) / var(--felt-slots)), 84px);
 }
 
-:is(.table-screen .dealer-area, .table-screen .hands-row, .count-flash-cards, .pair-cancel-cards) .card:not(.card-compact) {
+:is(.table-screen .dealer-area, .table-screen .hands-row, .count-flash-cards, .pair-cancel-cards, .other-table) .card:not(.card-compact) {
   width: var(--card-w);
   height: calc(var(--card-w) * 1.4167);
 }
 
-:is(.table-screen .dealer-area, .table-screen .hands-row, .count-flash-cards, .pair-cancel-cards) .card:not(.card-compact) .card-rank {
+:is(.table-screen .dealer-area, .table-screen .hands-row, .count-flash-cards, .pair-cancel-cards, .other-table) .card:not(.card-compact) .card-rank {
   font-size: calc(var(--card-w) * 0.34);
 }
 
-:is(.table-screen .dealer-area, .table-screen .hands-row, .count-flash-cards, .pair-cancel-cards) .card:not(.card-compact) .card-suit {
+:is(.table-screen .dealer-area, .table-screen .hands-row, .count-flash-cards, .pair-cancel-cards, .other-table) .card:not(.card-compact) .card-suit {
   font-size: calc(var(--card-w) * 0.38);
 }
 

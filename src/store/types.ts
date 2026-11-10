@@ -28,6 +28,11 @@ export type MarkerColour = 'red' | 'amber' | 'green' | 'blue';
 
 /** Owner 2026-11-09: Play's distraction cadence (ui/playDistraction.ts). */
 export type PlayDistractionFreq = 'rare' | 'normal' | 'often';
+/**
+ * Owner 2026-11-10: what a Play distraction is -- a quick sum, another table
+ * to count (drills/otherTable.ts), or either at random. 'sums' is the default.
+ */
+export type PlayDistractionType = 'sums' | 'table' | 'mix';
 
 export interface Settings {
   version: 1;
@@ -87,6 +92,12 @@ export interface Settings {
   playDistractionFreq: PlayDistractionFreq;
   /** Owner 2026-11-09: how hard Play's sums are (drills/distraction.ts). 'normal' = the sums as they were. */
   playDistractionDifficulty: DistractionDifficulty;
+  /**
+   * Owner 2026-11-10: the Kind under Play's gear (ui/playDistraction.ts).
+   * 'sums' is every distraction before the choice existed. Backfilled from
+   * DEFAULT_SETTINGS; an unknown value reads 'sums' (playDistractionPrefs).
+   */
+  playDistractionType: PlayDistractionType;
   // C-R3 (W10): the last drill run eyes-free or by voice, for Home's one-tap
   // "Drive" button. `mode` is the Drills mode id; `voice` whether the
   // microphone was on. Absent = no such drill yet (no Drive button).
@@ -433,6 +444,7 @@ export const DEFAULT_SETTINGS: Settings = {
   dealSpeedMs: 300,
   playDistractionFreq: 'normal',
   playDistractionDifficulty: 'normal',
+  playDistractionType: 'sums',
   drill: {
     flashCategory: 'all',
     countGroup: 1,
@@ -963,7 +975,8 @@ export interface Stats {
   distraction: {
     history: {
       date: string;
-      kind: DistractionMode;
+      // Owner 2026-11-10: 'other-table' is Play's other table to count (source 'play' only).
+      kind: DistractionMode | 'other-table';
       answerCorrect: boolean;
       countKept: boolean;
       elapsedMs?: number;

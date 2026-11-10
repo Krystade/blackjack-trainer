@@ -1858,6 +1858,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange, k
         <PlayDistractionSheet
           prompt={distraction.d.prompt}
           halves={distraction.d.halves === true}
+          table={distraction.d.table}
           onSubmit={submitDistraction}
           banner={game.phase === 'settled' ? settledBannerText() : null}
         />

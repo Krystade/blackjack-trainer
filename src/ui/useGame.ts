@@ -21,8 +21,14 @@ import { mistakeUnits } from './reportSections';
 import { newSessionId, sessionRowFor, upsertSession } from './sessionRow';
 import { betMissFeedback, type BetMiss } from './betFeedback';
 import { sessionDealerErrors } from './dealerErrorCopy';
-import { distractionRow, makePlayDistraction, playDistractionDue, playDistractionPrefs } from './playDistraction';
-import type { Distraction } from '../drills/distraction';
+import {
+  distractionRow,
+  makePlayStop,
+  playDistractionDue,
+  playDistractionPrefs,
+  type PlayDistraction,
+  type PlayDistractionKind,
+} from './playDistraction';
 import { addSideDecisions } from '../store/sideBetStats';
 import { SIDE_OFF_LINE, SIDE_ON_LINE, SIDE_WINS_LINE, sideMissFeedback } from './sideBetFeedback';
 import type { SideMiss } from './sideBetFeedback';
@@ -367,13 +373,15 @@ type PendingDeal = { kind: 'deal'; bets?: number | number[] } | { kind: 'sitOut'
  */
 /** T1-1B: a Play distraction on screen, and when it was posed (for its elapsed time). */
 export interface PlayDistractionShown {
-  d: Distraction;
+  /** A sum, or (owner 2026-11-10) another table to count, off its own shoe. */
+  d: PlayDistraction;
   shownAt: number;
 }
 
 /** T1-1B: the sum's verdict, shown through the round dealt after it (`round` = the round it followed). */
 export interface PlayDistractionVerdict {
   round: number;
+  kind: PlayDistractionKind;
   correct: boolean;
   answer: number;
   prompt: string;
@@ -635,7 +643,7 @@ export function useGame(
   /** The round a distraction followed, so one round never brings two. */
   const distractionRoundRef = useRef(-1);
   /** The answered sum, waiting on the running count that grades `countKept`. */
-  const pendingDistractionRef = useRef<{ kind: Distraction['kind']; answerCorrect: boolean; elapsedMs: number } | null>(null);
+  const pendingDistractionRef = useRef<{ kind: PlayDistractionKind; answerCorrect: boolean; elapsedMs: number } | null>(null);
 
   /**
    * Wave A: "Shuffling." has been said between rounds (as the cut-card round
@@ -740,13 +748,9 @@ export function useGame(
         distractionOpenRef.current = true;
         setDistractionVerdict(null);
         pendingDealRef.current = pending;
-        setDistraction({ d: makePlayDistraction(
-            game.runningCount,
-            game.roundNo,
-            tableSeed,
-            distractionPrefsRef.current.freq,
-            distractionPrefsRef.current.difficulty,
-          ), shownAt: Date.now() });
+        // Owner 2026-11-10: or another table to count. Its cards are its own;
+        // the main shoe, its count and the discards never see them.
+        setDistraction({ d: makePlayStop(game.runningCount, game.roundNo, tableSeed, distractionPrefsRef.current), shownAt: Date.now() });
         audio.ding('attention');
         bump();
         return true;
@@ -1118,7 +1122,7 @@ export function useGame(
       const shown = distraction;
       if (!shown) return null;
       const correct = answer === shown.d.answer;
-      const verdict = { round: game.roundNo, correct, answer: shown.d.answer, prompt: shown.d.prompt };
+      const verdict = { round: game.roundNo, kind: shown.d.kind, correct, answer: shown.d.answer, prompt: shown.d.prompt };
       setDistraction(null);
       distractionOpenRef.current = false;
       setDistractionVerdict(verdict);

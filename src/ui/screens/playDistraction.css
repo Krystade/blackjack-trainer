@@ -14,3 +14,111 @@
   font-size: var(--fs-sm);
   color: var(--ink-soft);
 }
+
+/* Owner 2026-11-10: the other table to count (PlayDistractionSheet.tsx).
+   Three seats to a row, each hand fanned half a card so every card's corner
+   shows. --card-w (cardSize.css sizes the card, rank and suit from it) is
+   the seat's share of the row over the longest hand's fanned width, so
+   four-card hands still fit 375px; never wider than 58px. */
+.other-table {
+  --ot-fan: 0.5;
+  --card-w: clamp(
+    30px,
+    calc((min(100vw, 480px) - 2 * var(--space-4) - 2 * var(--space-3) - 2 * var(--space-2)) / 3 / (1 + (var(--ot-cards, 2) - 1) * var(--ot-fan))),
+    58px
+  );
+  margin: 0 var(--space-3) var(--space-2);
+  padding: var(--space-2) var(--space-2) var(--space-2);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+/* The dealer at the head of the table, centred over the seats: label to its
+   left, Expert's countdown to its right. */
+.other-table-dealer {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-1) var(--space-2);
+}
+
+.other-table-dealer > .other-table-label {
+  justify-self: end;
+}
+
+.other-table-label {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  color: var(--ink-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.other-table-hide-note {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-1);
+  font-size: var(--fs-xs);
+  color: var(--ink-dim);
+  text-align: right;
+}
+
+/* Expert: the time left, as a bar that runs out with it. */
+.other-table-timer {
+  display: block;
+  width: 72px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--accent);
+  transform-origin: right center;
+  animation: other-table-timer var(--ot-hide-ms) linear forwards;
+}
+
+@keyframes other-table-timer {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .other-table-timer {
+    animation: none;
+  }
+}
+
+.other-table-seats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.other-table-seat {
+  display: flex;
+  justify-content: center;
+}
+
+.other-table-hand {
+  display: flex;
+}
+
+/* Corner index, not centred: the fan covers the right half of every card but the last. */
+.other-table .card {
+  box-sizing: border-box;
+  justify-content: flex-start;
+  align-items: flex-start;
+  padding: 2px 3px;
+  gap: 1px;
+}
+
+.other-table-hand > .card + .card {
+  margin-left: calc(var(--card-w) * var(--ot-fan) * -1);
+}

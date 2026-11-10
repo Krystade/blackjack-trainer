@@ -104,6 +104,8 @@ export const SETTINGS_REGISTRY: readonly SettingEntry[] = [
   // Owner 2026-11-09: under the Distractions switch, while it is on.
   p('settings.playDistractionFreq', 'How often', 'play'),
   p('settings.playDistractionDifficulty', 'Difficulty', 'play'),
+  // Owner 2026-11-10: Sums, Other table or Mix, with the two above.
+  p('settings.playDistractionType', 'Kind', 'play'),
 
   // ---- Drill options (each drill's own Options fold) ----
   ...[

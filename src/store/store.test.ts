@@ -196,6 +196,8 @@ describe('store/persist', () => {
       const loaded = loadSettings();
       expect(loaded.playDistractionFreq).toBe('normal');
       expect(loaded.playDistractionDifficulty).toBe('normal');
+      // Owner 2026-11-10: a blob from before the Kind choice gets Sums.
+      expect(loaded.playDistractionType).toBe('sums');
       expect(loaded.drill.distractionDifficulty).toBe('normal');
       expect(loaded.drill.distractionMode).toBe('generic');
       storage['bjtrainer.settings.v1'] = JSON.stringify({
@@ -217,6 +219,11 @@ describe('store/persist', () => {
       const expert = loadSettings();
       expect(expert.playDistractionDifficulty).toBe('expert');
       expect(expert.drill.distractionDifficulty).toBe('expert');
+      // Owner 2026-11-10: the Kind round-trips too.
+      for (const kind of ['table', 'mix', 'sums'] as const) {
+        storage['bjtrainer.settings.v1'] = JSON.stringify({ version: 1, playDistractionType: kind });
+        expect(loadSettings().playDistractionType).toBe(kind);
+      }
     });
 
     test('backfills audio settings when the stored blob predates cycle 3', () => {
