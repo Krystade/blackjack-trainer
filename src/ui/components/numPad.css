@@ -10,3 +10,35 @@
      every other keypad label. */
   text-align: left;
 }
+
+/* Owner 2026-11-10: an Expert division's .5 key. On a page it sits beside
+   OK, one digit column wide, so the keypad grows by no row. */
+.numpad-foot {
+  display: flex;
+  gap: 0.4rem;
+}
+.numpad-foot > .numpad-half {
+  flex: 0 0 calc((100% - 0.8rem) / 3);
+}
+.numpad-foot > .numpad-ok {
+  flex: 1;
+}
+.numpad-half[aria-pressed='true'] {
+  background: var(--raised);
+  font-weight: 700;
+}
+/* In a sheet OK is the tall key down the right; the .5 key takes the top of
+   that column, so the sheet is no taller than with a plain keypad. */
+.bottom-sheet .numpad.numpad-halves {
+  grid-template-rows: auto auto 1fr;
+  grid-template-areas:
+    'display display'
+    'grid half'
+    'grid ok';
+}
+.bottom-sheet .numpad-halves .numpad-foot {
+  display: contents;
+}
+.bottom-sheet .numpad-halves .numpad-half {
+  grid-area: half;
+}

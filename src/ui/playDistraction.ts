@@ -1,4 +1,7 @@
 import {
+  DISTRACTION_DIFFICULTIES,
+  distractionDifficultyOf,
+  formatAnswer,
   isDistractionPointEvery,
   makeDistraction,
   type Distraction,
@@ -30,7 +33,7 @@ export const PLAY_DISTRACTION_INTERVAL: Record<PlayDistractionFreq, number> = {
 };
 
 export const PLAY_DISTRACTION_FREQS: readonly PlayDistractionFreq[] = ['rare', 'normal', 'often'];
-export const DISTRACTION_DIFFICULTIES: readonly DistractionDifficulty[] = ['easy', 'normal', 'hard'];
+export { DISTRACTION_DIFFICULTIES };
 
 /** The stored choices, read safely: an unknown value (a later build's, a hand edit) is 'normal'. */
 export function playDistractionPrefs(
@@ -40,7 +43,7 @@ export function playDistractionPrefs(
   const d = settings.playDistractionDifficulty;
   return {
     freq: f !== undefined && PLAY_DISTRACTION_FREQS.includes(f) ? f : 'normal',
-    difficulty: d !== undefined && DISTRACTION_DIFFICULTIES.includes(d) ? d : 'normal',
+    difficulty: distractionDifficultyOf(d),
   };
 }
 
@@ -95,5 +98,5 @@ export function distractionRow(
 
 /** The verdict line: the sum and its answer, ticked or crossed. */
 export function distractionVerdictText(v: { correct: boolean; prompt: string; answer: number }): string {
-  return withMinusSigns(`Sum ${v.correct ? '✓' : '✗'} ${v.prompt} = ${v.answer}`);
+  return withMinusSigns(`Sum ${v.correct ? '✓' : '✗'} ${v.prompt} = ${formatAnswer(v.answer)}`);
 }

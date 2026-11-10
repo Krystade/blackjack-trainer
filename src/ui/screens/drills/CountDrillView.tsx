@@ -8,7 +8,13 @@ import type { Card } from '../../../engine/cards';
 import { hiLoTag } from '../../../engine/count';
 import { makeCountDrill, makeCountdown, runningCountThrough } from '../../../drills/countDrill';
 import type { CountDrillRound, CountdownRound } from '../../../drills/countDrill';
-import { makeDistraction, isDistractionPoint, distractionSpeech, DIFFICULTY_NOTES } from '../../../drills/distraction';
+import {
+  makeDistraction,
+  isDistractionPoint,
+  distractionSpeech,
+  distractionDifficultyOf,
+  DIFFICULTY_NOTES,
+} from '../../../drills/distraction';
 import type { Distraction } from '../../../drills/distraction';
 import {
   checkpointIndices,
@@ -613,7 +619,19 @@ export function CountDrillView({
     lastCardAtRef.current = null;
     const rc = runningCountThrough(groups, idxAtTrigger);
     const seed = runSeedRef.current + idxAtTrigger;
-    const d = makeDistraction(rc, settings.drill.distractionMode, seed, settings.drill.distractionDifficulty ?? 'normal');
+    // Owner 2026-11-10: the wheel walks whole numbers, one per press -- a
+    // half there would double every walk. Eyes-free with the microphone off
+    // (and the wheel answering, not opening it) the wheel is the only way to
+    // answer, so Expert's divisions come out whole; anywhere else the keypad
+    // or the voice takes the .5.
+    const wheelOnly = eyesFree && !voiceOn && settings.drill.wheelMode !== 'talk';
+    const d = makeDistraction(
+      rc,
+      settings.drill.distractionMode,
+      seed,
+      distractionDifficultyOf(settings.drill.distractionDifficulty),
+      { halves: !wheelOnly },
+    );
     setDistraction(d);
     distractionShownAtRef.current = performance.now();
     pendingResumeRef.current = isLast ? 'finish' : idxAtTrigger + 1;
@@ -1811,7 +1829,9 @@ export function CountDrillView({
     if (phase !== 'answering' && phase !== 'checkpoint' && phase !== 'distraction') return null;
     const readings = offered.length > 0 ? offered : [heard];
     // A7: "yes, minus three" after the readback confirms; it is not a new proposal.
-    if (affirmsProposal(readings, pendingCount)) {
+    // Owner 2026-11-10: an Expert division's answer may be "ten point five".
+    const halves = phase === 'distraction' && distraction?.halves === true;
+    if (affirmsProposal(readings, pendingCount, { halves })) {
       handleVoiceCommand('yes');
       return `confirmed ${speakableCount(pendingCount!)}`;
     }
@@ -1821,7 +1841,7 @@ export function CountDrillView({
     // is harder to say twice than a hand is to play twice.
     let parsed: ReturnType<typeof parseCountSpeech> = null;
     for (const reading of readings) {
-      parsed = parseCountSpeech(reading);
+      parsed = parseCountSpeech(reading, { halves });
       if (parsed) break;
     }
     if (!parsed) return null;
@@ -2739,13 +2759,14 @@ export function CountDrillView({
                         { value: 'easy', label: 'Easy' },
                         { value: 'normal', label: 'Normal' },
                         { value: 'hard', label: 'Hard' },
+                        { value: 'expert', label: 'Expert' },
                       ]}
-                      value={settings.drill.distractionDifficulty ?? 'normal'}
+                      value={distractionDifficultyOf(settings.drill.distractionDifficulty)}
                       onChange={(v) => updateDrill({ distractionDifficulty: v })}
                     />
                   </div>
                   <div className="settings-row settings-note-row">
-                    {DIFFICULTY_NOTES[settings.drill.distractionDifficulty ?? 'normal']}
+                    {DIFFICULTY_NOTES[distractionDifficultyOf(settings.drill.distractionDifficulty)]}
                   </div>
                 </>
               )}
@@ -2974,7 +2995,7 @@ export function CountDrillView({
           <div className="distraction-label">Quick: what&apos;s this?</div>
           {/* Wave A: shown with real minus signs; the prompt itself stays ASCII for speech. */}
           <div className="distraction-prompt">{withMinusSigns(distraction.prompt)}</div>
-          <NumPad label="Answer" onSubmit={handleDistractionSubmit} />
+          <NumPad label="Answer" onSubmit={handleDistractionSubmit} halves={distraction.halves === true} />
         </div>
       )}
 

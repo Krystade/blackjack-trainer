@@ -98,9 +98,29 @@ export const COUNT_BIAS_PHRASES: string[] = [
   'minus one', 'minus two', 'minus three', 'minus four', 'minus five',
 ];
 
-function tokenize(transcript: string): string[] {
-  return transcript
-    .toLowerCase()
+/**
+ * Owner 2026-11-10: an Expert distraction's division can come out at a half.
+ * With `halves` on, the parser also takes "ten point five", "ten and a half",
+ * "10.5" and a bare "half" (0.5), signed as any other value. Only .5 is a
+ * fraction worth believing: "ten point three" is refused, not rounded.
+ */
+export interface CountSpeechOptions {
+  halves?: boolean;
+}
+
+/** The fraction digits a typed or transcribed half may carry: .5, .50; .0 is whole. */
+const HALF_DIGITS = /^50*$/;
+const WHOLE_DIGITS = /^0+$/;
+/** "point five", as engines return the five. */
+const FIVE_WORDS = new Set(['five', '5', 'fife']);
+
+function tokenize(transcript: string, halves = false): string[] {
+  const lower = transcript.toLowerCase();
+  // A decimal numeral survives as one token, "10p5", rather than splitting at
+  // the point into two numbers. Only with halves: elsewhere "10.5" stays
+  // refused, as it always was.
+  const withDecimals = halves ? lower.replace(/(\d*)\.(\d+)/g, (_m, i: string, f: string) => `${i || '0'}p${f}`) : lower;
+  return withDecimals
     // A minus sign, en dash or em dash is the minus a keyboard would type,
     // and "- 3" with a space is still one signed number.
     .replace(/[\u2212\u2013\u2014]/g, '-')
@@ -119,8 +139,9 @@ function tokenize(transcript: string): string[] {
  * said while the prompt is open, including thinking aloud, and proposing a
  * number nobody offered would make the read-back a trap rather than a check.
  */
-export function parseCountSpeech(transcript: string): CountSpeech | null {
-  const tokens = tokenize(transcript);
+export function parseCountSpeech(transcript: string, opts: CountSpeechOptions = {}): CountSpeech | null {
+  const halves = opts.halves === true;
+  const tokens = tokenize(transcript, halves);
   if (tokens.length === 0) return null;
 
   let magnitude: number | null = null;
@@ -128,9 +149,40 @@ export function parseCountSpeech(transcript: string): CountSpeech | null {
   let signSeen = false;
   let netNudge = 0;
   let nudgeSeen = false;
+  let half = false;
 
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i]!;
+    if (halves) {
+      // "10.5", "-10.5", "0.5" (tokenize wrote the point as 'p').
+      const decimal = /^(-?)(\d+)p(\d+)$/.exec(token);
+      if (decimal) {
+        if (magnitude !== null || half) return null;
+        if (!HALF_DIGITS.test(decimal[3]!) && !WHOLE_DIGITS.test(decimal[3]!)) return null;
+        magnitude = Number(decimal[2]);
+        half = HALF_DIGITS.test(decimal[3]!);
+        if (decimal[1] === '-') {
+          sign = -1;
+          signSeen = true;
+        }
+        continue;
+      }
+      // "ten point five": the point takes the five with it.
+      if (token === 'point') {
+        if (half || !FIVE_WORDS.has(tokens[i + 1] ?? '')) return null;
+        half = true;
+        i++;
+        continue;
+      }
+      // "ten and a half", "a half", "half".
+      if (token === 'half') {
+        if (half) return null;
+        half = true;
+        // "one half" is a half, not one and a half: it names the fraction.
+        if (magnitude === 1 && /^(one|won|1)$/.test(tokens[i - 1] ?? '')) magnitude = 0;
+        continue;
+      }
+    }
     // A signed or bare numeral, e.g. "-3" or "12".
     const numeric = /^(-?)(\d+)$/.exec(token);
     if (numeric) {
@@ -173,6 +225,13 @@ export function parseCountSpeech(transcript: string): CountSpeech | null {
 
     // Anything else is filler and is ignored: engines pad short answers with
     // it constantly ("uh minus three", "it's plus two").
+  }
+
+  if (half) {
+    // A half with no whole part is 0.5 ("minus a half" is -0.5).
+    const value = sign * ((magnitude ?? 0) + 0.5);
+    if (Math.abs(value) > MAX_COUNT) return null;
+    return { kind: 'value', value };
   }
 
   if (magnitude !== null) {
@@ -235,15 +294,20 @@ const YES_WORDS = new Set(['yes', 'yeah', 'yep', 'yup']);
  * top reading carries a yes word and its number, if any, IS the proposal. A
  * different number is a correction, and stays a new proposal.
  */
-export function affirmsProposal(readings: readonly string[], pending: number | null): boolean {
+export function affirmsProposal(
+  readings: readonly string[],
+  pending: number | null,
+  opts: CountSpeechOptions = {},
+): boolean {
   if (pending === null) return false;
   const top = readings[0];
   if (top === undefined) return false;
   const tokens = tokenize(top);
   if (!tokens.some((t) => YES_WORDS.has(t))) return false;
-  const rest = tokens.filter((t) => !YES_WORDS.has(t)).join(' ');
-  if (rest === '') return true;
-  const parsed = parseCountSpeech(rest);
+  // The rest is re-read from the transcript itself, so "yes 10.5" keeps its point.
+  const rest = top.replace(/\b(yes|yeah|yep|yup)\b/gi, ' ');
+  if (tokens.every((t) => YES_WORDS.has(t))) return true;
+  const parsed = parseCountSpeech(rest, opts);
   return parsed !== null && parsed.kind === 'value' && parsed.value === pending;
 }
 

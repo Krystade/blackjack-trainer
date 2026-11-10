@@ -77,6 +77,7 @@ describe('Play distractions', () => {
   it('stored choices read safely: absent or unknown is normal', () => {
     expect(playDistractionPrefs({})).toEqual({ freq: 'normal', difficulty: 'normal' });
     expect(playDistractionPrefs({ playDistractionFreq: 'often', playDistractionDifficulty: 'hard' })).toEqual({ freq: 'often', difficulty: 'hard' });
+    expect(playDistractionPrefs({ playDistractionDifficulty: 'expert' })).toEqual({ freq: 'normal', difficulty: 'expert' });
     expect(playDistractionPrefs({ playDistractionFreq: 'weekly' as never, playDistractionDifficulty: 'insane' as never })).toEqual({
       freq: 'normal',
       difficulty: 'normal',

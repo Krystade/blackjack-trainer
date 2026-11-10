@@ -2006,3 +2006,90 @@ test('count drill: distraction Difficulty "Hard" is chosen in the options and po
   expect(m, prompt).not.toBeNull();
   expect(Math.max(Number(m![1]), Number(m![3]))).toBeGreaterThanOrEqual(12);
 });
+
+/** The arithmetic on screen, evaluated: real minus signs, × and ÷. */
+function solveExpert(prompt: string): number {
+  const m = /^\s*(-?\d+)\s*([+\-×÷])\s*\(?(-?\d+)\)?\s*$/.exec(prompt.replace(/−/g, '-'));
+  if (!m) throw new Error(`unparsed distraction prompt: ${JSON.stringify(prompt)}`);
+  const a = Number(m[1]);
+  const b = Number(m[3]);
+  return m[2] === '+' ? a + b : m[2] === '-' ? a - b : m[2] === '÷' ? a / b : a * b;
+}
+
+test('owner 2026-11-10: count drill Expert -- a .5 division typed with the .5 key is graded right, its whole part wrong', async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.addInitScript(() => {
+    Math.random = () => 0.42;
+  });
+  await withSettings(page, {
+    drill: {
+      countIntervalMs: 150,
+      countLengthCards: 40,
+      countGroup: 1,
+      distractionFreq: 'relentless',
+      distractionMode: 'generic',
+    },
+  });
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Count drill', exact: true }).click();
+  await openCountOptions(page);
+  const row = page.getByTestId('count-distraction-difficulty');
+  await row.getByRole('button', { name: 'Expert', exact: true }).click();
+  await expect(row.getByRole('button', { name: 'Expert', exact: true })).toHaveClass(/segmented-btn-active/);
+  await expect(page.locator('.settings-note-row', { hasText: 'Division' })).toHaveText('Division with answers that can end in .5, like 63 ÷ 6.');
+  expect((await page.evaluate(() => JSON.parse(localStorage.getItem('bjtrainer.settings.v1')!))).drill.distractionDifficulty).toBe('expert');
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+
+  // Every distraction answered right on the keypad, except the first .5 one,
+  // which gets its whole part: graded exactly, it must be a wrong row.
+  const intended: boolean[] = [];
+  const asked: string[] = [];
+  let halvesWrong = 0;
+  let halvesRight = 0;
+  for (let guard = 0; guard < 400; guard++) {
+    const state = await page.evaluate(() => {
+      if (document.querySelector('.drill-result')) return 'result' as const;
+      const d = document.querySelector('.distraction-area .distraction-prompt');
+      if (d) return { prompt: (d as HTMLElement).innerText };
+      if (document.querySelector('.numpad')) return 'answer' as const;
+      return 'flashing' as const;
+    });
+    if (state === 'result') break;
+    if (state === 'flashing') {
+      await page.waitForTimeout(150);
+      continue;
+    }
+    const pad = page.locator('.numpad');
+    if (state === 'answer') {
+      await pad.locator('.numpad-btn', { hasText: /^3$/ }).click();
+      await pad.locator('.numpad-ok').click();
+      continue;
+    }
+    asked.push(state.prompt);
+    const answer = solveExpert(state.prompt);
+    await expect(pad.getByTestId('numpad-half')).toHaveCount(state.prompt.includes('÷') ? 1 : 0);
+    let typed = answer;
+    if (!Number.isInteger(answer)) {
+      if (halvesWrong === 0) {
+        typed = Math.trunc(answer);
+        halvesWrong++;
+      } else halvesRight++;
+    }
+    if (typed < 0) await pad.getByRole('button', { name: 'Plus or minus' }).click();
+    for (const d of String(Math.trunc(Math.abs(typed)))) await pad.locator('.numpad-btn', { hasText: new RegExp(`^${d}$`) }).click();
+    if (!Number.isInteger(typed)) {
+      await pad.getByTestId('numpad-half').click();
+      await expect(pad.locator('.numpad-display')).toHaveText(String(typed).replace('-', '−'));
+    }
+    await pad.locator('.numpad-ok').click();
+    intended.push(typed === answer);
+    await expect(page.locator('.distraction-prompt', { hasText: state.prompt })).toHaveCount(0, { timeout: 5000 }).catch(() => {});
+  }
+  await expect(page.locator('.drill-result')).toBeVisible({ timeout: 15_000 });
+  expect(halvesWrong, asked.join(' | ')).toBe(1);
+  expect(halvesRight, asked.join(' | ')).toBeGreaterThanOrEqual(1);
+  const stats = await readStats(page);
+  const rows = (stats.distraction?.history ?? []) as { answerCorrect: boolean }[];
+  expect(rows.map((r) => r.answerCorrect), asked.join(' | ')).toEqual(intended);
+});

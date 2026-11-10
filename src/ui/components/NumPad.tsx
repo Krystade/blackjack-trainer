@@ -14,11 +14,20 @@ interface NumPadProps {
    */
   value?: string;
   onValueChange?: (value: string) => void;
+  /**
+   * Owner 2026-11-10: an Expert distraction's division, whose answer may end
+   * in .5. Shows a .5 key (and takes '.' from a keyboard) that puts the half
+   * on or takes it off; the value submitted is then 10.5, not 10.
+   */
+  halves?: boolean;
 }
+
+/** The half as typed: always last, so digits stop once it is on. */
+const HALF = '.5';
 
 const DIGIT_ROWS = ['789', '456', '123'];
 
-export function NumPad({ label, onSubmit, value: controlled, onValueChange }: NumPadProps) {
+export function NumPad({ label, onSubmit, value: controlled, onValueChange, halves = false }: NumPadProps) {
   const [own, setOwn] = useState('');
   const value = controlled ?? own;
   const setValue = (next: string | ((v: string) => string)) => {
@@ -27,9 +36,18 @@ export function NumPad({ label, onSubmit, value: controlled, onValueChange }: Nu
     onValueChange?.(v);
   };
 
-  const appendDigit = (d: string) => setValue((v) => v + d);
+  // A digit after the half would make 10.55; the half stays the last thing typed.
+  const appendDigit = (d: string) => setValue((v) => (v.endsWith(HALF) ? v : v + d));
   const toggleMinus = () => setValue((v) => (v.startsWith('-') ? v.slice(1) : '-' + v));
-  const backspace = () => setValue((v) => v.slice(0, -1));
+  const backspace = () => setValue((v) => (v.endsWith(HALF) ? v.slice(0, -HALF.length) : v.slice(0, -1)));
+  // On its own the half is 0.5 ("-" first gives -0.5), and pressing it again
+  // takes back the 0 it put there too.
+  const toggleHalf = () =>
+    setValue((v) => {
+      if (v === '0' + HALF || v === '-0' + HALF) return v.slice(0, -('0' + HALF).length);
+      if (v.endsWith(HALF)) return v.slice(0, -HALF.length);
+      return /\d$/.test(v) ? v + HALF : v + '0' + HALF;
+    });
   // Wave A (s04/s05 high): nothing typed is no answer. OK on an empty pad
   // used to submit 0 -- a stray tap, or the second touch of a double-tap
   // landing on the next question, graded a phantom 0. A count of zero is
@@ -37,7 +55,7 @@ export function NumPad({ label, onSubmit, value: controlled, onValueChange }: Nu
   const hasDigit = /\d/.test(value);
   const submit = () => {
     if (!hasDigit) return;
-    onSubmit(parseInt(value, 10));
+    onSubmit(halves ? Number(value) : parseInt(value, 10));
     setValue('');
   };
 
@@ -64,6 +82,9 @@ export function NumPad({ label, onSubmit, value: controlled, onValueChange }: Nu
       } else if (e.key === '-' || e.key === '_') {
         e.preventDefault();
         toggleMinus();
+      } else if (halves && (e.key === '.' || e.key === ',')) {
+        e.preventDefault();
+        toggleHalf();
       } else if (e.key === 'Backspace') {
         e.preventDefault();
         backspace();
@@ -76,10 +97,10 @@ export function NumPad({ label, onSubmit, value: controlled, onValueChange }: Nu
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value, onSubmit, onValueChange]);
+  }, [value, onSubmit, onValueChange, halves]);
 
   return (
-    <div className="numpad">
+    <div className={halves ? 'numpad numpad-halves' : 'numpad'}>
       <div className="numpad-label">{label}</div>
       {/* Wave A: shown with a real minus sign (U+2212), like the − key and the
           strips; the value itself keeps its ASCII '-' for parseInt. */}
@@ -105,9 +126,27 @@ export function NumPad({ label, onSubmit, value: controlled, onValueChange }: Nu
           ⌫
         </button>
       </div>
-      <button type="button" className="numpad-ok" onClick={submit} disabled={!hasDigit}>
-        OK
-      </button>
+      {halves ? (
+        <div className="numpad-foot">
+          <button
+            type="button"
+            className="numpad-btn numpad-half"
+            aria-label="Add or remove a half"
+            aria-pressed={value.endsWith(HALF)}
+            data-testid="numpad-half"
+            onClick={toggleHalf}
+          >
+            .5
+          </button>
+          <button type="button" className="numpad-ok" onClick={submit} disabled={!hasDigit}>
+            OK
+          </button>
+        </div>
+      ) : (
+        <button type="button" className="numpad-ok" onClick={submit} disabled={!hasDigit}>
+          OK
+        </button>
+      )}
     </div>
   );
 }

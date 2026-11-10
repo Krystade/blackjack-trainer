@@ -208,6 +208,15 @@ describe('store/persist', () => {
       expect(reloaded.playDistractionFreq).toBe('rare');
       expect(reloaded.playDistractionDifficulty).toBe('hard');
       expect(reloaded.drill.distractionDifficulty).toBe('easy');
+      // Owner 2026-11-10: Expert round-trips like the others.
+      storage['bjtrainer.settings.v1'] = JSON.stringify({
+        version: 1,
+        playDistractionDifficulty: 'expert',
+        drill: { distractionDifficulty: 'expert' },
+      });
+      const expert = loadSettings();
+      expect(expert.playDistractionDifficulty).toBe('expert');
+      expect(expert.drill.distractionDifficulty).toBe('expert');
     });
 
     test('backfills audio settings when the stored blob predates cycle 3', () => {

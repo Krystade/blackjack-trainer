@@ -178,3 +178,61 @@ describe('a number word followed by to/too/for/four (review of A7)', () => {
     expect(parseCountSpeech('twenty')).toEqual({ kind: 'value', value: 20 });
   });
 });
+
+describe('halves, for an Expert division (owner 2026-11-10)', () => {
+  const half = (t: string) => parseCountSpeech(t, { halves: true });
+
+  it.each([
+    ['ten point five', 10.5],
+    ['10 point 5', 10.5],
+    ['ten and a half', 10.5],
+    ['ten and half', 10.5],
+    ['10.5', 10.5],
+    ['it is 10.5.', 10.5],
+    ['half', 0.5],
+    ['a half', 0.5],
+    ['one half', 0.5],
+    ['one and a half', 1.5],
+    ['0.5', 0.5],
+    ['.5', 0.5],
+    ['minus ten point five', -10.5],
+    ['negative three and a half', -3.5],
+    ['minus a half', -0.5],
+    ['-10.5', -10.5],
+    ['−10.5', -10.5],
+    ['49.5', 49.5],
+    ['twelve', 12],
+    ['minus seven', -7],
+    ['12.0', 12],
+  ])('"%s" is %s', (said, value) => {
+    expect(half(said)).toEqual(value === null ? null : { kind: 'value', value });
+  });
+
+  it('only a half is a fraction: other decimals and points are refused, not rounded', () => {
+    for (const said of ['ten point three', '10.3', '10.25', 'ten point', 'half and a half', '10.5 and a half', 'point five point five']) {
+      expect(half(said), said).toBeNull();
+    }
+  });
+
+  it('nudges still move by one', () => {
+    expect(half('plus')).toEqual({ kind: 'adjust', delta: 1 });
+    expect(half('minus minus')).toEqual({ kind: 'adjust', delta: -2 });
+  });
+
+  it('without halves nothing changes: a decimal is still refused and "half" is filler', () => {
+    expect(parseCountSpeech('10.5')).toBeNull();
+    expect(parseCountSpeech('ten point five')).toBeNull();
+    expect(parseCountSpeech('ten and a half')).toEqual({ kind: 'value', value: 10 });
+    expect(parseCountSpeech('half')).toBeNull();
+  });
+
+  it('a yes with the standing half confirms it; a different half is a correction', () => {
+    expect(affirmsProposal(['yes ten point five'], 10.5, { halves: true })).toBe(true);
+    expect(affirmsProposal(['yes 10.5'], 10.5, { halves: true })).toBe(true);
+    expect(affirmsProposal(['yes'], 10.5, { halves: true })).toBe(true);
+    expect(affirmsProposal(['yes eleven point five'], 10.5, { halves: true })).toBe(false);
+    // Unchanged for the count: "yes minus three" against minus three.
+    expect(affirmsProposal(['yes, minus three'], -3)).toBe(true);
+    expect(affirmsProposal(['yesterday'], -3)).toBe(false);
+  });
+});

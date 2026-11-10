@@ -1,5 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import { makeDistraction, isDistractionPoint, isDistractionPointEvery, distractionSpeech, type DistractionDifficulty } from './distraction';
+import {
+  makeDistraction,
+  isDistractionPoint,
+  isDistractionPointEvery,
+  distractionSpeech,
+  distractionDifficultyOf,
+  formatAnswer,
+  DIFFICULTY_NOTES,
+  DISTRACTION_DIFFICULTIES,
+  type DistractionDifficulty,
+} from './distraction';
 
 /**
  * Anti-drift parsing helper for tests only (mirrors the true-count drill's
@@ -13,20 +23,21 @@ import { makeDistraction, isDistractionPoint, isDistractionPointEvery, distracti
  * without producing an ambiguous "- -6" double-sign; this parser accepts
  * both the plain and parenthesized forms.
  */
-function parsePrompt(prompt: string): { a: number; op: '+' | '-' | '×'; b: number } {
-  const m = prompt.match(/^(-?\d+) ([+\-×]) (\(-?\d+\)|\d+)$/);
+function parsePrompt(prompt: string): { a: number; op: '+' | '-' | '×' | '÷'; b: number } {
+  const m = prompt.match(/^(-?\d+) ([+\-×÷]) (\(-?\d+\)|\d+)$/);
   if (!m) {
     throw new Error(`prompt did not match expected clean format: "${prompt}"`);
   }
   const a = Number(m[1]);
-  const op = m[2] as '+' | '-' | '×';
+  const op = m[2] as '+' | '-' | '×' | '÷';
   const b = Number(m[3]!.replace(/[()]/g, ''));
   return { a, op, b };
 }
 
-function evalParsed(p: { a: number; op: '+' | '-' | '×'; b: number }): number {
+function evalParsed(p: { a: number; op: '+' | '-' | '×' | '÷'; b: number }): number {
   if (p.op === '+') return p.a + p.b;
   if (p.op === '-') return p.a - p.b;
+  if (p.op === '÷') return p.a / p.b;
   return p.a * p.b;
 }
 
@@ -259,7 +270,7 @@ describe('difficulty (owner 2026-11-09)', () => {
     }
   });
 
-  it.each(['easy', 'normal', 'hard'] as const)('%s: every answer matches its printed prompt, in the parsers shape', (diff) => {
+  it.each(['easy', 'normal', 'hard', 'expert'] as const)('%s: every answer matches its printed prompt, in the parsers shape', (diff) => {
     for (const mode of ['near-count', 'generic'] as const) {
       for (const d of all(mode, diff)) {
         expect(evalParsed(parsePrompt(d.prompt)), d.prompt).toBe(d.answer);
@@ -322,6 +333,107 @@ describe('difficulty (owner 2026-11-09)', () => {
   });
 });
 
+describe('expert (owner 2026-11-10: division, answers allowed to end in .5)', () => {
+  const counts = [-15, -7, -2, 0, 1, 3, 7, 12, 20];
+  const all = (mode: 'near-count' | 'generic', halves = true) =>
+    counts.flatMap((rc) =>
+      Array.from({ length: 300 }, (_, seed) => makeDistraction(rc, mode, seed, 'expert', { halves })),
+    );
+
+  it.each(['near-count', 'generic'] as const)('%s: every answer is whole or .5, within 99, and matches its prompt', (mode) => {
+    for (const d of all(mode)) {
+      expect(Number.isInteger(d.answer * 2), d.prompt).toBe(true);
+      expect(Math.abs(d.answer), d.prompt).toBeLessThanOrEqual(99);
+      expect(evalParsed(parsePrompt(d.prompt)), d.prompt).toBe(d.answer);
+      expect(d.kind).toBe(mode);
+    }
+  });
+
+  it.each(['near-count', 'generic'] as const)('%s: a mix of divisions (some .5, some whole) and the Hard kinds', (mode) => {
+    const ds = all(mode);
+    const div = ds.filter((d) => d.prompt.includes('÷'));
+    const halfAnswers = div.filter((d) => !Number.isInteger(d.answer));
+    // About half are divisions; the rest the Hard shapes.
+    expect(div.length / ds.length).toBeGreaterThan(0.25);
+    expect(div.length / ds.length).toBeLessThan(0.75);
+    expect(halfAnswers.length).toBeGreaterThan(div.length * 0.15);
+    expect(div.length - halfAnswers.length).toBeGreaterThan(div.length * 0.15);
+    const others = new Set(ds.filter((d) => !d.prompt.includes('÷')).map((d) => parsePrompt(d.prompt).op));
+    expect(others.has('×') && (others.has('+') || others.has('-'))).toBe(true);
+  });
+
+  it('only a division is flagged halves, and every division is', () => {
+    for (const mode of ['near-count', 'generic'] as const) {
+      for (const d of all(mode)) expect(d.halves === true, d.prompt).toBe(d.prompt.includes('÷'));
+    }
+  });
+
+  it('generic divides a two-digit number by 2..9; near-count divides an operand near the count', () => {
+    for (const d of all('generic').filter((x) => x.prompt.includes('÷'))) {
+      const p = parsePrompt(d.prompt);
+      expect(p.a, d.prompt).toBeGreaterThanOrEqual(12);
+      expect(p.a, d.prompt).toBeLessThanOrEqual(99);
+      expect(p.b).toBeGreaterThanOrEqual(2);
+      expect(p.b).toBeLessThanOrEqual(9);
+      expect(d.answer).toBeGreaterThanOrEqual(2);
+    }
+    let halving = 0;
+    for (const rc of counts) {
+      for (let seed = 0; seed < 300; seed++) {
+        const d = makeDistraction(rc, 'near-count', seed, 'expert');
+        if (!d.prompt.includes('÷')) continue;
+        const p = parsePrompt(d.prompt);
+        expect(Math.abs(p.a - rc), d.prompt).toBeLessThanOrEqual(3);
+        expect(Math.abs(p.a)).toBeGreaterThan(p.b);
+        if (p.b === 2) halving++;
+      }
+    }
+    expect(halving).toBeGreaterThan(0);
+  });
+
+  it('with halves off (the wheel alone), every answer is whole and nothing is flagged', () => {
+    for (const mode of ['near-count', 'generic'] as const) {
+      const ds = all(mode, false);
+      expect(ds.some((d) => d.prompt.includes('÷'))).toBe(true);
+      for (const d of ds) {
+        expect(Number.isInteger(d.answer), d.prompt).toBe(true);
+        expect(d.halves).toBeUndefined();
+        expect(evalParsed(parsePrompt(d.prompt)), d.prompt).toBe(d.answer);
+      }
+    }
+  });
+
+  it('the other difficulties never divide and never flag halves', () => {
+    for (const diff of ['easy', 'normal', 'hard'] as const) {
+      for (let seed = 0; seed < 200; seed++) {
+        for (const mode of ['near-count', 'generic'] as const) {
+          const d = makeDistraction(5, mode, seed, diff);
+          expect(d.prompt).not.toContain('÷');
+          expect(d.halves).toBeUndefined();
+        }
+      }
+    }
+  });
+
+  it('a stored difficulty reads safely: expert stays, unknown is normal', () => {
+    expect(DISTRACTION_DIFFICULTIES).toEqual(['easy', 'normal', 'hard', 'expert']);
+    expect(distractionDifficultyOf('expert')).toBe('expert');
+    expect(distractionDifficultyOf('hard')).toBe('hard');
+    expect(distractionDifficultyOf('insane')).toBe('normal');
+    expect(distractionDifficultyOf(undefined)).toBe('normal');
+  });
+
+  it('the note says what Expert is, like the others', () => {
+    expect(DIFFICULTY_NOTES.expert).toBe('Division with answers that can end in .5, like 63 ÷ 6.');
+  });
+
+  it('answers print as typed: 10.5, -3.5, 12', () => {
+    expect(formatAnswer(10.5)).toBe('10.5');
+    expect(formatAnswer(-3.5)).toBe('-3.5');
+    expect(formatAnswer(12)).toBe('12');
+  });
+});
+
 describe('distractionSpeech', () => {
   it('says signs and the times sign as words', () => {
     expect(distractionSpeech('8 + 6')).toBe('8 plus 6');
@@ -329,14 +441,16 @@ describe('distractionSpeech', () => {
     expect(distractionSpeech('17 × 5')).toBe('17 times 5');
     expect(distractionSpeech('-5 × 7')).toBe('minus 5 times 7');
     expect(distractionSpeech('84 - 37')).toBe('84 minus 37');
+    expect(distractionSpeech('63 ÷ 6')).toBe('63 divided by 6');
+    expect(distractionSpeech('-7 ÷ 2')).toBe('minus 7 divided by 2');
   });
 
   it('every generated prompt, at every difficulty, comes out as words with no symbol left', () => {
-    for (const diff of ['easy', 'normal', 'hard'] as const) {
+    for (const diff of ['easy', 'normal', 'hard', 'expert'] as const) {
       for (const mode of ['near-count', 'generic'] as const) {
         for (let seed = 0; seed < 200; seed++) {
           const said = distractionSpeech(makeDistraction(-4, mode, seed, diff).prompt);
-          expect(said, said).toMatch(/^(minus )?\d+ (plus|minus|times) (negative )?\d+$/);
+          expect(said, said).toMatch(/^(minus )?\d+ (plus|minus|times|divided by) (negative )?\d+$/);
         }
       }
     }

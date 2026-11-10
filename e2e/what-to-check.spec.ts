@@ -29,18 +29,20 @@ const toggle = (sheet: ReturnType<Page['getByRole']>, label: string) =>
 async function typeOnPad(page: Page, n: number): Promise<void> {
   const pad = page.locator('.bottom-sheet .numpad');
   if (n < 0) await pad.getByRole('button', { name: 'Plus or minus' }).click();
-  for (const d of String(Math.abs(n))) await pad.locator('.numpad-btn', { hasText: new RegExp(`^${d}$`) }).click();
+  for (const d of String(Math.trunc(Math.abs(n)))) await pad.locator('.numpad-btn', { hasText: new RegExp(`^${d}$`) }).click();
+  // Owner 2026-11-10: an Expert division's half goes on with the .5 key.
+  if (!Number.isInteger(n)) await pad.getByTestId('numpad-half').click();
   await pad.locator('.numpad-ok').click();
 }
 
-/** Solve the sum on screen (U+2212 minus, × times). */
+/** Solve the sum on screen (U+2212 minus, × times, ÷ divided by). */
 async function solveDistraction(page: Page): Promise<number> {
   const text = (await page.getByTestId('play-distraction-prompt').innerText()).replace(/−/g, '-').replace(/×/g, '*');
-  const m = /^\s*(-?\d+)\s*([+*-])\s*\(?(-?\d+)\)?\s*$/.exec(text);
+  const m = /^\s*(-?\d+)\s*([+*÷-])\s*\(?(-?\d+)\)?\s*$/.exec(text);
   if (!m) throw new Error(`unreadable sum: ${text}`);
   const a = Number(m[1]);
   const b = Number(m[3]);
-  return m[2] === '+' ? a + b : m[2] === '-' ? a - b : a * b;
+  return m[2] === '+' ? a + b : m[2] === '-' ? a - b : m[2] === '÷' ? a / b : a * b;
 }
 
 type Seen = { countSheets: number; distractions: number };
@@ -228,4 +230,65 @@ test('owner 2026-11-09: How often and Difficulty sit under Distractions only whi
   const again = await openGear(page);
   await toggle(again, 'Distractions').uncheck();
   await expect(again.getByTestId('play-distraction-options')).toHaveCount(0);
+});
+
+test('owner 2026-11-10: Expert poses divisions, and a .5 answer typed with the .5 key is graded right (and a whole one wrong)', async ({ page }) => {
+  test.setTimeout(120_000);
+  await openTable(page);
+  const sheet = await openGear(page);
+  await toggle(sheet, 'Distractions').check();
+  const opts = sheet.getByTestId('play-distraction-options');
+  await opts.getByRole('button', { name: 'Often', exact: true }).click();
+  await opts.getByRole('button', { name: 'Expert', exact: true }).click();
+  await expect(opts.getByRole('button', { name: 'Expert', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(sheet.getByTestId('play-distraction-difficulty-note')).toHaveText('Division with answers that can end in .5, like 63 ÷ 6.');
+  // Four options still fit the 375px sheet: nothing scrolls sideways.
+  const overflow = await opts.evaluate((el) =>
+    [...el.querySelectorAll('.segmented')].map((s) => s.scrollWidth - s.clientWidth),
+  );
+  expect(overflow.every((d) => d <= 0), String(overflow)).toBe(true);
+  await page.keyboard.press('Escape');
+  expect((await page.evaluate(() => JSON.parse(localStorage.getItem('bjtrainer.settings.v1')!))).playDistractionDifficulty).toBe('expert');
+
+  // Every sum answered right except the first .5 one, given its whole part:
+  // the half is graded exactly, so that one must come back wrong.
+  const verdicts: { prompt: string; answer: number; typed: number; correct: string | null }[] = [];
+  let halvesRight = 0;
+  let halvesWrong = 0;
+  let divisions = 0;
+  for (let round = 0; round < 40 && halvesRight < 1; round++) {
+    await page.getByRole('button', { name: 'Deal', exact: true }).click();
+    if (await page.getByTestId('play-distraction-prompt').isVisible()) {
+      const prompt = await page.getByTestId('play-distraction-prompt').innerText();
+      const answer = await solveDistraction(page);
+      const pad = page.locator('.bottom-sheet .numpad');
+      if (prompt.includes('÷')) divisions++;
+      // The .5 key shows on a division (whole answers too), never on a sum.
+      await expect(pad.getByTestId('numpad-half')).toHaveCount(prompt.includes('÷') ? 1 : 0);
+      let typed = answer;
+      if (!Number.isInteger(answer) && halvesWrong === 0) {
+        typed = Math.trunc(answer);
+        halvesWrong++;
+      } else if (!Number.isInteger(answer)) {
+        halvesRight++;
+        // The key toggles: on, off, on again, and the display shows the half.
+        await pad.getByTestId('numpad-half').click();
+        await expect(pad.locator('.numpad-display')).toHaveText('0.5');
+        await pad.getByTestId('numpad-half').click();
+        await expect(pad.locator('.numpad-display')).toHaveText('Type a number');
+      }
+      await typeOnPad(page, typed);
+      const verdict = page.getByTestId('play-distraction-verdict').first();
+      await expect(verdict).toBeVisible();
+      verdicts.push({ prompt, answer, typed, correct: await verdict.getAttribute('data-correct') });
+      if (!Number.isInteger(answer) && typed === answer) {
+        await expect(verdict).toContainText(`= ${String(answer).replace('-', '−')}`);
+      }
+    }
+    await playRoundByAdvice(page);
+  }
+  expect(divisions, JSON.stringify(verdicts)).toBeGreaterThanOrEqual(2);
+  expect(halvesWrong, JSON.stringify(verdicts)).toBe(1);
+  expect(halvesRight, JSON.stringify(verdicts)).toBe(1);
+  for (const v of verdicts) expect(v.correct, JSON.stringify(v)).toBe(String(v.typed === v.answer));
 });

@@ -11,8 +11,11 @@ export function PlayDistractionSheet({
   prompt,
   onSubmit,
   banner,
+  halves = false,
 }: {
   prompt: string;
+  /** Expert's division: the keypad takes a .5. */
+  halves?: boolean;
   onSubmit: (answer: number) => void;
   /** The settled round's result: the sheet covers the felt's copy, which is hidden while this shows. */
   banner: string | null;
@@ -27,7 +30,7 @@ export function PlayDistractionSheet({
       <p className="play-distraction-prompt" data-testid="play-distraction-prompt">
         {withMinusSigns(prompt)}
       </p>
-      <NumPad label="Enter the answer" onSubmit={onSubmit} />
+      <NumPad label="Enter the answer" onSubmit={onSubmit} halves={halves} />
     </BottomSheet>
   );
 }

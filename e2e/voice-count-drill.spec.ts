@@ -496,3 +496,75 @@ test('a hidden-page pause whose mic is not listening on return says only "Paused
   await expect.poll(() => count('Paused.')).toBe(pausedBefore + 1);
   expect(await count(COUNT_HIDE_PAUSED_LINE), 'promised "go on" to a mic that is not listening').toBe(hideBefore);
 });
+
+/**
+ * Owner 2026-11-10: an Expert division can come out at a half, and the half
+ * has to be sayable -- "twelve and a half", "twelve point five" -- with the
+ * same propose-and-confirm gate as every other spoken number.
+ */
+test('Expert: a .5 division is answered out loud as "N and a half", read back as N.5, and confirmed', async ({ page }) => {
+  test.setTimeout(120_000);
+  await withFakeEngine(page);
+  await withProfile(page);
+  await page.addInitScript(() => {
+    Math.random = () => 0.42;
+  });
+  await withSettings(page, {
+    audio: { enabled: true, verbosity: 'full', answerPauseMs: 0 },
+    drill: {
+      countLengthCards: 40,
+      countGroup: 1,
+      countIntervalMs: 200,
+      countManual: false,
+      distractionFreq: 'relentless',
+      distractionMode: 'generic',
+      distractionDifficulty: 'expert',
+    },
+  });
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Count drill', exact: true }).click();
+  await openCountOptions(page);
+  await page.locator('label', { hasText: 'Eyes-free audio' }).locator('input').check();
+  await page.locator('label', { hasText: 'Voice answers' }).locator('input').check();
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+
+  const asked: string[] = [];
+  let halfDone = false;
+  for (let guard = 0; guard < 20 && !halfDone; guard++) {
+    await expect(page.locator('.distraction-area')).toBeVisible({ timeout: 20_000 });
+    const prompt = await page.locator('.distraction-prompt').innerText();
+    asked.push(prompt);
+    const m = /^\s*(-?\d+)\s*([+\-×÷])\s*\(?(-?\d+)\)?\s*$/.exec(prompt.replace(/−/g, '-'));
+    if (!m) throw new Error(`unparsed distraction prompt: ${prompt}`);
+    const a = Number(m[1]);
+    const b = Number(m[3]);
+    const answer = m[2] === '+' ? a + b : m[2] === '-' ? a - b : m[2] === '÷' ? a / b : a * b;
+    // Spoken by the prompt as words: "63 divided by 6".
+    if (m[2] === '÷') await expect.poll(async () => await spoken(page)).toContain(`${a} divided by ${b}`);
+    await page.evaluate(() => {
+      (window as unknown as { __speechLog: string[] }).__speechLog = [];
+    });
+    if (Number.isInteger(answer)) {
+      await sayWhenListening(page, String(answer));
+    } else {
+      // "minus" leads a negative half, as it leads any negative number.
+      const whole = Math.trunc(Math.abs(answer));
+      await sayWhenListening(page, `${answer < 0 ? 'minus ' : ''}${whole} and a half`);
+      await expect.poll(async () => await spoken(page), { timeout: 8000 }).toContain(`${answer < 0 ? 'minus' : 'plus'} ${whole}.5. Correct?`);
+      halfDone = true;
+    }
+    await expect.poll(async () => await spoken(page), { timeout: 8000 }).toContain('Correct?');
+    await sayWhenListening(page, 'yes');
+    await expect
+      .poll(
+        async () => {
+          if ((await page.locator('.distraction-area').count()) === 0) return true;
+          return (await page.locator('.distraction-prompt').innerText()) !== prompt;
+        },
+        { timeout: 20_000 },
+      )
+      .toBe(true);
+  }
+  expect(halfDone, asked.join(' | ')).toBe(true);
+});

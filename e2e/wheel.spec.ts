@@ -539,3 +539,64 @@ test('the mixed session takes a self-check on either kind of item', async ({ pag
   // dispatch -- and now that can only mean the schedule itself moved.
   expect([...seen].sort(), 'only one kind of item ever appeared').toEqual(['flash', 'quiz']);
 });
+
+/**
+ * Owner 2026-11-10: the wheel walks whole numbers, so eyes-free with the
+ * microphone off -- the wheel the only way in -- Expert's divisions all come
+ * out whole, and each is walked out on the two buttons.
+ */
+test('Expert eyes-free on the wheel alone: divisions come out whole and are walked on the two buttons', async ({ page }) => {
+  test.setTimeout(150_000);
+  await page.addInitScript(() => {
+    Math.random = () => 0.42;
+  });
+  await inAnswerMode(page, {
+    audio: { enabled: true, verbosity: 'full' },
+    drill: {
+      countIntervalMs: 200,
+      countLengthCards: 14,
+      countGroup: 1,
+      distractionFreq: 'relentless',
+      distractionMode: 'generic',
+      distractionDifficulty: 'expert',
+    },
+  });
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Count drill', exact: true }).click();
+  await openCountOptions(page);
+  await page.locator('label', { hasText: 'Eyes-free audio' }).locator('input').check();
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+
+  const asked: string[] = [];
+  for (let guard = 0; guard < 40; guard += 1) {
+    const state = await page.evaluate(() => {
+      if (document.querySelector('.drill-result')) return 'result' as const;
+      const d = document.querySelector('.distraction-area .distraction-prompt');
+      if (d) return { prompt: (d as HTMLElement).innerText };
+      return 'other' as const;
+    });
+    if (state === 'result') break;
+    if (state === 'other') {
+      await page.waitForTimeout(400);
+      continue;
+    }
+    asked.push(state.prompt);
+    const m = /^\s*(-?\d+)\s*([+\-\u00d7\u00f7])\s*\(?(-?\d+)\)?\s*$/.exec(state.prompt.replace(/\u2212/g, '-'));
+    if (!m) throw new Error(`unparsed distraction prompt: ${state.prompt}`);
+    const a = Number(m[1]);
+    const b = Number(m[3]);
+    const answer = m[2] === '+' ? a + b : m[2] === '-' ? a - b : m[2] === '\u00f7' ? a / b : a * b;
+    expect(Number.isInteger(answer), state.prompt).toBe(true);
+    await expect(page.getByTestId('numpad-half')).toHaveCount(0);
+    if (answer >= 1) await press(page, 'forward', answer);
+    else if (answer <= -1) await press(page, 'back', -answer);
+    else {
+      await press(page, 'forward');
+      await press(page, 'back');
+    }
+    await page.waitForTimeout(COMMIT_MS + 600);
+    if (asked.filter((p) => p.includes('\u00f7')).length >= 2) break;
+  }
+  expect(asked.filter((p) => p.includes('\u00f7')).length, asked.join(' | ')).toBeGreaterThanOrEqual(1);
+});

@@ -156,6 +156,7 @@ function PlayDistractionOptions({ settings, update }: { settings: Settings; upda
             { value: 'easy', label: 'Easy' },
             { value: 'normal', label: 'Normal' },
             { value: 'hard', label: 'Hard' },
+            { value: 'expert', label: 'Expert' },
           ]}
           value={difficulty}
           onChange={(v) => update({ playDistractionDifficulty: v })}

@@ -15,18 +15,41 @@ export type DistractionMode = 'near-count' | 'generic';
  *   near-count is an operand near the count times 3..9, or plus or minus a
  *   two-digit number.
  *
+ * - expert (owner 2026-11-10, "division math with up to allowing .5 in the
+ *   answer"): half the problems are a division whose answer is a whole number
+ *   or ends in .5 (63 ÷ 6 = 10.5, 84 ÷ 7 = 12), the other half the Hard kinds.
+ *   Generic divides a two-digit number by 2..9; near-count divides an operand
+ *   near the count by 2..9 (halving it most often). Every division prompt is
+ *   flagged `halves`, so the keypad shows its .5 key and the voice parser
+ *   takes "ten point five" -- for a whole answer too, so the key never gives
+ *   away which kind it is.
+ *
  * Always two operands and one operator, the shape every prompt parser and the
  * spoken form (distractionSpeech) read.
  */
-export type DistractionDifficulty = 'easy' | 'normal' | 'hard';
+export type DistractionDifficulty = 'easy' | 'normal' | 'hard' | 'expert';
+
+/** Every difficulty, in the order the controls show them. */
+export const DISTRACTION_DIFFICULTIES: readonly DistractionDifficulty[] = ['easy', 'normal', 'hard', 'expert'];
+
+/** A stored difficulty, read safely: an unknown value (a later build's, a hand edit) is 'normal'. */
+export function distractionDifficultyOf(v: unknown): DistractionDifficulty {
+  return DISTRACTION_DIFFICULTIES.includes(v as DistractionDifficulty) ? (v as DistractionDifficulty) : 'normal';
+}
 
 /** Hard answers stay sayable: voiceNumber.ts refuses anything past 99. */
 const HARD_MAX_ANSWER = 99;
 
 export interface Distraction {
   prompt: string;
+  /** A whole number, or (a `halves` problem only) one ending in .5. */
   answer: number;
   kind: DistractionMode;
+  /**
+   * Expert's division: the answer may end in .5, so every answer channel must
+   * take a half. Absent on every other problem, whose answer is whole.
+   */
+  halves?: true;
 }
 
 // How close (in either direction) a near-count operand is allowed to land
@@ -52,7 +75,7 @@ function formatOperand(n: number): string {
   return n < 0 ? `(${n})` : `${n}`;
 }
 
-function buildPrompt(a: number, op: '+' | '-' | '×', b: number): string {
+function buildPrompt(a: number, op: '+' | '-' | '×' | '÷', b: number): string {
   return `${a} ${op} ${formatOperand(b)}`;
 }
 
@@ -136,6 +159,41 @@ function makeGenericHard(rng: () => number): Distraction {
 }
 
 /**
+ * Expert generic: a two-digit number divided by 2..9, the answer whole or a
+ * half. A half answer takes an even divisor (an odd one would need a
+ * fractional dividend); `halves: false` keeps every answer whole.
+ */
+function makeGenericDivision(rng: () => number, halves: boolean): Distraction {
+  const half = halves && rng() < 0.5;
+  const b = half ? 2 * between(rng, 1, 4) : between(rng, 3, 9);
+  // Twice the answer, so a half is an odd number: the dividend b*q2/2 is
+  // 12..99, and the answer at least 2.
+  const lo = Math.max(4, Math.ceil(24 / b));
+  const hi = Math.floor(198 / b);
+  let q2 = between(rng, lo, hi);
+  if ((q2 % 2 === 1) !== half) q2 = q2 + 1 <= hi ? q2 + 1 : q2 - 1;
+  const a = (b * q2) / 2;
+  return { prompt: buildPrompt(a, '÷', b), answer: q2 / 2, kind: 'generic', ...(halves ? { halves: true as const } : {}) };
+}
+
+/**
+ * Expert near-count: an operand near the count divided by 2..9 -- any
+ * divisor that leaves a whole or a half, so halving is always one of them
+ * (and the commonest, being the one the owner named). Too close to zero for
+ * a division worth the name, or with no whole quotient when halves are off,
+ * it takes the Hard shape instead.
+ */
+function makeNearCountDivision(runningCount: number, rng: () => number, halves: boolean): Distraction {
+  const a = runningCount + between(rng, -3, 3);
+  const fits = (b: number) => (halves ? (2 * a) % b === 0 : a % b === 0);
+  const divisors = [2, 3, 4, 5, 6, 7, 8, 9].filter((b) => b < Math.abs(a) && fits(b));
+  if (Math.abs(a) < 3 || divisors.length === 0) return makeNearCountHard(runningCount, rng);
+  // Halving half the time (when it fits), otherwise any divisor that fits.
+  const b = divisors.includes(2) && rng() < 0.5 ? 2 : divisors[Math.floor(rng() * divisors.length)]!;
+  return { prompt: buildPrompt(a, '÷', b), answer: a / b, kind: 'near-count', ...(halves ? { halves: true as const } : {}) };
+}
+
+/**
  * generic: small multiplication/addition unrelated to the running count --
  * a table-talk simulacrum that occupies the verbal loop without the
  * number-adjacency that makes near-count distractions confusable.
@@ -166,16 +224,32 @@ export function makeDistraction(
   mode: DistractionMode,
   seed?: number,
   difficulty: DistractionDifficulty = 'normal',
+  /**
+   * Expert only: false when the answer can only come in on a channel with no
+   * half (the steering wheel, eyes-free with the microphone off), so every
+   * division comes out whole.
+   */
+  opts: { halves?: boolean } = {},
 ): Distraction {
   const rng = mulberry32(seed ?? Date.now());
+  const halves = opts.halves ?? true;
   if (mode === 'near-count') {
     if (difficulty === 'easy') return makeNearCountEasy(runningCount, rng);
     if (difficulty === 'hard') return makeNearCountHard(runningCount, rng);
+    if (difficulty === 'expert') {
+      return rng() < 0.5 ? makeNearCountDivision(runningCount, rng, halves) : makeNearCountHard(runningCount, rng);
+    }
     return makeNearCount(runningCount, rng);
   }
   if (difficulty === 'easy') return makeGenericEasy(rng);
   if (difficulty === 'hard') return makeGenericHard(rng);
+  if (difficulty === 'expert') return rng() < 0.5 ? makeGenericDivision(rng, halves) : makeGenericHard(rng);
   return makeGeneric(rng);
+}
+
+/** An answer as typed or printed: "10.5", "-3.5", "12". */
+export function formatAnswer(n: number): string {
+  return Number.isInteger(n) ? `${n}` : n.toFixed(1);
 }
 
 /**
@@ -187,10 +261,10 @@ export function makeDistraction(
  * heard as "7 minus minus 6".
  */
 export function distractionSpeech(prompt: string): string {
-  const m = /^(-?\d+) ([+\-×]) \(?(-?\d+)\)?$/.exec(prompt);
+  const m = /^(-?\d+) ([+\-×÷]) \(?(-?\d+)\)?$/.exec(prompt);
   if (!m) return prompt;
   const first = m[1]!.startsWith('-') ? `minus ${m[1]!.slice(1)}` : m[1]!;
-  const op = m[2] === '+' ? 'plus' : m[2] === '-' ? 'minus' : 'times';
+  const op = m[2] === '+' ? 'plus' : m[2] === '-' ? 'minus' : m[2] === '×' ? 'times' : 'divided by';
   const second = m[3]!.startsWith('-') ? `negative ${m[3]!.slice(1)}` : m[3]!;
   return `${first} ${op} ${second}`;
 }
@@ -259,4 +333,5 @@ export const DIFFICULTY_NOTES: Record<DistractionDifficulty, string> = {
   easy: 'Single-digit sums, like 4 + 7.',
   normal: 'Sums and times tables up to 12, like 8 × 7.',
   hard: 'Two-digit sums and differences, and teens times a digit, like 17 × 5.',
+  expert: 'Division with answers that can end in .5, like 63 ÷ 6.',
 };
